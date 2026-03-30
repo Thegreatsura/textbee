@@ -5,4 +5,5 @@ export const ExternalLinks = {
   polar: 'https://donate.textbee.dev',
   twitter: 'https://x.com/textbeedotdev',
   linkedin: 'https://www.linkedin.com/company/textbeedotdev',
+  uneed: 'https://www.uneed.best/tool/textbeedev-free-and-opensource-sms-gateway',
 }

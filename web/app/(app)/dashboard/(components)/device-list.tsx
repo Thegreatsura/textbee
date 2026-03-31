@@ -3,14 +3,26 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Smartphone, Battery, Signal, Copy } from 'lucide-react'
+import { Smartphone, Battery, Signal, Copy, Plus, ExternalLink } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
 import { Routes } from '@/config/routes'
 import { useQuery } from '@tanstack/react-query'
+import { useRef, useState } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatDeviceName } from '@/lib/utils'
+import GenerateApiKey, {
+  type GenerateApiKeyHandle,
+} from './generate-api-key'
 import {
   DeviceVersionCandidate,
   getDeviceVersionCode,
@@ -19,6 +31,9 @@ import {
 } from './update-app-helpers'
 
 export default function DeviceList() {
+  const addDeviceKeyRef = useRef<GenerateApiKeyHandle>(null)
+  const [addDeviceInstructionOpen, setAddDeviceInstructionOpen] =
+    useState(false)
   const { toast } = useToast()
   const {
     isPending,
@@ -41,10 +56,20 @@ export default function DeviceList() {
   }
 
   return (
-    <Card>
-      <CardHeader className='pb-2'>
-        <CardTitle className='text-lg'>Registered Devices</CardTitle>
-      </CardHeader>
+    <>
+      <GenerateApiKey ref={addDeviceKeyRef} showTrigger={false} />
+      <Card>
+        <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+          <CardTitle className='text-lg'>Registered Devices</CardTitle>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => setAddDeviceInstructionOpen(true)}
+          >
+            <Plus className='mr-1 h-4 w-4' />
+            Add device
+          </Button>
+        </CardHeader>
       <CardContent>
           <div className='space-y-2'>
             {isPending && (
@@ -176,6 +201,71 @@ export default function DeviceList() {
             ))}
           </div>
       </CardContent>
-    </Card>
+      </Card>
+
+      <Dialog
+        open={addDeviceInstructionOpen}
+        onOpenChange={setAddDeviceInstructionOpen}
+      >
+        <DialogContent className='sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle>Add a device</DialogTitle>
+            <DialogDescription className='text-left'>
+              Register a new device by scanning the QR code or pasting the API key.
+            </DialogDescription>
+          </DialogHeader>
+          <ol className='list-decimal space-y-3 pl-5 text-left text-sm text-muted-foreground'>
+            <li>
+              Download textbee app from{' '}
+              <a
+                href={Routes.downloadAndroidApp}
+                target='_blank'
+                rel='noreferrer'
+                className='font-medium text-primary underline-offset-4 hover:underline'
+              >
+                {Routes.downloadAndroidApp}
+              </a>
+              , install it, and grant SMS permissions.
+            </li>
+            <li>
+              Tap Continue to create a new API key and get a QR
+              code in the next dialog. If you already have an active API key, you can paste it in the
+              app instead
+            </li>
+            <li>
+              Open the textbee.dev app and scan the QR code or paste the key manually. Your device should appear in the list when the link succeeds.
+            </li>
+          </ol>
+          <DialogFooter className='flex-col gap-2 sm:flex-row sm:justify-between'>
+            <Button variant='outline' size='sm' asChild>
+              <a href={Routes.quickstart} target='_blank' rel='noreferrer'>
+                Full guide
+                <ExternalLink className='ml-1 h-3 w-3' />
+              </a>
+            </Button>
+            <div className='flex w-full gap-2 sm:w-auto'>
+              <Button
+                variant='outline'
+                size='sm'
+                className='flex-1 sm:flex-none'
+                onClick={() => setAddDeviceInstructionOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size='sm'
+                className='flex-1 sm:flex-none'
+                onClick={() => {
+                  setAddDeviceInstructionOpen(false)
+                  addDeviceKeyRef.current?.open()
+                }}
+              >
+                Continue
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

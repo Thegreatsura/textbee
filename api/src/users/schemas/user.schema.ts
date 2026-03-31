@@ -46,6 +46,20 @@ export class User {
 
   @Prop({ type: Object })
   meta: Object
+
+  @Prop({
+    type: {
+      completedAt: { type: Date },
+      currentStepId: { type: String, default: 'verify_email' },
+      skippedStepIds: { type: [String], default: [] },
+    },
+    default: () => ({ currentStepId: 'verify_email', skippedStepIds: [] }),
+  })
+  onboarding?: {
+    completedAt?: Date
+    currentStepId?: string
+    skippedStepIds?: string[]
+  }
 }
 
 export const UserSchema = SchemaFactory.createForClass(User)

@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Copy, Key, MoreVertical, Loader2 } from 'lucide-react'
+import { Copy, Key, MoreVertical, Loader2, Plus } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -26,8 +26,12 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
 import { Skeleton } from '@/components/ui/skeleton'
+import GenerateApiKey, {
+  type GenerateApiKeyHandle,
+} from './generate-api-key'
 
 export default function ApiKeys() {
+  const addApiKeyRef = useRef<GenerateApiKeyHandle>(null)
   const {
     isPending,
     error,
@@ -124,10 +128,20 @@ export default function ApiKeys() {
   })
 
   return (
-    <Card>
-      <CardHeader className='pb-2'>
-        <CardTitle className='text-lg'>API Keys</CardTitle>
-      </CardHeader>
+    <>
+      <GenerateApiKey ref={addApiKeyRef} showTrigger={false} />
+      <Card>
+        <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
+          <CardTitle className='text-lg'>API Keys</CardTitle>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => addApiKeyRef.current?.open()}
+          >
+            <Plus className='mr-1 h-4 w-4' />
+            Add API key
+          </Button>
+        </CardHeader>
       <CardContent>
           <div className='space-y-2'>
             {isPending && (
@@ -360,6 +374,7 @@ export default function ApiKeys() {
           </DialogContent>
         </Dialog>
       </CardContent>
-    </Card>
+      </Card>
+    </>
   )
 }

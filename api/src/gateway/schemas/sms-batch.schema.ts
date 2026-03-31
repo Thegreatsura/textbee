@@ -1,12 +1,16 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
 import { Document, Types } from 'mongoose'
 import { Device } from './device.schema'
+import { User } from '../../users/schemas/user.schema'
 
 export type SMSBatchDocument = SMSBatch & Document
 
 @Schema({ timestamps: true })
 export class SMSBatch {
   _id?: Types.ObjectId
+
+  @Prop({ type: Types.ObjectId, ref: User.name, required: true, index: true })
+  user: User | Types.ObjectId
 
   @Prop({ type: Types.ObjectId, ref: Device.name })
   device: Device
@@ -53,3 +57,5 @@ export class SMSBatch {
 }
 
 export const SMSBatchSchema = SchemaFactory.createForClass(SMSBatch)
+
+SMSBatchSchema.index({ user: 1, createdAt: -1 })

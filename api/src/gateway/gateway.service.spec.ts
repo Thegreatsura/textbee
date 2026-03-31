@@ -3,6 +3,7 @@ import { GatewayService } from './gateway.service'
 import { AuthModule } from '../auth/auth.module'
 import { getModelToken } from '@nestjs/mongoose'
 import { Device, DeviceDocument } from './schemas/device.schema'
+import { DeviceTombstone } from './schemas/device-tombstone.schema'
 import { SMS } from './schemas/sms.schema'
 import { SMSBatch } from './schemas/sms-batch.schema'
 import { AuthService } from '../auth/auth.service'
@@ -29,6 +30,7 @@ jest.mock('firebase-admin', () => ({
 describe('GatewayService', () => {
   let service: GatewayService
   let deviceModel: Model<DeviceDocument>
+  let deviceTombstoneModel: Model<any>
   let smsModel: Model<SMS>
   let smsBatchModel: Model<SMSBatch>
   let authService: AuthService
@@ -60,6 +62,10 @@ describe('GatewayService', () => {
     findByIdAndUpdate: jest.fn(),
   }
 
+  const mockDeviceTombstoneModel = {
+    updateOne: jest.fn(),
+  }
+
   const mockAuthService = {
     getUserApiKeys: jest.fn(),
   }
@@ -84,6 +90,10 @@ describe('GatewayService', () => {
         {
           provide: getModelToken(Device.name),
           useValue: mockDeviceModel,
+        },
+        {
+          provide: getModelToken(DeviceTombstone.name),
+          useValue: mockDeviceTombstoneModel,
         },
         {
           provide: getModelToken(SMS.name),
@@ -115,6 +125,9 @@ describe('GatewayService', () => {
 
     service = module.get<GatewayService>(GatewayService)
     deviceModel = module.get<Model<DeviceDocument>>(getModelToken(Device.name))
+    deviceTombstoneModel = module.get<Model<any>>(
+      getModelToken(DeviceTombstone.name),
+    )
     smsModel = module.get<Model<SMS>>(getModelToken(SMS.name))
     smsBatchModel = module.get<Model<SMSBatch>>(getModelToken(SMSBatch.name))
     authService = module.get<AuthService>(AuthService)
@@ -299,16 +312,18 @@ describe('GatewayService', () => {
   })
 
   describe('deleteDevice', () => {
-    const mockDeviceId = 'device123'
+    const mockDeviceId = '507f1f77bcf86cd799439011'
     const mockDevice = { _id: mockDeviceId, model: 'Pixel 6' }
 
-    it('should return empty object when device exists', async () => {
+    it('should tombstone and delete when device exists', async () => {
       mockDeviceModel.findById.mockResolvedValue(mockDevice)
 
       const result = await service.deleteDevice(mockDeviceId)
 
       expect(mockDeviceModel.findById).toHaveBeenCalledWith(mockDeviceId)
-      expect(result).toEqual({})
+      expect(mockDeviceTombstoneModel.updateOne).toHaveBeenCalled()
+      expect(mockDeviceModel.findByIdAndDelete).toHaveBeenCalledWith(mockDeviceId)
+      expect(result).toEqual({ success: true })
     })
 
     it('should throw an error if device does not exist', async () => {

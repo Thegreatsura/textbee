@@ -1,6 +1,7 @@
 import { forwardRef, Module } from '@nestjs/common'
 import { MongooseModule } from '@nestjs/mongoose'
 import { Device, DeviceSchema } from './schemas/device.schema'
+import { DeviceTombstone, DeviceTombstoneSchema } from './schemas/device-tombstone.schema'
 import { GatewayController } from './gateway.controller'
 import { GatewayService } from './gateway.service'
 import { AuthModule } from '../auth/auth.module'
@@ -22,6 +23,10 @@ import { HeartbeatCheckTask } from './tasks/heartbeat-check.task'
       {
         name: Device.name,
         schema: DeviceSchema,
+      },
+      {
+        name: DeviceTombstone.name,
+        schema: DeviceTombstoneSchema,
       },
       {
         name: SMS.name,

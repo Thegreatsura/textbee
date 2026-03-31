@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Device, DeviceDocument } from './schemas/device.schema'
 import { Model, Types } from 'mongoose'
 import * as firebaseAdmin from 'firebase-admin'
+import { DeviceTombstone, DeviceTombstoneDocument } from './schemas/device-tombstone.schema'
 import {
   ReceivedSMSDTO,
   RegisterDeviceInputDTO,
@@ -28,6 +29,8 @@ import { SmsQueueService } from './queue/sms-queue.service'
 export class GatewayService {
   constructor(
     @InjectModel(Device.name) private deviceModel: Model<DeviceDocument>,
+    @InjectModel(DeviceTombstone.name)
+    private deviceTombstoneModel: Model<DeviceTombstoneDocument>,
     @InjectModel(SMS.name) private smsModel: Model<SMS>,
     @InjectModel(SMSBatch.name) private smsBatchModel: Model<SMSBatch>,
     private authService: AuthService,
@@ -141,8 +144,21 @@ export class GatewayService {
       )
     }
 
-    return {}
-    // return await this.deviceModel.findByIdAndDelete(deviceId)
+    await this.deviceTombstoneModel.updateOne(
+      { deviceId: new Types.ObjectId(deviceId) },
+      {
+        $setOnInsert: {
+          deviceId: new Types.ObjectId(deviceId),
+          userId: device.user,
+          deletedAt: new Date(),
+        },
+      },
+      { upsert: true },
+    )
+
+    await this.deviceModel.findByIdAndDelete(deviceId)
+
+    return { success: true }
   }
 
   private calculateDelayFromScheduledAt(scheduledAt?: string): number | undefined {
@@ -256,6 +272,7 @@ export class GatewayService {
 
     try {
       smsBatch = await this.smsBatchModel.create({
+        user: device.user,
         device: device._id,
         message,
         recipientCount: recipients.length,
@@ -278,6 +295,7 @@ export class GatewayService {
     for (let recipient of recipients) {
       recipient = recipient.replace(/\s+/g, "")
       const sms = await this.smsModel.create({
+        user: device.user,
         device: device._id,
         smsBatch: smsBatch._id,
         message: message,
@@ -465,6 +483,7 @@ export class GatewayService {
     const { messageTemplate, messages } = body
 
     const smsBatch = await this.smsBatchModel.create({
+      user: device.user,
       device: device._id,
       message: messageTemplate,
       recipientCount: messages
@@ -504,6 +523,7 @@ export class GatewayService {
       for (let recipient of recipients) {
         recipient = recipient.replace(/\s+/g, "")
         smsDocumentsToInsert.push({
+          user: device.user,
           device: device._id,
           smsBatch: smsBatch._id,
           message: message,
@@ -765,6 +785,7 @@ export class GatewayService {
     }
 
     const sms = await this.smsModel.create({
+      user: device.user,
       device: device._id,
       message: dto.message,
       type: SMSType.RECEIVED,

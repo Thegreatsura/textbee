@@ -16,7 +16,6 @@ import { User, UserDocument } from '../users/schemas/user.schema'
 import { CheckoutResponseDTO, PlanDTO } from './billing.dto'
 import { SMSDocument } from '../gateway/schemas/sms.schema'
 import { SMS } from '../gateway/schemas/sms.schema'
-import { Device, DeviceDocument } from '../gateway/schemas/device.schema'
 import { validateEvent } from '@polar-sh/sdk/webhooks'
 import {
   PolarWebhookPayload,
@@ -41,7 +40,6 @@ export class BillingService {
     private subscriptionModel: Model<SubscriptionDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(SMS.name) private smsModel: Model<SMSDocument>,
-    @InjectModel(Device.name) private deviceModel: Model<DeviceDocument>,
     @InjectModel(PolarWebhookPayload.name)
     private polarWebhookPayloadModel: Model<PolarWebhookPayloadDocument>,
     @InjectModel(CheckoutSession.name)
@@ -69,17 +67,13 @@ export class BillingService {
       })
       .populate('plan')
 
-    // Get user's devices and usage data
-    const userDevices = await this.deviceModel.find({ user: user._id }, '_id')
-    const deviceIds = userDevices.map((d) => d._id)
-
     const processedSmsToday = await this.smsModel.countDocuments({
-      device: { $in: deviceIds },
+      user: user._id,
       createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
-      device: { $in: deviceIds },
+      user: user._id,
       createdAt: {
         $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
       },
@@ -568,16 +562,12 @@ export class BillingService {
       let hasReachedLimit = false
       let message = ''
 
-      // Get user's devices and then count SMS
-      const userDevices = await this.deviceModel.find({ user: user._id }, '_id')
-      const deviceIds = userDevices.map((d) => d._id)
-
       const processedSmsToday = await this.smsModel.countDocuments({
-        device: { $in: deviceIds },
+        user: user._id,
         createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
       })
       const processedSmsLastMonth = await this.smsModel.countDocuments({
-        device: { $in: deviceIds },
+        user: user._id,
         createdAt: {
           $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
         },
@@ -724,19 +714,13 @@ export class BillingService {
 
     const effectiveLimits = this.getEffectiveLimits(subscription, plan)
 
-    // First get all devices belonging to the user
-    const userDevices = await this.deviceModel
-      .find({ user: new Types.ObjectId(userId) })
-      .select('_id')
-    const deviceIds = userDevices.map((device) => device._id)
-
     const processedSmsToday = await this.smsModel.countDocuments({
-      device: { $in: deviceIds },
+      user: new Types.ObjectId(userId),
       createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
-      device: { $in: deviceIds },
+      user: new Types.ObjectId(userId),
       createdAt: {
         $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
       },

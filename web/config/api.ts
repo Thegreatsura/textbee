@@ -16,7 +16,10 @@ export const ApiEndpoints = {
     resetPassword: () => '/auth/reset-password',
 
     generateApiKey: () => '/auth/api-keys',
-    listApiKeys: () => '/auth/api-keys',
+    listApiKeys: (status?: 'active' | 'revoked' | 'all') =>
+      status
+        ? `/auth/api-keys?status=${encodeURIComponent(status)}`
+        : '/auth/api-keys',
     revokeApiKey: (id: string) => `/auth/api-keys/${id}/revoke`,
     renameApiKey: (id: string) => `/auth/api-keys/${id}/rename`,
     deleteApiKey: (id: string) => `/auth/api-keys/${id}`,

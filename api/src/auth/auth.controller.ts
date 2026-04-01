@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common'
@@ -98,10 +99,20 @@ export class AuthController {
 
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Get Api Key List (masked***)' })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['active', 'revoked', 'all'],
+    description:
+      'Filter keys: active (default), revoked only, or all (legacy full list)',
+  })
   @ApiBearerAuth()
   @Get('/api-keys')
-  async getApiKey(@Request() req) {
-    const data = await this.authService.getUserApiKeys(req.user)
+  async getApiKey(
+    @Request() req,
+    @Query('status') status?: string,
+  ) {
+    const data = await this.authService.getUserApiKeys(req.user, status)
     return { data }
   }
 

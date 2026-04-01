@@ -363,8 +363,36 @@ export class AuthService {
     return { apiKey, message: 'Save this key, it wont be shown again ;)' }
   }
 
-  async getUserApiKeys(currentUser: User) {
-    return this.apiKeyModel.find({ user: currentUser._id }, null, {
+  async getUserApiKeys(
+    currentUser: User,
+    statusParam?: string,
+  ) {
+    const normalized =
+      statusParam === undefined || statusParam === '' ? 'active' : statusParam
+    if (!['active', 'revoked', 'all'].includes(normalized)) {
+      throw new HttpException(
+        { error: 'Invalid status. Use active, revoked, or all.' },
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const status = normalized as 'active' | 'revoked' | 'all'
+
+    const base = { user: currentUser._id }
+    let filter: Record<string, unknown> = { ...base }
+
+    if (status === 'active') {
+      filter = {
+        ...base,
+        $or: [{ revokedAt: { $exists: false } }, { revokedAt: null }],
+      }
+    } else if (status === 'revoked') {
+      filter = {
+        ...base,
+        revokedAt: { $exists: true, $ne: null },
+      }
+    }
+
+    return this.apiKeyModel.find(filter, null, {
       sort: { createdAt: -1 },
     })
   }
@@ -387,9 +415,9 @@ export class AuthService {
         HttpStatus.NOT_FOUND,
       )
     }
-    if (apiKey.usageCount > 0) {
+    if (!apiKey.revokedAt) {
       throw new HttpException(
-        { error: 'Api key cannot be deleted' },
+        { error: 'Revoke this API key before you can delete it' },
         HttpStatus.BAD_REQUEST,
       )
     }

@@ -4,8 +4,7 @@ import { useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Copy, Key, MoreVertical, Loader2, Plus } from 'lucide-react'
+import { Key, MoreVertical, Loader2, Plus, AlertTriangle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -22,54 +21,78 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
 import { Skeleton } from '@/components/ui/skeleton'
 import GenerateApiKey, {
   type GenerateApiKeyHandle,
 } from './generate-api-key'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+
+type ApiKeyRow = {
+  _id: string
+  apiKey: string
+  name?: string
+  revokedAt?: string
+  createdAt: string
+  lastUsedAt?: string
+  usageCount?: number
+}
 
 export default function ApiKeys() {
   const addApiKeyRef = useRef<GenerateApiKeyHandle>(null)
+  const queryClient = useQueryClient()
+
+  const [selectedKey, setSelectedKey] = useState<ApiKeyRow | null>(null)
+  const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false)
+  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
+  const [isRevokedModalOpen, setIsRevokedModalOpen] = useState(false)
+  const [isConfirmDeleteRevokedOpen, setIsConfirmDeleteRevokedOpen] =
+    useState(false)
+  const [revokedKeyToDelete, setRevokedKeyToDelete] =
+    useState<ApiKeyRow | null>(null)
+  const [newKeyName, setNewKeyName] = useState('')
+
+  const { toast } = useToast()
+
   const {
     isPending,
     error,
     data: apiKeys,
-    refetch: refetchApiKeys,
   } = useQuery({
-    queryKey: ['apiKeys'],
+    queryKey: ['apiKeys', 'active'],
     queryFn: () =>
       httpBrowserClient
-        .get(ApiEndpoints.auth.listApiKeys())
+        .get(ApiEndpoints.auth.listApiKeys('active'))
         .then((res) => res.data),
-    // select: (res) => res.data,
   })
 
-  const { toast } = useToast()
-
-  const [selectedKey, setSelectedKey] = useState<(typeof apiKeys)[0] | null>(
-    null
-  )
-  const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false)
-  const [isRenameDialogOpen, setIsRenameDialogOpen] = useState(false)
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [newKeyName, setNewKeyName] = useState('')
+  const {
+    data: revokedKeysData,
+    isPending: isRevokedPending,
+  } = useQuery({
+    queryKey: ['apiKeys', 'revoked'],
+    queryFn: () =>
+      httpBrowserClient
+        .get(ApiEndpoints.auth.listApiKeys('revoked'))
+        .then((res) => res.data),
+    enabled: isRevokedModalOpen,
+  })
 
   const {
     mutate: revokeApiKey,
     isPending: isRevokingApiKey,
     error: revokeApiKeyError,
-    isSuccess: isRevokeApiKeySuccess,
   } = useMutation({
     mutationFn: (id: string) =>
       httpBrowserClient.post(ApiEndpoints.auth.revokeApiKey(id)),
     onSuccess: () => {
       setIsRevokeDialogOpen(false)
       toast({
-        title: `API key "${selectedKey.apiKey}" has been revoked`,
+        title: `API key "${selectedKey?.apiKey}" has been revoked`,
       })
-      refetchApiKeys()
+      void queryClient.invalidateQueries({ queryKey: ['apiKeys'] })
     },
     onError: () => {
       toast({
@@ -81,19 +104,19 @@ export default function ApiKeys() {
   })
 
   const {
-    mutate: deleteApiKey,
-    isPending: isDeletingApiKey,
+    mutate: deleteRevokedApiKey,
+    isPending: isDeletingRevokedApiKey,
     error: deleteApiKeyError,
-    isSuccess: isDeleteApiKeySuccess,
   } = useMutation({
     mutationFn: (id: string) =>
       httpBrowserClient.delete(ApiEndpoints.auth.deleteApiKey(id)),
     onSuccess: () => {
-      setIsDeleteDialogOpen(false)
+      setIsConfirmDeleteRevokedOpen(false)
+      setRevokedKeyToDelete(null)
       toast({
-        title: `API key deleted`,
+        title: 'API key removed',
       })
-      refetchApiKeys()
+      void queryClient.invalidateQueries({ queryKey: ['apiKeys'] })
     },
     onError: () => {
       toast({
@@ -107,7 +130,6 @@ export default function ApiKeys() {
     mutate: renameApiKey,
     isPending: isRenamingApiKey,
     error: renameApiKeyError,
-    isSuccess: isRenameApiKeySuccess,
   } = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       httpBrowserClient.patch(ApiEndpoints.auth.renameApiKey(id), { name }),
@@ -116,7 +138,7 @@ export default function ApiKeys() {
       toast({
         title: `API key renamed to "${newKeyName}"`,
       })
-      refetchApiKeys()
+      void queryClient.invalidateQueries({ queryKey: ['apiKeys', 'active'] })
     },
     onError: () => {
       toast({
@@ -127,20 +149,32 @@ export default function ApiKeys() {
     },
   })
 
+  const revokedList = revokedKeysData?.data as ApiKeyRow[] | undefined
+
   return (
     <>
       <GenerateApiKey ref={addApiKeyRef} showTrigger={false} />
       <Card>
         <CardHeader className='flex flex-row items-center justify-between space-y-0 pb-2'>
           <CardTitle className='text-lg'>API Keys</CardTitle>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => addApiKeyRef.current?.open()}
-          >
-            <Plus className='mr-1 h-4 w-4' />
-            Add API key
-          </Button>
+          <div className='flex items-center gap-1'>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-auto px-2 py-1 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground'
+              onClick={() => setIsRevokedModalOpen(true)}
+            >
+              View revoked keys
+            </Button>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => addApiKeyRef.current?.open()}
+            >
+              <Plus className='mr-1 h-4 w-4' />
+              Add API key
+            </Button>
+          </div>
         </CardHeader>
       <CardContent>
           <div className='space-y-2'>
@@ -182,7 +216,7 @@ export default function ApiKeys() {
               </div>
             )}
 
-            {apiKeys?.data?.map((apiKey) => (
+            {apiKeys?.data?.map((apiKey: ApiKeyRow) => (
               <Card key={apiKey._id} className='border-0 shadow-none'>
                 <CardContent className='flex items-center p-3'>
                   <Key className='h-6 w-6 mr-3' />
@@ -191,11 +225,8 @@ export default function ApiKeys() {
                       <h3 className='font-semibold text-sm'>
                         {apiKey.name || 'API Key'}
                       </h3>
-                      <Badge
-                        variant={apiKey.revokedAt ? 'secondary' : 'default'}
-                        className='text-xs'
-                      >
-                        {apiKey.revokedAt ? 'Revoked' : 'Active'}
+                      <Badge variant='default' className='text-xs'>
+                        Active
                       </Badge>
                     </div>
                     <div className='flex items-center space-x-2 mt-1'>
@@ -212,8 +243,8 @@ export default function ApiKeys() {
                         })}
                       </div>
                       <div>
-                        Last used: {/* if usage count is 0, show never  */}
-                        {apiKey?.lastUsedAt && apiKey.usageCount > 0
+                        Last used:{' '}
+                        {apiKey?.lastUsedAt && apiKey.usageCount
                           ? new Date(apiKey.lastUsedAt).toLocaleString(
                               'en-US',
                               {
@@ -248,18 +279,8 @@ export default function ApiKeys() {
                             setSelectedKey(apiKey)
                             setIsRevokeDialogOpen(true)
                           }}
-                          disabled={!!apiKey.revokedAt}
                         >
                           Revoke
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className='text-destructive'
-                          onClick={() => {
-                            setSelectedKey(apiKey)
-                            setIsDeleteDialogOpen(true)
-                          }}
-                        >
-                          Delete
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -273,13 +294,21 @@ export default function ApiKeys() {
         <Dialog open={isRevokeDialogOpen} onOpenChange={setIsRevokeDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Revoke API Key</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to revoke this API key? This action cannot
-                be undone, and any applications using this key will stop working
-                immediately.
+              <DialogTitle>Revoke API key?</DialogTitle>
+              <DialogDescription className='sr-only'>
+                Revoking stops this key from working everywhere it is used.
               </DialogDescription>
             </DialogHeader>
+            <Alert variant='destructive'>
+              <AlertTriangle className='h-4 w-4' />
+              <AlertDescription>
+                Revoking immediately stops this key from working everywhere it is
+                still used—apps, servers, scripts, devices, and other integrations.
+                Create a new API key first if you need one, then update every
+                place the old key is stored and reconnect or reconfigure anything
+                that depends on it.
+              </AlertDescription>
+            </Alert>
             <DialogFooter>
               <Button
                 variant='outline'
@@ -296,39 +325,114 @@ export default function ApiKeys() {
                 {isRevokingApiKey ? (
                   <Loader2 className='h-4 w-4 animate-spin mr-2' />
                 ) : null}
-                Revoke Key
+                Revoke key
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        {/* Delete Dialog */}
-        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        {/* Revoked keys list */}
+        <Dialog
+          open={isRevokedModalOpen}
+          onOpenChange={setIsRevokedModalOpen}
+        >
+          <DialogContent className='max-h-[85vh] overflow-y-auto sm:max-w-lg'>
+            <DialogHeader>
+              <DialogTitle>Revoked API keys</DialogTitle>
+              <DialogDescription>
+                These keys no longer work. You can remove them from your account
+                to tidy your list.
+              </DialogDescription>
+            </DialogHeader>
+            {isRevokedPending && (
+              <div className='space-y-2 py-2'>
+                <Skeleton className='h-12 w-full' />
+                <Skeleton className='h-12 w-full' />
+              </div>
+            )}
+            {!isRevokedPending &&
+              (!revokedList || revokedList.length === 0) && (
+                <p className='text-sm text-muted-foreground py-4'>
+                  No revoked keys.
+                </p>
+              )}
+            {!isRevokedPending &&
+              revokedList?.map((k) => (
+                <div
+                  key={k._id}
+                  className='flex items-center justify-between gap-3 rounded-md border p-3'
+                >
+                  <div className='min-w-0 flex-1'>
+                    <div className='font-medium text-sm truncate'>
+                      {k.name || 'API Key'}
+                    </div>
+                    <code className='text-xs text-muted-foreground'>
+                      {k.apiKey}
+                    </code>
+                    <div className='text-xs text-muted-foreground mt-1'>
+                      Revoked{' '}
+                      {k.revokedAt
+                        ? new Date(k.revokedAt).toLocaleString('en-US', {
+                            dateStyle: 'medium',
+                            timeStyle: 'short',
+                          })
+                        : ''}
+                    </div>
+                  </div>
+                  <Button
+                    variant='destructive'
+                    size='sm'
+                    onClick={() => {
+                      setRevokedKeyToDelete(k)
+                      setIsConfirmDeleteRevokedOpen(true)
+                    }}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              ))}
+          </DialogContent>
+        </Dialog>
+
+        {/* Confirm delete revoked key */}
+        <Dialog
+          open={isConfirmDeleteRevokedOpen}
+          onOpenChange={(open) => {
+            setIsConfirmDeleteRevokedOpen(open)
+            if (!open) setRevokedKeyToDelete(null)
+          }}
+        >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete API Key</DialogTitle>
+              <DialogTitle>Remove this key?</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete this API key? This action cannot
-                be undone.
+                This removes the key from your account permanently. It is already
+                revoked and cannot be used. This cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button
                 variant='outline'
-                onClick={() => setIsDeleteDialogOpen(false)}
-                disabled={isDeletingApiKey}
+                onClick={() => {
+                  setIsConfirmDeleteRevokedOpen(false)
+                  setRevokedKeyToDelete(null)
+                }}
+                disabled={isDeletingRevokedApiKey}
               >
                 Cancel
               </Button>
               <Button
                 variant='destructive'
-                onClick={() => deleteApiKey(selectedKey?._id)}
-                disabled={isDeletingApiKey}
+                onClick={() =>
+                  revokedKeyToDelete &&
+                  deleteRevokedApiKey(revokedKeyToDelete._id)
+                }
+                disabled={isDeletingRevokedApiKey}
               >
-                {isDeletingApiKey ? (
+                {isDeletingRevokedApiKey ? (
                   <Loader2 className='h-4 w-4 animate-spin mr-2' />
                 ) : null}
-                Delete
+                Remove
               </Button>
             </DialogFooter>
           </DialogContent>

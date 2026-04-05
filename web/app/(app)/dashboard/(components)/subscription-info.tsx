@@ -6,6 +6,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { useQuery } from '@tanstack/react-query'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
+import { polarCustomerPortalRequestUrl } from '@/config/external-links'
 import Link from 'next/link'
 import {
   Tooltip,
@@ -25,6 +26,14 @@ export default function SubscriptionInfo() {
       httpBrowserClient
         .get(ApiEndpoints.billing.currentSubscription())
         .then((res) => res.data),
+  })
+
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () =>
+      httpBrowserClient
+        .get(ApiEndpoints.auth.whoAmI())
+        .then((res) => res.data?.data),
   })
 
   // Format price with currency symbol
@@ -254,7 +263,7 @@ export default function SubscriptionInfo() {
           </Link>
         ) : (
           <Link
-            href='https://polar.sh/textbee/portal/'
+            href={polarCustomerPortalRequestUrl(currentUser?.email)}
             className='text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 px-4 py-2 rounded-md transition-colors'
           >
             Manage Subscription →

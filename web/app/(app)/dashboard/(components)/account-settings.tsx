@@ -43,6 +43,7 @@ import { Textarea } from '@/components/ui/textarea'
 import axios from 'axios'
 import { useSession } from 'next-auth/react'
 import { Routes } from '@/config/routes'
+import { polarCustomerPortalRequestUrl } from '@/config/external-links'
 import {
   Tooltip,
   TooltipContent,
@@ -448,7 +449,7 @@ export default function AccountSettings() {
             </Link>
           ) : (
             <Link
-              href='https://polar.sh/textbee/portal/'
+              href={polarCustomerPortalRequestUrl(currentUser?.email)}
               className='text-xs font-medium bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-1.5 rounded-md transition-colors'
             >
               Manage Subscription →

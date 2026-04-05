@@ -1,5 +1,5 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common'
-import { Model } from 'mongoose'
+import { Model, Types } from 'mongoose'
 import {
   WebhookSubscription,
   WebhookSubscriptionDocument,
@@ -418,7 +418,9 @@ export class WebhookService {
       return
     }
 
-    const webhookSubscriptionId = webhookNotification.webhookSubscription
+    const wsRef = webhookNotification.webhookSubscription
+    const webhookSubscriptionId =
+      wsRef instanceof Types.ObjectId ? wsRef : wsRef._id!
     const webhookSubscription = await this.webhookSubscriptionModel.findById(
       webhookSubscriptionId,
     )
@@ -478,7 +480,7 @@ export class WebhookService {
       await webhookNotification.save()
 
       await this.webhookSubscriptionModel.updateOne(
-        { _id: webhookSubscriptionId },
+        { _id: webhookSubscription._id },
         {
           $inc: { successfulDeliveryCount: 1, deliveryAttemptCount: 1 },
           $set: { lastDeliverySuccessAt: now },
@@ -528,7 +530,7 @@ export class WebhookService {
       await webhookNotification.save()
 
       await this.webhookSubscriptionModel.updateOne(
-        { _id: webhookSubscriptionId },
+        { _id: webhookSubscription._id },
         {
           $inc: { deliveryFailureCount: 1, deliveryAttemptCount: 1 },
           $set: { lastDeliveryFailureAt: now },

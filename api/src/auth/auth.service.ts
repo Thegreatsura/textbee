@@ -401,6 +401,27 @@ export class AuthService {
     return this.apiKeyModel.findOne(params)
   }
 
+  /** Prefer exact masked match (see generateApiKey); fall back to legacy prefix regex. */
+  async findActiveApiKeyByClientKey(apiKeyString: string) {
+    const revokedClause = {
+      $or: [{ revokedAt: null }, { revokedAt: { $exists: false } }],
+    }
+    const prefix = apiKeyString.substring(0, 17)
+    const masked = `${prefix}${'*'.repeat(18)}`
+    const byMasked = await this.apiKeyModel.findOne({
+      apiKey: masked,
+      ...revokedClause,
+    })
+    if (byMasked) {
+      return byMasked
+    }
+    const regex = new RegExp(`^${prefix}`, 'g')
+    return this.apiKeyModel.findOne({
+      apiKey: { $regex: regex },
+      ...revokedClause,
+    })
+  }
+
   async findApiKeyById(apiKeyId: string) {
     return this.apiKeyModel.findById(apiKeyId)
   }

@@ -8,6 +8,7 @@ import UpgradeToProAlert from './(components)/upgrade-to-pro-alert'
 import UpdateAppModal from './(components)/update-app-modal'
 import UpdateAppNotificationBar from './(components)/update-app-notification-bar'
 import VerifyEmailAlert from './(components)/verify-email-alert'
+import PastDueBillingAlert from './(components)/past-due-billing-alert'
 import { SurveyModal } from '@/components/shared/survey-modal'
 
 export default function DashboardLayout({
@@ -54,6 +55,7 @@ export default function DashboardLayout({
         <div className='space-y-2 p-4'>
           <UpdateAppNotificationBar />
           <VerifyEmailAlert />
+          <PastDueBillingAlert />
           <AccountDeletionAlert />
           <UpgradeToProAlert />
           {/* <BlackFridayModal /> */}

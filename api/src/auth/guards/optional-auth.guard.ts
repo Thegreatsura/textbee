@@ -31,11 +31,8 @@ export class OptionalAuthGuard implements CanActivate {
         return true
       }
     } else if (apiKeyString) {
-      const regex = new RegExp(`^${apiKeyString.substr(0, 17)}`, 'g')
-      const apiKey = await this.authService.findApiKey({
-        apiKey: { $regex: regex },
-        $or: [{ revokedAt: null }, { revokedAt: { $exists: false } }],
-      })
+      const apiKey =
+        await this.authService.findActiveApiKeyByClientKey(apiKeyString)
 
       if (apiKey && bcrypt.compareSync(apiKeyString, apiKey.hashedApiKey)) {
         userId = apiKey.user

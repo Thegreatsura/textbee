@@ -2,6 +2,7 @@ import { HttpException, HttpStatus, Injectable } from '@nestjs/common'
 import { UsersService } from '../users/users.service'
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcryptjs'
+import { createHash, randomInt } from 'crypto'
 import { v4 as uuidv4 } from 'uuid'
 import { InjectModel } from '@nestjs/mongoose'
 import { ApiKey, ApiKeyDocument } from './schemas/api-key.schema'
@@ -24,6 +25,11 @@ import {
 
 // Failed OTP submissions allowed against a single password reset record.
 const MAX_PASSWORD_RESET_ATTEMPTS = 5
+
+export const API_KEY_PREFIX = 'txb_'
+const API_KEY_BODY_LENGTH = 32
+const API_KEY_BODY_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
 
 // For register and login, which hold the hash in memory before responding.
 export const withoutPassword = (user: UserDocument) => {
@@ -367,19 +373,72 @@ export class AuthService {
     return { message: 'Email verified successfully' }
   }
 
+  private sha256(value: string): string {
+    return createHash('sha256').update(value).digest('hex')
+  }
+
+  private generateApiKeyString(): string {
+    let body = ''
+    for (let i = 0; i < API_KEY_BODY_LENGTH; i++) {
+      body += API_KEY_BODY_ALPHABET[randomInt(API_KEY_BODY_ALPHABET.length)]
+    }
+    return `${API_KEY_PREFIX}${body}`
+  }
+
   async generateApiKey(currentUser: User) {
-    const apiKey = uuidv4()
+    const apiKey = this.generateApiKeyString()
     const hashedApiKey = await bcrypt.hash(apiKey, 10)
 
     const newApiKey = new this.apiKeyModel({
       apiKey: apiKey.substr(0, 17) + '*'.repeat(18),
       hashedApiKey,
+      hashedApiKeySha256: this.sha256(apiKey),
       user: currentUser._id,
     })
 
     await newApiKey.save()
 
     return { apiKey, message: 'Save this key, it wont be shown again ;)' }
+  }
+
+  /**
+   * Resolves a presented key to its active ApiKey document, or null.
+   * Fast path is a single indexed sha256 lookup. Keys issued before the
+   * migration fall back to bcrypt once, then backfill themselves.
+   */
+  async verifyApiKey(apiKeyString: string): Promise<ApiKeyDocument | null> {
+    if (!apiKeyString || typeof apiKeyString !== 'string') {
+      return null
+    }
+
+    const hashedApiKeySha256 = this.sha256(apiKeyString)
+    const byHash = await this.apiKeyModel.findOne({ hashedApiKeySha256 })
+    if (byHash) {
+      // A hash match identifies the key outright, so a revoked hit is final.
+      return byHash.revokedAt ? null : byHash
+    }
+
+    const legacyApiKey = await this.findActiveApiKeyByClientKey(apiKeyString)
+    if (
+      !legacyApiKey?.hashedApiKey ||
+      legacyApiKey.revokedAt ||
+      !(await bcrypt.compare(apiKeyString, legacyApiKey.hashedApiKey))
+    ) {
+      return null
+    }
+
+    this.apiKeyModel
+      .updateOne(
+        { _id: legacyApiKey._id },
+        { $set: { hashedApiKeySha256 } },
+      )
+      .exec()
+      .catch((e) => {
+        console.log('Failed to backfill api key sha256 hash')
+        console.log(e)
+      })
+
+    return legacyApiKey
   }
 
   async getUserApiKeys(
@@ -411,7 +470,8 @@ export class AuthService {
       }
     }
 
-    return this.apiKeyModel.find(filter, null, {
+    // Never ship credential digests to the client.
+    return this.apiKeyModel.find(filter, '-hashedApiKey -hashedApiKeySha256', {
       sort: { createdAt: -1 },
     })
   }

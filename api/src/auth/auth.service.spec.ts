@@ -1,6 +1,10 @@
 import { HttpException } from '@nestjs/common'
 import * as bcrypt from 'bcryptjs'
+import { createHash } from 'crypto'
 import { AuthService } from './auth.service'
+
+const sha256 = (value: string) =>
+  createHash('sha256').update(value).digest('hex')
 
 // AuthService takes eight constructor deps. Only the ones a given flow
 // touches are given real behaviour; the rest are inert stubs.
@@ -13,6 +17,9 @@ const build = () => {
   })
   apiKeyModel.findOne = jest.fn()
   apiKeyModel.findById = jest.fn()
+  apiKeyModel.updateOne = jest.fn().mockReturnValue({
+    exec: jest.fn().mockResolvedValue(undefined),
+  })
 
   const usersService = {
     findOne: jest.fn(),
@@ -100,6 +107,188 @@ describe('AuthService', () => {
       expect(bcrypt.compareSync(result.apiKey, doc.hashedApiKey)).toBe(true)
       expect(doc.user).toBe('user_1')
       expect(doc.save).toHaveBeenCalledTimes(1)
+    })
+
+    it('issues prefixed base62 keys that differ between calls', async () => {
+      const { service } = build()
+
+      const first = await service.generateApiKey({ _id: 'user_1' } as any)
+      const second = await service.generateApiKey({ _id: 'user_1' } as any)
+
+      expect(first.apiKey).toMatch(/^txb_[A-Za-z0-9]{32}$/)
+      expect(second.apiKey).toMatch(/^txb_[A-Za-z0-9]{32}$/)
+      expect(first.apiKey).not.toBe(second.apiKey)
+    })
+
+    it('stores the sha256 lookup hash of the raw key', async () => {
+      const { service, getLastApiKeyDoc } = build()
+
+      const result = await service.generateApiKey({ _id: 'user_1' } as any)
+
+      const doc = getLastApiKeyDoc()
+      expect(doc.hashedApiKeySha256).toBe(sha256(result.apiKey))
+      expect(doc.hashedApiKeySha256).not.toBe(result.apiKey)
+    })
+  })
+
+  describe('verifyApiKey', () => {
+    const raw = 'txb_' + 'a'.repeat(32)
+
+    it('resolves through the sha256 index without touching bcrypt', async () => {
+      const { service, apiKeyModel } = build()
+      const stored = { _id: 'key_1', user: 'user_1', revokedAt: null }
+      apiKeyModel.findOne.mockResolvedValueOnce(stored)
+      const compare = jest.spyOn(bcrypt, 'compare')
+
+      await expect(service.verifyApiKey(raw)).resolves.toBe(stored)
+      expect(apiKeyModel.findOne).toHaveBeenCalledTimes(1)
+      expect(apiKeyModel.findOne).toHaveBeenCalledWith({
+        hashedApiKeySha256: sha256(raw),
+      })
+      expect(compare).not.toHaveBeenCalled()
+    })
+
+    it('rejects a revoked key on the fast path without a legacy lookup', async () => {
+      const { service, apiKeyModel } = build()
+      apiKeyModel.findOne.mockResolvedValueOnce({
+        _id: 'key_1',
+        user: 'user_1',
+        revokedAt: new Date(),
+      })
+
+      await expect(service.verifyApiKey(raw)).resolves.toBeNull()
+      // Only the sha256 lookup ran: no masked or regex fallback query.
+      expect(apiKeyModel.findOne).toHaveBeenCalledTimes(1)
+    })
+
+    it('verifies a legacy bcrypt-only key and backfills its sha256 hash', async () => {
+      const { service, apiKeyModel } = build()
+      const legacy = {
+        _id: 'key_legacy',
+        user: 'user_1',
+        hashedApiKey: bcrypt.hashSync(raw, 4),
+      }
+      apiKeyModel.findOne
+        .mockResolvedValueOnce(null) // sha256 miss
+        .mockResolvedValueOnce(legacy) // masked hit
+
+      await expect(service.verifyApiKey(raw)).resolves.toBe(legacy)
+      expect(apiKeyModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'key_legacy' },
+        { $set: { hashedApiKeySha256: sha256(raw) } },
+      )
+    })
+
+    it('still authenticates when the backfill write fails', async () => {
+      const { service, apiKeyModel } = build()
+      const legacy = {
+        _id: 'key_legacy',
+        user: 'user_1',
+        hashedApiKey: bcrypt.hashSync(raw, 4),
+      }
+      apiKeyModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(legacy)
+      apiKeyModel.updateOne.mockReturnValueOnce({
+        exec: jest.fn().mockRejectedValue(new Error('mongo down')),
+      })
+
+      await expect(service.verifyApiKey(raw)).resolves.toBe(legacy)
+    })
+
+    it('rejects a key that shares a masked prefix but not the secret body', async () => {
+      const { service, apiKeyModel } = build()
+      const otherKey = 'txb_' + 'a'.repeat(13) + 'b'.repeat(19)
+      const collidingDoc = {
+        _id: 'key_other',
+        user: 'user_2',
+        hashedApiKey: bcrypt.hashSync(otherKey, 4),
+      }
+      apiKeyModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(collidingDoc)
+
+      // Same first 17 characters, so the masked lookup finds the wrong document.
+      expect(otherKey.substring(0, 17)).toBe(raw.substring(0, 17))
+      await expect(service.verifyApiKey(raw)).resolves.toBeNull()
+      expect(apiKeyModel.updateOne).not.toHaveBeenCalled()
+    })
+
+    it('resolves a legacy lookup whose stored mask is already in the new format', async () => {
+      const { service, apiKeyModel } = build()
+      const legacy = {
+        _id: 'key_new_format',
+        apiKey: `${raw.substring(0, 17)}${'*'.repeat(18)}`,
+        user: 'user_1',
+        hashedApiKey: bcrypt.hashSync(raw, 4),
+      }
+      apiKeyModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(legacy)
+
+      await expect(service.verifyApiKey(raw)).resolves.toBe(legacy)
+    })
+
+    it('returns null for an unknown key', async () => {
+      const { service, apiKeyModel } = build()
+      apiKeyModel.findOne.mockResolvedValue(null)
+
+      await expect(service.verifyApiKey(raw)).resolves.toBeNull()
+    })
+
+    it('returns null for a missing or non-string key without querying', async () => {
+      const { service, apiKeyModel } = build()
+
+      await expect(service.verifyApiKey(undefined as any)).resolves.toBeNull()
+      await expect(service.verifyApiKey('')).resolves.toBeNull()
+      expect(apiKeyModel.findOne).not.toHaveBeenCalled()
+    })
+
+    // request.query.apiKey is attacker-controlled and need not be a string.
+    // Without the type guard these would reach findOne as query operators.
+    it.each([
+      [{ $ne: null }],
+      [{ $gt: '' }],
+      [{ $regex: '.*' }],
+      [['a', 'b']],
+      [[]],
+      [{}],
+      [0],
+      [true],
+      [null],
+    ])('rejects non-string payload %p without querying', async (payload) => {
+      const { service, apiKeyModel } = build()
+
+      await expect(service.verifyApiKey(payload as any)).resolves.toBeNull()
+      expect(apiKeyModel.findOne).not.toHaveBeenCalled()
+    })
+
+    it('rejects a revoked legacy key and does not backfill it', async () => {
+      const { service, apiKeyModel } = build()
+      apiKeyModel.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        _id: 'key_legacy',
+        user: 'user_1',
+        hashedApiKey: bcrypt.hashSync(raw, 4),
+        revokedAt: new Date(),
+      })
+
+      await expect(service.verifyApiKey(raw)).resolves.toBeNull()
+      expect(apiKeyModel.updateOne).not.toHaveBeenCalled()
+    })
+
+    afterEach(() => jest.restoreAllMocks())
+  })
+
+  describe('getUserApiKeys', () => {
+    it('excludes both credential digests from the projection', async () => {
+      const { service, apiKeyModel } = build()
+      apiKeyModel.find = jest.fn().mockResolvedValue([])
+
+      await service.getUserApiKeys({ _id: 'user_1' } as any)
+
+      const projection = apiKeyModel.find.mock.calls[0][1]
+      expect(projection).toContain('-hashedApiKey')
+      expect(projection).toContain('-hashedApiKeySha256')
     })
   })
 

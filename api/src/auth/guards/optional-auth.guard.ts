@@ -6,7 +6,6 @@ import {
 import { JwtService } from '@nestjs/jwt'
 import { UsersService } from '../../users/users.service'
 import { AuthService } from '../auth.service'
-import * as bcrypt from 'bcryptjs'
 
 @Injectable()
 // Guard for optionally authenticating users by either jwt token or api key
@@ -31,10 +30,9 @@ export class OptionalAuthGuard implements CanActivate {
         return true
       }
     } else if (apiKeyString) {
-      const apiKey =
-        await this.authService.findActiveApiKeyByClientKey(apiKeyString)
+      const apiKey = await this.authService.verifyApiKey(apiKeyString)
 
-      if (apiKey && bcrypt.compareSync(apiKeyString, apiKey.hashedApiKey)) {
+      if (apiKey) {
         userId = apiKey.user
         request.apiKey = apiKey
       }

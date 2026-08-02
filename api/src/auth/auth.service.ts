@@ -82,10 +82,46 @@ export class AuthService {
     }
   }
 
+  // tokeninfo only proves Google signed the token, not that it was issued for
+  // this app, so the audience and the verified-email flag are checked here.
+  private assertGoogleTokenIsForThisApp(tokenInfo: {
+    aud?: string
+    email_verified?: boolean | string
+  }) {
+    const allowedAudiences = (process.env.GOOGLE_CLIENT_ID ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+
+    if (!allowedAudiences.length) {
+      // Unset in this environment: log rather than reject, so a missing config
+      // value cannot take Google sign-in down. Set GOOGLE_CLIENT_ID to enable.
+      console.error(
+        'loginWithGoogle: GOOGLE_CLIENT_ID is not set, skipping audience check',
+      )
+    } else if (!allowedAudiences.includes(tokenInfo.aud)) {
+      throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+    }
+
+    if (
+      tokenInfo.email_verified !== true &&
+      tokenInfo.email_verified !== 'true'
+    ) {
+      throw new HttpException(
+        { error: 'Google account email is not verified' },
+        HttpStatus.UNAUTHORIZED,
+      )
+    }
+  }
+
   async loginWithGoogle(idToken: string) {
     const response = await axios.get(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`,
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
+        idToken,
+      )}`,
     )
+
+    this.assertGoogleTokenIsForThisApp(response.data)
 
     const { sub: googleId, name, email, picture } = response.data
     let user = await this.usersService.findOne({ email })
@@ -168,11 +204,20 @@ export class AuthService {
   }: RequestResetPasswordInputDTO) {
     await this.turnstileService.verify(turnstileToken)
 
+    // Both branches below return this, so the response says nothing about
+    // whether the address is registered.
+    const acceptedResponse = {
+      message: 'If email is found you will receive a password reset email',
+    }
+
+    // Guards against a non-string reaching the query as a Mongo operator.
+    if (typeof email !== 'string') {
+      return acceptedResponse
+    }
+
     const user = await this.usersService.findOne({ email })
     if (!user) {
-      return {
-        message: 'If email is found you will receive a password reset email',
-      }
+      return acceptedResponse
     }
 
     // Check if user has requested password reset more than 5 times in the last 24 hours
@@ -189,7 +234,7 @@ export class AuthService {
       )
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    const otp = randomInt(100000, 1000000).toString()
     const expiresAt = new Date(Date.now() + 20 * 60 * 1000)
 
     const hashedOtp = await bcrypt.hash(otp, 10)
@@ -209,13 +254,24 @@ export class AuthService {
       context: { name: user.name, resetLink, otp },
     })
 
-    return { message: 'Password reset email sent' }
+    return acceptedResponse
   }
 
   async resetPassword({ email, otp, newPassword }: ResetPasswordInputDTO) {
+    // Matches the other failure paths below so an unknown address is not
+    // distinguishable from a bad code.
+    const invalidOtp = new HttpException(
+      { error: 'Invalid OTP' },
+      HttpStatus.BAD_REQUEST,
+    )
+
+    if (typeof email !== 'string') {
+      throw invalidOtp
+    }
+
     const user = await this.usersService.findOne({ email })
     if (!user) {
-      throw new HttpException({ error: 'User not found' }, HttpStatus.NOT_FOUND)
+      throw invalidOtp
     }
     const latestReset = await this.passwordResetModel.findOne(
       {

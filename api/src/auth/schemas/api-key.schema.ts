@@ -17,6 +17,10 @@ export class ApiKey {
   @Prop({ type: String })
   hashedApiKey: string
 
+  // Deterministic hash, so a presented key resolves in one indexed lookup.
+  @Prop({ type: String })
+  hashedApiKeySha256?: string
+
   @Prop({ type: Types.ObjectId, ref: User.name })
   user: User | Types.ObjectId
 
@@ -33,3 +37,6 @@ export class ApiKey {
 export const ApiKeySchema = SchemaFactory.createForClass(ApiKey)
 
 ApiKeySchema.index({ apiKey: 1 })
+// Sparse: keys issued before the sha256 migration have no value here yet.
+// Unique so a bad bulk backfill fails loudly at write time, not at auth time.
+ApiKeySchema.index({ hashedApiKeySha256: 1 }, { unique: true, sparse: true })

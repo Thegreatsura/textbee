@@ -17,7 +17,7 @@ describe('AuthGuard', () => {
   let jwtService: { verify: jest.Mock }
   let usersService: { findOne: jest.Mock }
   let authService: {
-    findActiveApiKeyByClientKey: jest.Mock
+    verifyApiKey: jest.Mock
     trackAccessLog: jest.Mock
   }
 
@@ -27,7 +27,7 @@ describe('AuthGuard', () => {
     jwtService = { verify: jest.fn() }
     usersService = { findOne: jest.fn() }
     authService = {
-      findActiveApiKeyByClientKey: jest.fn(),
+      verifyApiKey: jest.fn(),
       trackAccessLog: jest.fn(),
     }
     guard = new AuthGuard(
@@ -62,22 +62,31 @@ describe('AuthGuard', () => {
   })
 
   describe('api key', () => {
-    it('resolves via x-api-key and attaches request.apiKey when the hash matches', async () => {
-      const apiKey = { user: 'user_1', hashedApiKey: 'hashed' }
-      authService.findActiveApiKeyByClientKey.mockResolvedValue(apiKey)
-      jest.spyOn(bcrypt, 'compareSync').mockReturnValue(true)
+    it('resolves via x-api-key and attaches request.apiKey when the key verifies', async () => {
+      const apiKey = { user: 'user_1' }
+      authService.verifyApiKey.mockResolvedValue(apiKey)
       usersService.findOne.mockResolvedValue(user)
       const request: any = { headers: { 'x-api-key': 'raw-key' }, query: {} }
 
       await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+      expect(authService.verifyApiKey).toHaveBeenCalledWith('raw-key')
       expect(request.apiKey).toBe(apiKey)
       expect(request.user).toBe(user)
     })
 
-    it('rejects a key whose hash does not match', async () => {
-      const apiKey = { user: 'user_1', hashedApiKey: 'hashed' }
-      authService.findActiveApiKeyByClientKey.mockResolvedValue(apiKey)
-      jest.spyOn(bcrypt, 'compareSync').mockReturnValue(false)
+    it('resolves via the apiKey query param', async () => {
+      const apiKey = { user: 'user_1' }
+      authService.verifyApiKey.mockResolvedValue(apiKey)
+      usersService.findOne.mockResolvedValue(user)
+      const request: any = { headers: {}, query: { apiKey: 'raw-key' } }
+
+      await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+      expect(authService.verifyApiKey).toHaveBeenCalledWith('raw-key')
+      expect(request.user).toBe(user)
+    })
+
+    it('rejects when the key does not verify', async () => {
+      authService.verifyApiKey.mockResolvedValue(null)
       const request: any = { headers: { 'x-api-key': 'raw-key' }, query: {} }
 
       await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
@@ -86,8 +95,31 @@ describe('AuthGuard', () => {
       expect(usersService.findOne).not.toHaveBeenCalled()
     })
 
-    it('rejects when no active api key is found', async () => {
-      authService.findActiveApiKeyByClientKey.mockResolvedValue(null)
+    it('never runs bcrypt in the guard itself', async () => {
+      const compareSync = jest.spyOn(bcrypt, 'compareSync')
+      authService.verifyApiKey.mockResolvedValue({ user: 'user_1' })
+      usersService.findOne.mockResolvedValue(user)
+      const request: any = { headers: { 'x-api-key': 'raw-key' }, query: {} }
+
+      await guard.canActivate(contextFor(request))
+      expect(compareSync).not.toHaveBeenCalled()
+    })
+
+    it('prefers the bearer token when both credentials are present', async () => {
+      jwtService.verify.mockReturnValue({ sub: 'user_1' })
+      usersService.findOne.mockResolvedValue(user)
+      const request: any = {
+        headers: { authorization: 'Bearer good', 'x-api-key': 'raw-key' },
+        query: {},
+      }
+
+      await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+      expect(authService.verifyApiKey).not.toHaveBeenCalled()
+    })
+
+    it('throws 401 when the key verifies but the user no longer exists', async () => {
+      authService.verifyApiKey.mockResolvedValue({ user: 'ghost' })
+      usersService.findOne.mockResolvedValue(null)
       const request: any = { headers: { 'x-api-key': 'raw-key' }, query: {} }
 
       await expect(guard.canActivate(contextFor(request))).rejects.toThrow(

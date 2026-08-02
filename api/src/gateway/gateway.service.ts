@@ -1084,9 +1084,15 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
   { new: true } 
 );
     
-    // Check if all SMS in batch have the same status, then update batch status
-    if (dto.smsBatchId) {
-      const smsBatch = await this.smsBatchModel.findById(dto.smsBatchId);
+    // Check if all SMS in batch have the same status, then update batch status.
+    // The batch id comes from the body, so it is matched against this device.
+    if (dto.smsBatchId && Types.ObjectId.isValid(dto.smsBatchId)) {
+      // SMSBatch types `device` as the populated Device, so the filter is cast
+      // to match the ObjectId actually stored. Runtime behavior is unchanged.
+      const smsBatch = await this.smsBatchModel.findOne({
+        _id: dto.smsBatchId,
+        device: new Types.ObjectId(deviceId),
+      } as any);
       if (smsBatch) {
         const allSmsInBatch = await this.smsModel.find({ smsBatch: dto.smsBatchId });
         
@@ -1175,9 +1181,12 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
     }
   }
 
-  async getSMSById(smsId: string): Promise<any> {
-
-    const sms = await this.smsModel.findById(smsId);
+  // Scoped to the device from the route so a message is only reachable through
+  // the device that owns it. A mismatch is reported as not found.
+  async getSMSById(deviceId: string, smsId: string): Promise<any> {
+    const sms = Types.ObjectId.isValid(smsId)
+      ? await this.smsModel.findOne({ _id: smsId, device: deviceId })
+      : null;
 
     if (!sms) {
       throw new HttpException(
@@ -1192,9 +1201,13 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
     return sms;
   }
 
-  async getSmsBatchById(smsBatchId: string): Promise<any> {
-
-    const smsBatch = await this.smsBatchModel.findById(smsBatchId);
+  async getSmsBatchById(deviceId: string, smsBatchId: string): Promise<any> {
+    const smsBatch = Types.ObjectId.isValid(smsBatchId)
+      ? await this.smsBatchModel.findOne({
+          _id: smsBatchId,
+          device: new Types.ObjectId(deviceId),
+        } as any)
+      : null;
 
     if (!smsBatch) {
       throw new HttpException(

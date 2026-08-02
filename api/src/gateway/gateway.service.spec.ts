@@ -53,12 +53,15 @@ describe('GatewayService', () => {
     create: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
+    findById: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
     updateMany: jest.fn(),
     countDocuments: jest.fn(),
   }
 
   const mockSmsBatchModel = {
     create: jest.fn(),
+    findOne: jest.fn(),
     findByIdAndUpdate: jest.fn(),
   }
 
@@ -911,6 +914,95 @@ describe('GatewayService', () => {
         totalReceivedSMSCount: 20,
         totalDeviceCount: 2,
         totalApiKeyCount: 2,
+      })
+    })
+  })
+
+  // The device guard only sees the :id param, so the second identifier on
+  // these routes has to be bound to the device by the query itself.
+  describe('SMS lookups are scoped to the requesting device', () => {
+    const OWN_DEVICE = '507f1f77bcf86cd799439011'
+    const OTHER_SMS = '507f1f77bcf86cd799439022'
+
+    describe('getSMSById', () => {
+      it('filters on both the sms id and the device', async () => {
+        mockSmsModel.findOne.mockResolvedValue({ _id: OTHER_SMS })
+
+        await service.getSMSById(OWN_DEVICE, OTHER_SMS)
+
+        expect(mockSmsModel.findOne).toHaveBeenCalledWith({
+          _id: OTHER_SMS,
+          device: OWN_DEVICE,
+        })
+      })
+
+      it('reports another device\'s message as not found', async () => {
+        mockSmsModel.findOne.mockResolvedValue(null)
+
+        await expect(
+          service.getSMSById(OWN_DEVICE, OTHER_SMS),
+        ).rejects.toThrow(HttpException)
+      })
+
+      it('reports a malformed id as not found rather than throwing a cast error', async () => {
+        await expect(
+          service.getSMSById(OWN_DEVICE, 'not-an-objectid'),
+        ).rejects.toThrow(HttpException)
+        expect(mockSmsModel.findOne).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('getSmsBatchById', () => {
+      it('filters the batch on the device', async () => {
+        mockSmsBatchModel.findOne.mockResolvedValue(null)
+
+        await expect(
+          service.getSmsBatchById(OWN_DEVICE, OTHER_SMS),
+        ).rejects.toThrow(HttpException)
+
+        const filter = mockSmsBatchModel.findOne.mock.calls[0][0]
+        expect(filter._id).toBe(OTHER_SMS)
+        expect(filter.device.toString()).toBe(OWN_DEVICE)
+      })
+
+      it('does not read the batch messages when the batch is not this device\'s', async () => {
+        mockSmsBatchModel.findOne.mockResolvedValue(null)
+
+        await expect(
+          service.getSmsBatchById(OWN_DEVICE, OTHER_SMS),
+        ).rejects.toThrow(HttpException)
+        expect(mockSmsModel.find).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('updateSMSStatus', () => {
+      const OTHER_BATCH = '507f1f77bcf86cd799439033'
+
+      it('leaves a batch belonging to another device untouched', async () => {
+        mockDeviceModel.findById.mockResolvedValue({
+          _id: OWN_DEVICE,
+          user: 'user_1',
+        })
+        mockSmsModel.findById.mockResolvedValue({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'pending',
+        })
+        mockSmsModel.findByIdAndUpdate.mockResolvedValue({
+          _id: 'own_sms',
+          status: 'sent',
+        })
+        mockSmsBatchModel.findOne.mockResolvedValue(null)
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          smsBatchId: OTHER_BATCH,
+          status: 'sent',
+        } as any)
+
+        const filter = mockSmsBatchModel.findOne.mock.calls[0][0]
+        expect(filter.device.toString()).toBe(OWN_DEVICE)
+        expect(mockSmsBatchModel.findByIdAndUpdate).not.toHaveBeenCalled()
       })
     })
   })

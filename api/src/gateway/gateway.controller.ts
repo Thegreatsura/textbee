@@ -185,7 +185,7 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Param('smsId') smsId: string,
   ) {
-    const data = await this.gatewayService.getSMSById(smsId);
+    const data = await this.gatewayService.getSMSById(deviceId, smsId);
     return { data };
   }
 
@@ -196,7 +196,10 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Param('smsBatchId') smsBatchId: string,
   ) {
-    const data = await this.gatewayService.getSmsBatchById(smsBatchId);
+    const data = await this.gatewayService.getSmsBatchById(
+      deviceId,
+      smsBatchId,
+    );
     return { data };
   }
 }

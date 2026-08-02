@@ -6,7 +6,7 @@ import {
 import { SupportService } from './support.service'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { Request } from 'express'
-import { OptionalAuthGuard } from '../auth/guards/optional-auth.guard'
+import { AuthGuard } from '../auth/guards/auth.guard'
 import { TurnstileService } from '../common/turnstile.service'
 
 @Controller('support')
@@ -16,7 +16,7 @@ export class SupportController {
     private readonly turnstileService: TurnstileService,
   ) {}
 
-  @UseGuards(OptionalAuthGuard)
+  @UseGuards(AuthGuard)
   @Post('customer-support')
   async createSupportMessage(
     @Body() createSupportMessageDto: CreateSupportMessageDto,
@@ -31,10 +31,8 @@ export class SupportController {
     createSupportMessageDto.ip = ip
     createSupportMessageDto.userAgent = userAgent
 
-    // If user is authenticated, associate the support request with the user
-    if (req.user) {
-      createSupportMessageDto.user = req.user['_id']
-    }
+    // Always taken from the token so the body cannot set it
+    createSupportMessageDto.user = req.user['_id']
 
     return this.supportService.createSupportMessage(createSupportMessageDto)
   }

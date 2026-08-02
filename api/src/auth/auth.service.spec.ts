@@ -1,6 +1,7 @@
 import { HttpException } from '@nestjs/common'
 import * as bcrypt from 'bcryptjs'
 import { createHash } from 'crypto'
+import axios from 'axios'
 import { AuthService } from './auth.service'
 
 const sha256 = (value: string) =>
@@ -574,6 +575,106 @@ describe('AuthService', () => {
         { attempts: { $lt: MAX_ATTEMPTS } },
         { attempts: { $exists: false } },
       ])
+    })
+
+    it('reports an unknown address the same way as a bad code', async () => {
+      const ctx = build()
+      ctx.usersService.findOne.mockResolvedValue(null)
+
+      await expect(
+        ctx.service.resetPassword({
+          email: 'nobody@b.com',
+          otp: '123456',
+          newPassword: 'Str0ng!pass',
+        } as any),
+      ).rejects.toMatchObject({
+        response: { error: 'Invalid OTP' },
+        status: 400,
+      })
+    })
+
+    it('does not pass a non-string email to the user lookup', async () => {
+      const ctx = build()
+
+      await expect(
+        ctx.service.resetPassword({
+          email: { $ne: null } as any,
+          otp: '123456',
+          newPassword: 'Str0ng!pass',
+        } as any),
+      ).rejects.toThrow(HttpException)
+      expect(ctx.usersService.findOne).not.toHaveBeenCalled()
+    })
+  })
+
+  // tokeninfo only proves Google signed the token. Without these checks a token
+  // minted for any other Google OAuth client would be accepted.
+  describe('loginWithGoogle', () => {
+    const ORIGINAL_ENV = process.env.GOOGLE_CLIENT_ID
+    const OURS = 'our-client-id.apps.googleusercontent.com'
+
+    const stageTokenInfo = (data: any) => {
+      jest.spyOn(axios, 'get').mockResolvedValue({ data } as any)
+    }
+
+    beforeEach(() => {
+      process.env.GOOGLE_CLIENT_ID = OURS
+    })
+
+    afterEach(() => {
+      process.env.GOOGLE_CLIENT_ID = ORIGINAL_ENV
+      jest.restoreAllMocks()
+    })
+
+    it('rejects a token minted for a different OAuth client', async () => {
+      const ctx = build()
+      stageTokenInfo({
+        aud: 'someone-elses-client.apps.googleusercontent.com',
+        email: 'victim@example.com',
+        email_verified: 'true',
+        sub: 'g1',
+      })
+
+      await expect(ctx.service.loginWithGoogle('tok')).rejects.toThrow(
+        HttpException,
+      )
+      expect(ctx.usersService.findOne).not.toHaveBeenCalled()
+    })
+
+    it('rejects a token whose email is not verified', async () => {
+      const ctx = build()
+      stageTokenInfo({
+        aud: OURS,
+        email: 'victim@example.com',
+        email_verified: 'false',
+        sub: 'g1',
+      })
+
+      await expect(ctx.service.loginWithGoogle('tok')).rejects.toThrow(
+        HttpException,
+      )
+      expect(ctx.usersService.findOne).not.toHaveBeenCalled()
+    })
+
+    it('accepts our own audience with a verified email', async () => {
+      const ctx = build()
+      stageTokenInfo({
+        aud: OURS,
+        email: 'ada@example.com',
+        email_verified: 'true',
+        sub: 'g1',
+        name: 'Ada',
+      })
+      ctx.usersService.findOne.mockResolvedValue({
+        _id: 'user_1',
+        email: 'ada@example.com',
+        save: jest.fn().mockResolvedValue(undefined),
+        toObject: () => ({ _id: 'user_1', email: 'ada@example.com' }),
+      })
+
+      const result = await ctx.service.loginWithGoogle('tok')
+
+      expect(result.accessToken).toBe('signed-jwt')
     })
   })
 })

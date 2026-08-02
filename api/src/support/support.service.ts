@@ -32,10 +32,11 @@ export class SupportService {
   ): Promise<{ message: string }> {
     const { turnstileToken, ...sanitizedDto } = createSupportMessageDto
     try {
-      // Check rate limit: max 3 requests per 24 hours
+      // Check rate limit: max 3 requests per 24 hours.
+      // Keyed on the authenticated user, not the self-reported email.
       const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
       const recentRequestsCount = await this.supportMessageModel.countDocuments({
-        email: sanitizedDto.email,
+        user: sanitizedDto.user,
         createdAt: { $gte: twentyFourHoursAgo },
       })
 

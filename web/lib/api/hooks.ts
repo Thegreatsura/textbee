@@ -343,15 +343,16 @@ export function useWebhookNotifications(filters: WebhookNotificationFilters) {
     limit = 10,
   } = filters
   return useQuery({
-    queryKey: [
-      'webhook-notification',
+    queryKey: queryKeys.webhookNotifications({
       eventType,
-      page,
-      limit,
+      status,
       deviceId,
       webhookSubscriptionId,
-      status,
-    ],
+      start,
+      end,
+      page,
+      limit,
+    }),
     queryFn: () =>
       httpBrowserClient
         .get(

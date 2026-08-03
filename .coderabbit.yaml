@@ -90,7 +90,7 @@ reviews:
         steps that would run untrusted code from fork pull requests.
 
   tools:
-    # Waits for the Build and Test workflow, then comments on failures.
+    # Waits for ALL GitHub Checks, then comments on failures.
     github-checks:
       enabled: true
 

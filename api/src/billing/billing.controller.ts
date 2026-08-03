@@ -12,8 +12,6 @@ import {
 import { BillingNotificationsService } from './billing-notifications.service'
 
 @ApiTags('billing')
-@ApiBearerAuth()
-@ApiSecurity('x-api-key')
 @Controller('billing')
 export class BillingController {
   constructor(
@@ -28,18 +26,24 @@ export class BillingController {
 
   @Get('current-subscription')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async getCurrentSubscription(@Request() req: any) {
     return this.billingService.getCurrentSubscription(req.user)
   }
 
   @Get('notifications')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async listNotifications(@Request() req: any) {
     return this.billingNotifications.listForUser(req.user._id)
   }
 
   @Post('checkout')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async getCheckoutUrl(
     @Body() payload: CheckoutInputDTO,
     @Request() req: any,
@@ -53,6 +57,8 @@ export class BillingController {
 
   @Post('change-plan')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async changePlan(
     @Body() payload: ChangePlanInputDTO,
     @Request() req: any,

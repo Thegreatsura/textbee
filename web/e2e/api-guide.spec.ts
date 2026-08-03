@@ -111,9 +111,16 @@ test.describe('api guide (mocked API, no real backend)', () => {
     // clears itself two seconds after the click (code-block.tsx setTimeout), so
     // waiting for it races a window narrow enough to miss on a loaded runner.
     // The clipboard content is the behaviour under test and it does not expire.
+    const expectedCurl = `curl -X POST "https://api.textbee.dev/api/v1/gateway/devices/${mockDevices[0]._id}/send-sms" \\
+  -H "x-api-key: $TEXTBEE_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "recipients": ["+14155550101"],
+    "message": "Hello from textbee"
+  }'`
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
-      .toContain('api.textbee.dev')
+      .toBe(expectedCurl)
   })
 
   test('does not scroll sideways at 375px', async ({ page, context }) => {

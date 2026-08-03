@@ -55,6 +55,9 @@ reviews:
         This project uses pnpm only. Flag npm or yarn commands in scripts,
         docs, CI, and Dockerfiles.
         Keep functions small and single-purpose.
+        Never run package installs or commit pnpm-lock.yaml changes when
+        applying fixes. Lockfiles change only together with a package.json
+        change, made by a human with the pinned pnpm version.
 
     - path: 'api/src/**/*.ts'
       instructions: |

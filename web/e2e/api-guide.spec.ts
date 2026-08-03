@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { authenticate } from './session'
 import { mockApi } from './mock-api'
 import { mockDevices } from '../test/fixtures'
+import { buildEndpoints } from '../app/(app)/dashboard/messaging/(components)/api-guide/snippets'
 
 // The page streams behind a loading.tsx boundary, so its HTML can paint before
 // React hydrates, and a tab or copy click landing in that gap is silently
@@ -105,19 +106,20 @@ test.describe('api guide (mocked API, no real backend)', () => {
     // parallel. Granting permissions alone does not cover it.
     await page.bringToFront()
 
-    await page.getByRole('button', { name: 'Copy code' }).first().click()
+    // The page's first Copy code button belongs to the Base URL chip, so the
+    // click has to be scoped to the send-sms sample it is asserting on.
+    await page
+      .locator('#send-sms')
+      .getByRole('button', { name: 'Copy code' })
+      .click()
 
     // Assert on the clipboard, not on the button's "Copied" label. That label
     // clears itself two seconds after the click (code-block.tsx setTimeout), so
     // waiting for it races a window narrow enough to miss on a loaded runner.
     // The clipboard content is the behaviour under test and it does not expire.
-    const expectedCurl = `curl -X POST "https://api.textbee.dev/api/v1/gateway/devices/${mockDevices[0]._id}/send-sms" \\
-  -H "x-api-key: $TEXTBEE_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "recipients": ["+14155550101"],
-    "message": "Hello from textbee"
-  }'`
+    const expectedCurl = buildEndpoints(mockDevices[0]._id).find(
+      (endpoint) => endpoint.id === 'send-sms'
+    )!.samples.curl
     await expect
       .poll(() => page.evaluate(() => navigator.clipboard.readText()))
       .toBe(expectedCurl)

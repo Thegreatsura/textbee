@@ -379,10 +379,17 @@ export type SendSmsPayload = {
 }
 
 export function useSendSms() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationKey: ['send-sms'],
     mutationFn: (data: SendSmsPayload) =>
       httpBrowserClient.post(ApiEndpoints.gateway.sendSMS(data.deviceId), data),
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.deviceMessages(variables.deviceId),
+      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.stats })
+    },
   })
 }
 

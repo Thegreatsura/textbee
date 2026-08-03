@@ -47,6 +47,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
+          persist-credentials: false
 
       # pnpm has to be on PATH before setup-node, or its pnpm cache resolution
       # has no package manager to query.

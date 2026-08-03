@@ -4,7 +4,9 @@ WORKDIR /app
 
 # Install pnpm and required OpenSSL dependencies
 RUN apk add --no-cache openssl openssl-dev
-RUN npm install -g pnpm@9
+RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" PNPM_VERSION=9.14.2 sh -
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 # Copy package.json and pnpm-lock.yaml
 COPY package.json pnpm-lock.yaml ./
@@ -18,7 +20,9 @@ WORKDIR /app
 
 # Install pnpm and required OpenSSL dependencies
 RUN apk add --no-cache openssl openssl-dev
-RUN npm install -g pnpm@9
+RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" PNPM_VERSION=9.14.2 sh -
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 # Copy dependencies from deps stage
 COPY --from=deps /app/node_modules ./node_modules
@@ -39,7 +43,9 @@ WORKDIR /app
 
 # Install pnpm and required OpenSSL dependencies
 RUN apk add --no-cache openssl openssl-dev
-RUN npm install -g pnpm@9
+RUN wget -qO- https://get.pnpm.io/install.sh | ENV="$HOME/.shrc" SHELL="$(which sh)" PNPM_VERSION=9.14.2 sh -
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
 
 # Set environment variables
 ENV NODE_ENV production

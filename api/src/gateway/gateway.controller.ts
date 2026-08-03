@@ -16,6 +16,7 @@ import {
   ApiOperation,
   ApiQuery,
   ApiResponse,
+  ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger'
 import { AuthGuard } from '../auth/guards/auth.guard'
@@ -34,6 +35,7 @@ import { CanModifyDevice } from './guards/can-modify-device.guard'
 
 @ApiTags('gateway')
 @ApiBearerAuth()
+@ApiSecurity('x-api-key')
 @Controller('gateway')
 export class GatewayController {
   constructor(private readonly gatewayService: GatewayService) {}

@@ -1,7 +1,7 @@
 import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
 import { BillingService } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'
 import {
   ChangePlanInputDTO,
   ChangePlanResponseDTO,
@@ -12,7 +12,6 @@ import {
 import { BillingNotificationsService } from './billing-notifications.service'
 
 @ApiTags('billing')
-@ApiBearerAuth()
 @Controller('billing')
 export class BillingController {
   constructor(
@@ -27,18 +26,24 @@ export class BillingController {
 
   @Get('current-subscription')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async getCurrentSubscription(@Request() req: any) {
     return this.billingService.getCurrentSubscription(req.user)
   }
 
   @Get('notifications')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async listNotifications(@Request() req: any) {
     return this.billingNotifications.listForUser(req.user._id)
   }
 
   @Post('checkout')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async getCheckoutUrl(
     @Body() payload: CheckoutInputDTO,
     @Request() req: any,
@@ -52,6 +57,8 @@ export class BillingController {
 
   @Post('change-plan')
   @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   async changePlan(
     @Body() payload: ChangePlanInputDTO,
     @Request() req: any,

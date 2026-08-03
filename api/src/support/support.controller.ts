@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common'
+import { ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'
 import {
   CreateSupportMessageDto,
   SupportCategory,
@@ -16,6 +17,8 @@ export class SupportController {
     private readonly turnstileService: TurnstileService,
   ) {}
 
+  @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Post('customer-support')
   async createSupportMessage(
@@ -37,6 +40,7 @@ export class SupportController {
     return this.supportService.createSupportMessage(createSupportMessageDto)
   }
 
+  @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('request-account-deletion')
   async requestAccountDeletion(

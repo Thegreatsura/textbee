@@ -1,7 +1,7 @@
 import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
 import { BillingService } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger'
+import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'
 import {
   ChangePlanInputDTO,
   ChangePlanResponseDTO,
@@ -13,6 +13,7 @@ import { BillingNotificationsService } from './billing-notifications.service'
 
 @ApiTags('billing')
 @ApiBearerAuth()
+@ApiSecurity('x-api-key')
 @Controller('billing')
 export class BillingController {
   constructor(

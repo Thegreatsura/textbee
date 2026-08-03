@@ -22,4 +22,27 @@ export const queryKeys = {
     filters
       ? (['messages', deviceId, filters] as const)
       : (['messages', deviceId] as const),
+  // start/end must be part of the key: they are sent on the request URL, and
+  // react-query only refetches when the key changes (see issue #256).
+  webhookNotifications: (filters: {
+    eventType?: string
+    status?: string
+    deviceId?: string
+    webhookSubscriptionId?: string
+    start?: string
+    end?: string
+    page?: number
+    limit?: number
+  }) =>
+    [
+      'webhook-notification',
+      filters.eventType ?? '',
+      filters.page ?? 1,
+      filters.limit ?? 10,
+      filters.deviceId ?? '',
+      filters.webhookSubscriptionId ?? '',
+      filters.status ?? '',
+      filters.start ?? '',
+      filters.end ?? '',
+    ] as const,
 }

@@ -11,12 +11,13 @@ import {
   Query,
 } from '@nestjs/common'
 import { WebhookService } from './webhook.service'
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'
+import { ApiBearerAuth, ApiSecurity, ApiTags } from '@nestjs/swagger'
 import { CreateWebhookDto, UpdateWebhookDto } from './webhook.dto'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
 
 @ApiTags('webhooks')
 @ApiBearerAuth()
+@ApiSecurity('x-api-key')
 @Controller('webhooks')
 export class WebhookController {
   constructor(private readonly webhookService: WebhookService) {}

@@ -12,7 +12,13 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common'
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger'
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiSecurity,
+  ApiTags,
+} from '@nestjs/swagger'
 import {
   LoginInputDTO,
   RegisterInputDTO,
@@ -58,6 +64,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Get current logged in user' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Get('/who-am-i')
   async whoAmI(@Request() req) {
@@ -67,6 +74,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Update Profile' })
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Patch('/update-profile')
   async updateProfile(
@@ -79,6 +87,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Change Password' })
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Post('/change-password')
   async changePassword(
@@ -91,6 +100,7 @@ export class AuthController {
   @UseGuards(AuthGuard)
   @ApiOperation({ summary: 'Generate Api Key' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @Post('/api-keys')
   async generateApiKey(@Request() req) {
     const { apiKey, message } = await this.authService.generateApiKey(req.user)
@@ -107,6 +117,7 @@ export class AuthController {
       'Filter keys: active (default), revoked only, or all (legacy full list)',
   })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @Get('/api-keys')
   async getApiKey(
     @Request() req,
@@ -119,6 +130,7 @@ export class AuthController {
   @UseGuards(AuthGuard, CanModifyApiKey)
   @ApiOperation({ summary: 'Delete Api Key' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
   @Delete('/api-keys/:id')
   async deleteApiKey(@Param() params) {
@@ -129,6 +141,7 @@ export class AuthController {
   @UseGuards(AuthGuard, CanModifyApiKey)
   @ApiOperation({ summary: 'Revoke Api Key' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
   @Post('/api-keys/:id/revoke')
   async revokeApiKey(@Param() params) {
@@ -139,6 +152,7 @@ export class AuthController {
   @UseGuards(AuthGuard, CanModifyApiKey)
   @ApiOperation({ summary: 'Rename Api Key' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
   @Patch('/api-keys/:id/rename')
   async renameApiKey(@Param() params, @Body() input: { name: string }) {
@@ -148,6 +162,7 @@ export class AuthController {
 
   @ApiOperation({ summary: 'Update dashboard onboarding progress' })
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Patch('/onboarding')
   async updateOnboarding(
@@ -176,6 +191,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Send Email Verification Code' })
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
+  @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Post('/send-email-verification-email')
   async sendEmailVerificationEmail(@Request() req) {

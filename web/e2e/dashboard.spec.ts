@@ -2,6 +2,17 @@ import { expect, test } from '@playwright/test'
 import { authenticate } from './session'
 import { mockApi } from './mock-api'
 
+// The dashboard sections stream behind a loading.tsx boundary, so their HTML
+// can paint before React hydrates. A click landing in that gap hits a button
+// whose handler is not attached yet, the dialog never opens, and the test
+// waits out its timeout on a heading that was never going to render. The
+// total-sent figure comes from the client-side gateway stats fetch, so its
+// presence proves hydration effects have run.
+async function gotoDashboard(page: import('@playwright/test').Page) {
+  await page.goto('/dashboard')
+  await expect(page.getByText('12,840')).toBeVisible()
+}
+
 test.describe('dashboard (mocked API, no real backend)', () => {
   test('redirects unauthenticated users to login', async ({ page }) => {
     await mockApi(page)
@@ -60,7 +71,7 @@ test.describe('dashboard (mocked API, no real backend)', () => {
     }) => {
       await authenticate(context)
       await mockApi(page)
-      await page.goto('/dashboard')
+      await gotoDashboard(page)
 
       await page
         .getByRole('button', { name: 'Add device' })
@@ -91,7 +102,7 @@ test.describe('dashboard (mocked API, no real backend)', () => {
   }) => {
     await authenticate(context)
     await mockApi(page)
-    await page.goto('/dashboard')
+    await gotoDashboard(page)
 
     // That button asks for a key, so device instructions would be noise.
     await page.getByRole('button', { name: 'New API key' }).click()

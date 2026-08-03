@@ -3,6 +3,19 @@ import { authenticate } from './session'
 import { mockApi } from './mock-api'
 import { mockDevices } from '../test/fixtures'
 
+// The page streams behind a loading.tsx boundary, so its HTML can paint before
+// React hydrates, and a tab or copy click landing in that gap is silently
+// dropped. Prism tokens are not the signal to wait on: react-syntax-highlighter
+// renders its spans server-side too, so they are in the SSR payload already.
+// The snippets interpolate a device id from the client-side devices fetch, so
+// the real id appearing is what proves hydration effects have run.
+async function gotoGuide(page: import('@playwright/test').Page) {
+  await page.goto('/dashboard/messaging/api-guide')
+  await expect(
+    page.getByText(mockDevices[0]._id, { exact: false }).first()
+  ).toBeVisible()
+}
+
 test.describe('api guide (mocked API, no real backend)', () => {
   test('shows content immediately, not a collapsed accordion', async ({
     page,
@@ -42,7 +55,7 @@ test.describe('api guide (mocked API, no real backend)', () => {
   test('switching language swaps every sample', async ({ page, context }) => {
     await authenticate(context)
     await mockApi(page)
-    await page.goto('/dashboard/messaging/api-guide')
+    await gotoGuide(page)
 
     // cURL is the default.
     await expect(page.getByText('curl -X POST').first()).toBeVisible()
@@ -86,7 +99,7 @@ test.describe('api guide (mocked API, no real backend)', () => {
     await authenticate(context)
     await mockApi(page)
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
-    await page.goto('/dashboard/messaging/api-guide')
+    await gotoGuide(page)
     // navigator.clipboard.writeText rejects when the document is not focused,
     // which is the state a backgrounded page sits in while workers run in
     // parallel. Granting permissions alone does not cover it.
@@ -94,14 +107,13 @@ test.describe('api guide (mocked API, no real backend)', () => {
 
     await page.getByRole('button', { name: 'Copy code' }).first().click()
 
-    // The button relabels itself only after the async clipboard write resolves,
-    // so this is the signal that there is something to read back.
-    await expect(page.getByRole('button', { name: 'Copied' }).first()).toBeVisible()
-
-    const clipboard = await page.evaluate(() =>
-      navigator.clipboard.readText()
-    )
-    expect(clipboard).toContain('api.textbee.dev')
+    // Assert on the clipboard, not on the button's "Copied" label. That label
+    // clears itself two seconds after the click (code-block.tsx setTimeout), so
+    // waiting for it races a window narrow enough to miss on a loaded runner.
+    // The clipboard content is the behaviour under test and it does not expire.
+    await expect
+      .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+      .toContain('api.textbee.dev')
   })
 
   test('does not scroll sideways at 375px', async ({ page, context }) => {

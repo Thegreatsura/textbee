@@ -2,6 +2,7 @@
   "name": "textbee.dev",
   "version": "2.0.0",
   "private": true,
+  "packageManager": "pnpm@9.14.2",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

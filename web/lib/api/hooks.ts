@@ -2,6 +2,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationOptions,
   type UseQueryOptions,
 } from '@tanstack/react-query'
@@ -378,11 +379,29 @@ export type SendSmsPayload = {
   simSubscriptionId?: number
 }
 
+// A send adds to the device's history and consumes quota, so it has to refresh
+// the message list, the dashboard stats and the subscription usage. Exported
+// because the bulk sender posts its own mutation and must invalidate the same
+// three keys (issue #261).
+export function invalidateAfterSend(
+  queryClient: QueryClient,
+  deviceId: string
+) {
+  void queryClient.invalidateQueries({
+    queryKey: queryKeys.deviceMessages(deviceId),
+  })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.stats })
+  void queryClient.invalidateQueries({ queryKey: queryKeys.subscription })
+}
+
 export function useSendSms() {
+  const queryClient = useQueryClient()
   return useMutation({
     mutationKey: ['send-sms'],
     mutationFn: (data: SendSmsPayload) =>
       httpBrowserClient.post(ApiEndpoints.gateway.sendSMS(data.deviceId), data),
+    onSuccess: (_, variables) =>
+      invalidateAfterSend(queryClient, variables.deviceId),
   })
 }
 

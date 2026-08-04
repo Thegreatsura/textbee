@@ -3,10 +3,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
 import Papa from 'papaparse'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
-import { useDevices, useSubscription } from '@/lib/api'
+import { invalidateAfterSend, useDevices, useSubscription } from '@/lib/api'
 import { getSegmentInfo } from '@/lib/sms'
 import {
   buildRecipientPlan,
@@ -34,6 +34,7 @@ export function useBulkSend() {
   const [fileWarning, setFileWarning] = useState<string | null>(null)
   const templateRef = useRef<HTMLTextAreaElement>(null)
 
+  const queryClient = useQueryClient()
   const { data: devices } = useDevices()
   const { data: subscription, isPending: subscriptionPending } =
     useSubscription()
@@ -214,6 +215,11 @@ export function useBulkSend() {
         ApiEndpoints.gateway.sendBulkSMS(deviceId!),
         { messageTemplate: template, messages }
       )
+    },
+    // A campaign moves the quota bar the most, so it invalidates the same keys
+    // as a single send.
+    onSuccess: () => {
+      if (deviceId) invalidateAfterSend(queryClient, deviceId)
     },
   })
 

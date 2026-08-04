@@ -217,6 +217,13 @@ export class WebhookService {
     }
 
     if (deviceId) {
+      if (!mongoose.Types.ObjectId.isValid(deviceId)) {
+        throw new HttpException(
+          'Invalid deviceId',
+          HttpStatus.BAD_REQUEST,
+        )
+      }
+
       commonPipeline.push({
         $match: {
           'deviceData._id': new mongoose.Types.ObjectId(deviceId),

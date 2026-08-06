@@ -13,6 +13,8 @@
  * price in front of a customer.
  */
 
+export type BillingInterval = 'monthly' | 'yearly'
+
 export type PlanTier = {
   /** Matches the checkout route segment: /checkout/{id}. */
   id: string
@@ -93,6 +95,34 @@ export function findPlanTier(name: string | undefined | null) {
   return PLAN_TIERS.find((tier) => tier.id === key)
 }
 
+/** The interval an in-app CTA commits to unless the caller says otherwise. */
+export const DEFAULT_CHECKOUT_INTERVAL: BillingInterval = 'monthly'
+
+/**
+ * Checkout URL for an upgrade CTA.
+ *
+ * Naming the interval is not cosmetic: /checkout/{plan} continues straight to
+ * the payment page when the URL carries one, and stops on an interval chooser
+ * when it does not. Going through this helper keeps a call site from omitting
+ * it by accident.
+ */
+export function checkoutPath(
+  planId: string,
+  interval: BillingInterval = DEFAULT_CHECKOUT_INTERVAL,
+): string {
+  return `/checkout/${planId}?billingInterval=${interval}`
+}
+
+/**
+ * Refund window by interval, mirroring the published refund policy
+ * (textbee-marketing refund-policy/page.tsx). Quoting the wrong number here
+ * would be a promise we do not keep.
+ */
+export const MONEY_BACK_DAYS: Record<BillingInterval, number> = {
+  monthly: 7,
+  yearly: 14,
+}
+
 /**
  * What a yearly plan works out to per month, so the saving is legible without
  * making the reader divide. Derived rather than stored: a hardcoded figure
@@ -111,17 +141,21 @@ export function yearlySavingPercent(tier: PlanTier): number | undefined {
 }
 
 /**
- * The caption under a headline per-month figure, e.g. "billed yearly at
- * $99.99, or $9.99 monthly". Assumes the per-month figure is already shown
- * above it, so it does not repeat it.
+ * The caption under a headline month-to-month price, e.g. "or $8.33/month
+ * billed yearly at $99.99".
+ *
+ * The headline used to be the yearly per-month equivalent, which meant a card
+ * reading "$8.33/month" led to a $99.99 charge. The headline now matches what
+ * the CTA actually charges, and the yearly option is the discount offered
+ * underneath it rather than the number sold on.
  */
 export function formatPriceCaption(tier: PlanTier): string {
   const perMonth = monthlyEquivalent(tier)
   if (perMonth !== undefined && tier.yearlyPrice !== undefined) {
-    return `billed yearly at ${formatPlanPrice(tier.yearlyPrice)}, or ${formatPlanPrice(
-      tier.monthlyPrice,
-    )} monthly`
+    return `or ${formatPlanPrice(perMonth)}/month billed yearly at ${formatPlanPrice(
+      tier.yearlyPrice,
+    )}`
   }
   if (tier.monthlyPrice <= 0) return 'no card required'
-  return `${formatPlanPrice(tier.monthlyPrice)} billed monthly`
+  return 'billed monthly'
 }

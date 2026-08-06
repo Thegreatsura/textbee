@@ -157,8 +157,15 @@ export default function DeviceList() {
                   )}
                 </p>
               </div>
+              {/* The dashboard has no /pricing route: this used to 404. */}
               <Button variant='outline' size='sm' asChild className='shrink-0'>
-                <Link href='/pricing'>Upgrade plan</Link>
+                <Link
+                  href={`${Routes.landingPage}/pricing`}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                >
+                  Upgrade plan
+                </Link>
               </Button>
             </div>
           )}

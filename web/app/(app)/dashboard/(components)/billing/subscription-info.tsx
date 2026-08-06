@@ -28,7 +28,7 @@ import {
 } from '@/lib/status'
 import { deriveUsage } from '@/lib/usage'
 import { billingPriceLabel, deriveBillingState } from '@/lib/billing'
-import { formatPlanPrice } from '@/lib/plans'
+import { checkoutPath, formatPlanPrice } from '@/lib/plans'
 import { Routes } from '@/config/routes'
 import { polarCustomerPortalRequestUrl } from '@/config/external-links'
 import Link from 'next/link'
@@ -416,7 +416,7 @@ export default function SubscriptionInfo() {
         <div className='mt-4 flex flex-wrap items-center gap-2'>
           {billing.upgradeTier && (
             <Button size='sm' asChild>
-              <Link href={`/checkout/${billing.upgradeTier.id}`}>
+              <Link href={checkoutPath(billing.upgradeTier.id)}>
                 Upgrade to {billing.upgradeTier.name}
                 <ArrowRight className='ml-1 h-3.5 w-3.5' aria-hidden />
               </Link>

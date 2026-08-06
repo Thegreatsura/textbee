@@ -1,6 +1,8 @@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { useSubscription } from '@/lib/api'
+import { checkoutPath } from '@/lib/plans'
+import { Routes } from '@/config/routes'
 import Link from 'next/link'
 import { useMemo } from 'react'
 
@@ -149,17 +151,24 @@ export default function UpgradeToProAlert() {
               asChild
               className={`${scaleAlertConfig.buttonColor} text-xs md:text-sm`}
             >
-              <Link href={'/checkout/scale'}>
+              <Link href={checkoutPath('scale')}>
                 {scaleAlertConfig.buttonText}
               </Link>
             </Button>
+            {/* The dashboard has no pricing route; /#pricing was its own root. */}
             <Button
               variant='outline'
               size='sm'
               asChild
               className='bg-brand-600 text-white hover:bg-brand-700 text-xs md:text-sm'
             >
-              <Link href={'/#pricing'}>Learn More</Link>
+              <Link
+                href={`${Routes.landingPage}/pricing`}
+                target='_blank'
+                rel='noopener noreferrer'
+              >
+                Learn More
+              </Link>
             </Button>
           </div>
         </AlertDescription>
@@ -187,8 +196,9 @@ export default function UpgradeToProAlert() {
             asChild
             className={`${alertConfig.buttonColor} text-xs md:text-sm`}
           >
-            <Link href={'/checkout/pro'}>{alertConfig.buttonText}</Link>
+            <Link href={checkoutPath('pro')}>{alertConfig.buttonText}</Link>
           </Button>
+          {/* The dashboard has no pricing route; /#pricing was its own root. */}
           {alertConfig.urgency === 'normal' && (
             <Button
               variant='outline'
@@ -196,7 +206,13 @@ export default function UpgradeToProAlert() {
               asChild
               className='bg-brand-600 text-white hover:bg-brand-700 text-xs md:text-sm'
             >
-              <Link href={'/#pricing'}>Learn More</Link>
+              <Link
+                href={`${Routes.landingPage}/pricing`}
+                target='_blank'
+                rel='noopener noreferrer'
+              >
+                Learn More
+              </Link>
             </Button>
           )}
         </div>

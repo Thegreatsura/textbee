@@ -1209,4 +1209,39 @@ export class BillingService {
       productName,
     })
   }
+
+  /**
+   * Mirror a Polar checkout's terminal status onto our cached checkout session.
+   *
+   * Without this nothing ever writes isCompleted, so a checkout the customer
+   * already paid for stayed reusable until it expired, and the completed count
+   * read as zero. Keyed on checkoutSessionId rather than user because the cache
+   * holds one row per user: once a newer checkout replaces it, a late webhook
+   * for the old id should match nothing rather than clobber the new row.
+   */
+  async syncCheckoutSessionStatus({
+    checkoutSessionId,
+    status,
+  }: {
+    checkoutSessionId: string
+    status: string
+  }) {
+    if (!checkoutSessionId) return
+
+    // open and confirmed are still in flight, and failed is retryable, so the
+    // cached session stays valid for all three.
+    let update: Record<string, any> | null = null
+    if (status === 'succeeded') {
+      update = { isCompleted: true, completedAt: new Date() }
+    } else if (status === 'expired') {
+      update = { isAbandoned: true }
+    }
+    if (!update) return
+
+    await this.checkoutSessionModel
+      .updateOne({ checkoutSessionId }, update)
+      .catch((error) => {
+        console.error('failed to sync checkout session status', error)
+      })
+  }
 }

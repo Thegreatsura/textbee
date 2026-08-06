@@ -13,6 +13,7 @@ describe('BillingController - handlePolarWebhook', () => {
     switchPlan: jest.fn(),
     cancelSubscription: jest.fn(),
     revokeSubscription: jest.fn(),
+    syncCheckoutSessionStatus: jest.fn(),
   }
   const mockBillingNotifications = {
     listForUser: jest.fn(),
@@ -73,6 +74,7 @@ describe('BillingController - handlePolarWebhook', () => {
     mockBillingService.switchPlan.mockResolvedValue({ success: true })
     mockBillingService.cancelSubscription.mockResolvedValue({ success: true })
     mockBillingService.revokeSubscription.mockResolvedValue({ success: true })
+    mockBillingService.syncCheckoutSessionStatus.mockResolvedValue(undefined)
   })
 
   it('validates and stores every incoming payload', async () => {
@@ -143,6 +145,36 @@ describe('BillingController - handlePolarWebhook', () => {
       polarProductId: 'prod_pro_monthly',
     })
     expect(mockBillingService.cancelSubscription).not.toHaveBeenCalled()
+  })
+
+  // Polar was already sending checkout.updated, but it fell through to the
+  // default case, so isCompleted was never written for anyone.
+  it('routes checkout.updated to syncCheckoutSessionStatus', async () => {
+    await handle(
+      makePayload('checkout.updated', {
+        id: 'checkout_abc',
+        status: 'succeeded',
+      }),
+    )
+
+    expect(mockBillingService.syncCheckoutSessionStatus).toHaveBeenCalledWith({
+      checkoutSessionId: 'checkout_abc',
+      status: 'succeeded',
+    })
+    // A checkout event must never touch the subscription itself.
+    expect(mockBillingService.switchPlan).not.toHaveBeenCalled()
+    expect(mockBillingService.revokeSubscription).not.toHaveBeenCalled()
+  })
+
+  it('forwards a non-terminal checkout status and lets the service decide', async () => {
+    await handle(
+      makePayload('checkout.updated', { id: 'checkout_abc', status: 'open' }),
+    )
+
+    expect(mockBillingService.syncCheckoutSessionStatus).toHaveBeenCalledWith({
+      checkoutSessionId: 'checkout_abc',
+      status: 'open',
+    })
   })
 
   it('does not mutate any subscription for an unhandled event type', async () => {

@@ -134,6 +134,16 @@ export class BillingController {
           polarProductId: payload.data?.product?.id,
         })
         break
+
+      case 'checkout.updated':
+        // Polar already sends these; they were being dropped here, which is
+        // why isCompleted was never written.
+        await this.billingService.syncCheckoutSessionStatus({
+          checkoutSessionId: payload.data?.id,
+          status: payload.data?.status,
+        })
+        break
+
       default:
         console.log('Unhandled polar event type:', payload.type)
         break

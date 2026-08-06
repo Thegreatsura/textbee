@@ -12,14 +12,15 @@ import { Button } from '@/components/ui/button'
 import { Spinner } from '@/components/ui/spinner'
 import { Badge } from '@/components/ui/badge'
 import {
+  MONEY_BACK_DAYS,
   findPlanTier,
   formatPlanPrice,
   monthlyEquivalent,
   yearlySavingPercent,
+  type BillingInterval,
 } from '@/lib/plans'
+import { Routes } from '@/config/routes'
 import { cn } from '@/lib/utils'
-
-type BillingInterval = 'monthly' | 'yearly'
 
 interface PlanChangePreview {
   currentPlan: string
@@ -32,6 +33,26 @@ interface PlanChangePreview {
 
 const formatPlan = (plan: string, interval: string) =>
   `${plan.charAt(0).toUpperCase() + plan.slice(1)} (${interval})`
+
+/**
+ * The refund window differs by interval, so the reassurance shown at the point
+ * of payment has to follow the interval rather than quote one number.
+ */
+function MoneyBackNote({ interval }: { interval: BillingInterval }) {
+  return (
+    <p className='text-center text-xs text-muted-foreground'>
+      {MONEY_BACK_DAYS[interval]}-day money-back guarantee.{' '}
+      <Link
+        href={Routes.refundPolicy}
+        target='_blank'
+        rel='noopener noreferrer'
+        className='underline underline-offset-2'
+      >
+        Refund policy
+      </Link>
+    </p>
+  )
+}
 
 /** Frames every state on this page so they share one width and one elevation. */
 function CheckoutShell({ children }: { children: React.ReactNode }) {
@@ -245,12 +266,11 @@ export default function CheckoutPage({
   // an interval in the URL always redirects, so show progress rather than
   // flashing the chooser before the effect fires
   if (isSubmitting || urlInterval !== null) {
-    const intervalLabel = (urlInterval ?? selected) === 'yearly' ? 'yearly' : 'monthly'
+    const activeInterval: BillingInterval =
+      (urlInterval ?? selected) === 'yearly' ? 'yearly' : 'monthly'
     const price =
       tier &&
-      ((urlInterval ?? selected) === 'yearly'
-        ? tier.yearlyPrice
-        : tier.monthlyPrice)
+      (activeInterval === 'yearly' ? tier.yearlyPrice : tier.monthlyPrice)
 
     return (
       <CheckoutShell>
@@ -260,7 +280,7 @@ export default function CheckoutPage({
           <div>
             <h1 className='text-lg font-semibold'>
               {tier
-                ? `Setting up your ${tier.name} ${intervalLabel} checkout`
+                ? `Setting up your ${tier.name} ${activeInterval} checkout`
                 : 'Setting up your checkout'}
             </h1>
             <p className='mt-2 text-sm text-muted-foreground'>
@@ -271,7 +291,7 @@ export default function CheckoutPage({
 
           {tier && price !== undefined && (
             <p className='text-sm font-medium tabular-nums'>
-              {tier.name}, {intervalLabel}, {formatPlanPrice(price)}
+              {tier.name}, {activeInterval}, {formatPlanPrice(price)}
             </p>
           )}
 
@@ -369,6 +389,10 @@ export default function CheckoutPage({
       <p className='mt-3 text-center text-xs text-muted-foreground'>
         Cancel anytime, keep access until the end of your billing period.
       </p>
+
+      <div className='mt-1'>
+        <MoneyBackNote interval={selected} />
+      </div>
     </CheckoutShell>
   )
 }

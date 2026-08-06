@@ -31,25 +31,34 @@ describe('PlanPicker', () => {
     ).toEqual(['Free', 'Pro', 'Scale'])
   })
 
-  // The headline figure is the yearly per-month equivalent, so both it and the
-  // month-to-month price are pinned. A customer must never see a price we do
-  // not charge.
-  it('leads with the yearly per-month price', () => {
+  // The headline must be what the CTA charges. It used to be the yearly
+  // per-month equivalent, so a card reading "$8.33/month" billed $99.99.
+  it('leads with the price its CTA actually charges', () => {
     renderPicker()
 
-    expect(screen.getByText('$8.33')).toBeInTheDocument()
-    expect(screen.getByText('$25.00')).toBeInTheDocument()
+    expect(screen.getByText('$9.99')).toBeInTheDocument()
+    expect(screen.getByText('$29.99')).toBeInTheDocument()
+    expect(screen.queryByText('$8.33')).not.toBeInTheDocument()
   })
 
-  it('still shows what the monthly option costs', () => {
+  it('still offers the yearly alternative underneath', () => {
     renderPicker()
 
     expect(
-      screen.getByText('billed yearly at $99.99, or $9.99 monthly')
+      screen.getByText('or $8.33/month billed yearly at $99.99')
     ).toBeInTheDocument()
     expect(
-      screen.getByText('billed yearly at $299.99, or $29.99 monthly')
+      screen.getByText('or $25.00/month billed yearly at $299.99')
     ).toBeInTheDocument()
+  })
+
+  // The reassurance has to match the interval the CTA commits to.
+  it('quotes the refund window its CTA actually gives you', () => {
+    renderPicker()
+
+    expect(
+      screen.getAllByText(/7-day money-back guarantee/)
+    ).toHaveLength(2)
   })
 
   it('quotes the yearly saving on each paid tier', () => {
@@ -58,16 +67,18 @@ describe('PlanPicker', () => {
     expect(screen.getAllByText('Save 17% yearly')).toHaveLength(2)
   })
 
-  it('links each paid tier at its own checkout route', () => {
+  // Naming the interval is what makes checkout redirect straight to Polar
+  // instead of stopping on the chooser.
+  it('links each paid tier at its own checkout route, interval named', () => {
     renderPicker()
 
     expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
       'href',
-      '/checkout/pro'
+      '/checkout/pro?billingInterval=monthly'
     )
     expect(
       screen.getByRole('link', { name: /Upgrade to Scale/ })
-    ).toHaveAttribute('href', '/checkout/scale')
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly')
   })
 
   it('marks the subscribed tier as current and does not sell it again', () => {

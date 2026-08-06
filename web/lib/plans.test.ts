@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  MONEY_BACK_DAYS,
   PLAN_TIERS,
+  checkoutPath,
   findPlanTier,
   formatPlanPrice,
   formatPriceCaption,
@@ -90,15 +92,16 @@ describe('yearly pricing', () => {
     }
   })
 
-  // The picker prints a headline per-month figure, so its caption must not
-  // repeat it.
+  // The picker headlines the month-to-month price, so the caption carries the
+  // yearly alternative and must not repeat the headline.
   it('captions a headline price without repeating it', () => {
     expect(formatPriceCaption(pro)).toBe(
-      'billed yearly at $99.99, or $9.99 monthly'
+      'or $8.33/month billed yearly at $99.99'
     )
     expect(formatPriceCaption(scale)).toBe(
-      'billed yearly at $299.99, or $29.99 monthly'
+      'or $25.00/month billed yearly at $299.99'
     )
+    expect(formatPriceCaption(pro)).not.toContain('$9.99')
   })
 
   it('captions the free tier without quoting a price', () => {
@@ -107,19 +110,19 @@ describe('yearly pricing', () => {
 
   it('captions a paid tier that has no yearly option', () => {
     expect(formatPriceCaption({ ...pro, yearlyPrice: undefined })).toBe(
-      '$9.99 billed monthly'
+      'billed monthly'
     )
   })
 
   // The caption is the only place the yearly total is quoted, so it has to
-  // carry both figures.
-  it('quotes both the yearly total and the monthly price', () => {
+  // carry both the total and what it works out to per month.
+  it('quotes both the yearly total and its per-month equivalent', () => {
     for (const tier of [pro, scale]) {
       expect(formatPriceCaption(tier)).toContain(
-        formatPlanPrice(tier.monthlyPrice)
+        formatPlanPrice(tier.yearlyPrice!)
       )
       expect(formatPriceCaption(tier)).toContain(
-        formatPlanPrice(tier.yearlyPrice!)
+        formatPlanPrice(monthlyEquivalent(tier)!)
       )
     }
   })
@@ -136,5 +139,36 @@ describe('findPlanTier', () => {
     expect(findPlanTier(undefined)).toBeUndefined()
     expect(findPlanTier(null)).toBeUndefined()
     expect(findPlanTier('')).toBeUndefined()
+  })
+})
+
+// A CTA that omits the interval stops on the chooser instead of continuing to
+// the payment page, so the interval is pinned here rather than trusted to each
+// call site.
+describe('checkoutPath', () => {
+  it('always names an interval', () => {
+    for (const tier of PLAN_TIERS) {
+      expect(checkoutPath(tier.id)).toContain('billingInterval=')
+    }
+  })
+
+  it('defaults to the month-to-month interval', () => {
+    expect(checkoutPath('pro')).toBe('/checkout/pro?billingInterval=monthly')
+    expect(checkoutPath('scale')).toBe('/checkout/scale?billingInterval=monthly')
+  })
+
+  it('carries an explicit interval through', () => {
+    expect(checkoutPath('pro', 'yearly')).toBe(
+      '/checkout/pro?billingInterval=yearly'
+    )
+  })
+})
+
+// Mirrors the published refund policy. Quoting a longer window than we honour
+// would be a promise we do not keep.
+describe('MONEY_BACK_DAYS', () => {
+  it('matches the refund policy for each interval', () => {
+    expect(MONEY_BACK_DAYS.monthly).toBe(7)
+    expect(MONEY_BACK_DAYS.yearly).toBe(14)
   })
 })

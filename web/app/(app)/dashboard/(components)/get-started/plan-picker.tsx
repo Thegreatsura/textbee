@@ -16,10 +16,12 @@ import { Check, ExternalLink } from 'lucide-react'
 import { Routes } from '@/config/routes'
 import { useSubscription } from '@/lib/api'
 import {
+  DEFAULT_CHECKOUT_INTERVAL,
+  MONEY_BACK_DAYS,
   PLAN_TIERS,
+  checkoutPath,
   formatPlanPrice,
   formatPriceCaption,
-  monthlyEquivalent,
   yearlySavingPercent,
   type PlanTier,
 } from '@/lib/plans'
@@ -45,7 +47,6 @@ function PlanCard({
 }) {
   const free = tier.monthlyPrice <= 0
   const highlight = tier.isPopular && !isCurrent
-  const perMonth = monthlyEquivalent(tier)
   const saving = yearlySavingPercent(tier)
 
   return (
@@ -74,8 +75,10 @@ function PlanCard({
 
         <div className='pt-2'>
           <div className='flex items-baseline gap-1'>
+            {/* The headline is what the CTA charges. Leading with the yearly
+                per-month equivalent meant a "$8.33/month" card billed $99.99. */}
             <span className='text-3xl font-semibold tabular-nums'>
-              {formatPlanPrice(perMonth ?? tier.monthlyPrice)}
+              {formatPlanPrice(tier.monthlyPrice)}
             </span>
             <span className='text-sm text-muted-foreground'>/month</span>
           </div>
@@ -129,9 +132,12 @@ function PlanCard({
             {/* above the button so every card's CTA lands on one baseline */}
             <p className='text-center text-xs text-muted-foreground'>
               Cancel anytime, keep access until the end of your billing period.
+              {' '}
+              {MONEY_BACK_DAYS[DEFAULT_CHECKOUT_INTERVAL]}-day money-back
+              guarantee.
             </p>
             <Button className='w-full' asChild>
-              <Link href={`/checkout/${tier.id}`}>Upgrade to {tier.name}</Link>
+              <Link href={checkoutPath(tier.id)}>Upgrade to {tier.name}</Link>
             </Button>
           </>
         )}

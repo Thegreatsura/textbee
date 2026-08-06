@@ -57,6 +57,28 @@ test.describe('checkout (mocked API, no real backend)', () => {
     await expect(page).toHaveURL(/polar-checkout-mock=1/)
   })
 
+  // Guards the regression where in-app CTAs omitted billingInterval, so
+  // clicking Upgrade stopped on the interval chooser instead of continuing to
+  // the payment page.
+  test('an in-app upgrade CTA goes straight to Polar', async ({
+    page,
+    context,
+  }) => {
+    await authenticate(context)
+    await mockApi(page)
+    await page.goto('/dashboard/account/billing')
+
+    const cta = page.getByRole('link', { name: /Upgrade to/ }).first()
+    await expect(cta).toHaveAttribute('href', /billingInterval=/)
+
+    await cta.click()
+
+    await expect(page).toHaveURL(/polar-checkout-mock=1/)
+    await expect(
+      page.getByRole('button', { name: 'Continue to checkout' })
+    ).toHaveCount(0)
+  })
+
   test.describe('when the URL names no interval', () => {
     test('asks instead of guessing, with yearly preselected', async ({
       page,
@@ -71,6 +93,24 @@ test.describe('checkout (mocked API, no real backend)', () => {
       await expect(
         page.getByRole('button', { name: 'Continue to checkout' })
       ).toBeVisible()
+    })
+
+    // The refund window differs by interval, so the note has to follow the
+    // selection rather than quote one number.
+    test('quotes the refund window for the selected interval', async ({
+      page,
+      context,
+    }) => {
+      await authenticate(context)
+      await mockApi(page)
+      await page.goto('/checkout/pro')
+
+      await expect(
+        page.getByText('14-day money-back guarantee')
+      ).toBeVisible()
+
+      await page.getByRole('radio', { name: /Monthly/ }).check()
+      await expect(page.getByText('7-day money-back guarantee')).toBeVisible()
     })
 
     test('posts nothing until the user confirms', async ({ page, context }) => {

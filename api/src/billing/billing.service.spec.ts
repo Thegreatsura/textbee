@@ -214,3 +214,112 @@ describe('BillingService - checkout guards', () => {
     ).rejects.toThrow('Plan cannot be purchased')
   })
 })
+
+describe('BillingService - syncCheckoutSessionStatus', () => {
+  let service: BillingService
+
+  const mockCheckoutSessionModel = {
+    updateOne: jest.fn(),
+  }
+  const emptyModel = {}
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BillingService,
+        { provide: getModelToken(Plan.name), useValue: emptyModel },
+        { provide: getModelToken(Subscription.name), useValue: emptyModel },
+        { provide: getModelToken(User.name), useValue: emptyModel },
+        { provide: getModelToken(SMS.name), useValue: emptyModel },
+        {
+          provide: getModelToken(PolarWebhookPayload.name),
+          useValue: emptyModel,
+        },
+        {
+          provide: getModelToken(CheckoutSession.name),
+          useValue: mockCheckoutSessionModel,
+        },
+        { provide: BillingNotificationsService, useValue: {} },
+      ],
+    }).compile()
+
+    service = module.get<BillingService>(BillingService)
+
+    jest.clearAllMocks()
+    mockCheckoutSessionModel.updateOne.mockResolvedValue({ modifiedCount: 1 })
+  })
+
+  // Nothing wrote isCompleted before this existed, so a checkout the customer
+  // had already paid for stayed reusable until it expired.
+  it('marks a succeeded checkout completed', async () => {
+    await service.syncCheckoutSessionStatus({
+      checkoutSessionId: 'checkout_abc',
+      status: 'succeeded',
+    })
+
+    expect(mockCheckoutSessionModel.updateOne).toHaveBeenCalledWith(
+      { checkoutSessionId: 'checkout_abc' },
+      expect.objectContaining({ isCompleted: true, completedAt: expect.any(Date) }),
+    )
+  })
+
+  it('marks an expired checkout abandoned', async () => {
+    await service.syncCheckoutSessionStatus({
+      checkoutSessionId: 'checkout_abc',
+      status: 'expired',
+    })
+
+    expect(mockCheckoutSessionModel.updateOne).toHaveBeenCalledWith(
+      { checkoutSessionId: 'checkout_abc' },
+      { isAbandoned: true },
+    )
+  })
+
+  // open and confirmed are still in flight and failed is retryable, so the
+  // cached checkout URL has to stay usable.
+  it.each(['open', 'confirmed', 'failed'])(
+    'leaves a %s checkout untouched',
+    async (status) => {
+      await service.syncCheckoutSessionStatus({
+        checkoutSessionId: 'checkout_abc',
+        status,
+      })
+
+      expect(mockCheckoutSessionModel.updateOne).not.toHaveBeenCalled()
+    },
+  )
+
+  // The cache holds one row per user, so a late webhook for a checkout that has
+  // since been replaced must match nothing rather than clobber the new row.
+  it('keys on the checkout id, never on the user', async () => {
+    await service.syncCheckoutSessionStatus({
+      checkoutSessionId: 'checkout_stale',
+      status: 'succeeded',
+    })
+
+    const [filter] = mockCheckoutSessionModel.updateOne.mock.calls[0]
+    expect(filter).toEqual({ checkoutSessionId: 'checkout_stale' })
+    expect(filter).not.toHaveProperty('user')
+  })
+
+  it('ignores an event with no checkout id', async () => {
+    await service.syncCheckoutSessionStatus({
+      checkoutSessionId: undefined as any,
+      status: 'succeeded',
+    })
+
+    expect(mockCheckoutSessionModel.updateOne).not.toHaveBeenCalled()
+  })
+
+  // A webhook handler that throws would make Polar retry the whole event.
+  it('does not throw when the write fails', async () => {
+    mockCheckoutSessionModel.updateOne.mockRejectedValue(new Error('db down'))
+
+    await expect(
+      service.syncCheckoutSessionStatus({
+        checkoutSessionId: 'checkout_abc',
+        status: 'succeeded',
+      }),
+    ).resolves.not.toThrow()
+  })
+})

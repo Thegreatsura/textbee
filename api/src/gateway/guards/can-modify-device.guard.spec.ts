@@ -20,20 +20,43 @@ describe('CanModifyDevice', () => {
     guard = new CanModifyDevice(gatewayService as unknown as GatewayService)
   })
 
+  // The service performs the ownership check: the second argument scopes the
+  // lookup to the owner, so a foreign or unknown device comes back null.
+  const scopedLookupFor = (ownerId: string) =>
+    async (_id: string, userId?: string) =>
+      userId === ownerId ? { user: ownerId } : null
+
   it('allows the owner of the device', async () => {
-    gatewayService.getDeviceById.mockResolvedValue({ user: 'user_1' })
+    gatewayService.getDeviceById.mockImplementation(scopedLookupFor('user_1'))
     const request = { params: { id: VALID_ID }, user: { id: 'user_1' } }
 
     await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+    expect(gatewayService.getDeviceById).toHaveBeenCalledWith(
+      VALID_ID,
+      'user_1',
+    )
   })
 
   it('rejects a non-owner (cross-tenant access)', async () => {
-    gatewayService.getDeviceById.mockResolvedValue({ user: 'owner' })
+    gatewayService.getDeviceById.mockImplementation(scopedLookupFor('owner'))
     const request = { params: { id: VALID_ID }, user: { id: 'attacker' } }
 
     await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
       HttpException,
     )
+    expect(gatewayService.getDeviceById).toHaveBeenCalledWith(
+      VALID_ID,
+      'attacker',
+    )
+  })
+
+  it('rejects a non-admin request with no authenticated user id', async () => {
+    const request = { params: { id: VALID_ID }, user: {} }
+
+    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
+      HttpException,
+    )
+    expect(gatewayService.getDeviceById).not.toHaveBeenCalled()
   })
 
   it('allows an admin regardless of ownership', async () => {

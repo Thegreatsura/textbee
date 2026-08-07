@@ -27,10 +27,16 @@ export class CanModifyDevice implements CanActivate {
       )
     }
 
-    const device =
-      request.user?.role === UserRole.ADMIN
-        ? await this.gatewayService.getDeviceById(deviceId)
-        : await this.gatewayService.getDeviceById(deviceId, userId)
+    const isAdmin = request.user?.role === UserRole.ADMIN
+
+    // Without a user id the scoped lookup would degrade to an unscoped one
+    if (!isAdmin && !userId) {
+      throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+    }
+
+    const device = isAdmin
+      ? await this.gatewayService.getDeviceById(deviceId)
+      : await this.gatewayService.getDeviceById(deviceId, userId)
 
     if (!device) {
       throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)

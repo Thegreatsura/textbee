@@ -81,3 +81,72 @@ describe('httpBrowserClient auth interceptor', () => {
     expect(headers).toEqual(['Bearer tok2'])
   })
 })
+
+describe('httpBrowserClient session-expiry interceptor', () => {
+  // Axios resolves relative URLs against window.location in jsdom, so the
+  // stub has to look like a real Location, not a bare object.
+  function stubLocation(pathname = '/dashboard') {
+    const base = 'http://localhost:3000'
+    const loc = {
+      pathname,
+      href: `${base}${pathname}`,
+      origin: base,
+      protocol: 'http:',
+      host: 'localhost:3000',
+      hostname: 'localhost',
+    }
+    Object.defineProperty(window, 'location', {
+      value: loc,
+      writable: true,
+      configurable: true,
+    })
+    return loc as { pathname: string; href: string }
+  }
+
+  function respond401(body: Record<string, unknown>) {
+    server.use(
+      http.get(`${API_BASE_URL}/ping`, () =>
+        HttpResponse.json(body, { status: 401 })
+      )
+    )
+  }
+
+  it('redirects to logout on a 401 carrying the auth-failure code', async () => {
+    const { default: client, setSessionToken } = await loadClient()
+    setSessionToken('abc')
+    const loc = stubLocation()
+    respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(loc.href).toBe('/logout')
+  })
+
+  it('leaves a 401 without the auth-failure code to the caller', async () => {
+    const { default: client, setSessionToken } = await loadClient()
+    setSessionToken('abc')
+    const loc = stubLocation()
+    respond401({ error: 'Unauthorized' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(loc.href).toBe('http://localhost:3000/dashboard')
+  })
+
+  it('does not redirect again from the logout page itself', async () => {
+    const { default: client, setSessionToken } = await loadClient()
+    setSessionToken('abc')
+    const loc = stubLocation('/logout')
+    respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(loc.href).toBe('http://localhost:3000/logout')
+  })
+})

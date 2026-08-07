@@ -352,8 +352,18 @@ describe('GatewayService', () => {
 
       const result = await service.getDeviceById('device123')
 
-      expect(mockDeviceModel.findById).toHaveBeenCalledWith('device123')
+      expect(mockDeviceModel.findById).toHaveBeenCalledWith('device123', undefined)
       expect(result).toEqual(mockDevice)
+    })
+
+    it('should apply the given projection', async () => {
+      mockDeviceModel.findById.mockResolvedValue(mockDevice)
+
+      await service.getDeviceById('device123', undefined, '-fcmToken -serial')
+
+      const [, projection] = mockDeviceModel.findById.mock.calls[0]
+      expect(projection).toContain('-fcmToken')
+      expect(projection).toContain('-serial')
     })
   })
 

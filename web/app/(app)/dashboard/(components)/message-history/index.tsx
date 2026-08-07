@@ -51,7 +51,11 @@ export default function MessageHistory() {
     error: devicesError,
   } = useDevices()
 
-  const currentDevice = pickedDevice || devices?.[0]?._id || ''
+  const currentDevice =
+    pickedDevice ||
+    devices?.find((device) => device.isDefault)?._id ||
+    devices?.[0]?._id ||
+    ''
 
   const {
     data: messagesResponse,

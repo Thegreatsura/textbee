@@ -158,7 +158,10 @@ export class GatewayService {
     )
   }
 
-  async getDeviceById(deviceId: string): Promise<any> {
+  async getDeviceById(deviceId: string, userId?: string): Promise<any> {
+    if (userId) {
+      return await this.deviceModel.findOne({ _id: deviceId, user: userId })
+    }
     return await this.deviceModel.findById(deviceId)
   }
 

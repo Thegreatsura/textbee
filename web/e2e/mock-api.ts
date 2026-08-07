@@ -32,6 +32,9 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
   await page.route('**/api/v1/**', (route) => {
     const path = new URL(route.request().url()).pathname.replace('/api/v1', '')
 
+    // Create a per-invocation device-state copy before routing
+    const devicesCopy = mockDevices.map((d) => ({ ...d }))
+
     // Kept in-origin so following the redirect does not leave the test app.
     if (path === '/billing/checkout') {
       if (overrides.checkoutError) {
@@ -44,7 +47,7 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
     if (path === '/billing/current-subscription')
       return json(route, overrides.subscription ?? mockSubscription)
     if (path === '/billing/plans') return json(route, { data: mockBillingPlans })
-    if (path === '/gateway/devices') return json(route, { data: mockDevices })
+    if (path === '/gateway/devices') return json(route, { data: devicesCopy })
     if (path === '/gateway/stats') return json(route, { data: mockStats })
     if (path === '/webhooks') return json(route, { data: mockWebhooks })
     if (path === '/webhooks/notifications')
@@ -59,7 +62,13 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
 
     const setDefault = path.match(/\/gateway\/devices\/([^/]+)\/set-default/)
     if (setDefault) {
-      const device = mockDevices.find((d) => d._id === setDefault[1])
+      const device = devicesCopy.find((d) => d._id === setDefault[1])
+      if (!device) {
+        return json(route, { error: 'Device not found' }, 404)
+      }
+      devicesCopy.forEach((d) => {
+        d.isDefault = d._id === setDefault[1]
+      })
       return json(route, { data: { ...device, isDefault: true } })
     }
 

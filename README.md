@@ -49,8 +49,8 @@ Manage SMS messages through a web dashboard or a REST API. textbee is ideal for 
 
 
 ### Sending an SMS
- 
-Messages go out through your default device. Pass an optional `deviceId` in the request body to send from a specific device instead. The older `/gateway/devices/{deviceId}/send-sms` route still works but is deprecated.
+
+Messages go out through your default device, or otherwise the enabled device with the most recent heartbeat. Pass an optional `deviceId` in the request body to send from a specific device instead. The older `/gateway/devices/{deviceId}/send-sms` route still works but is deprecated.
  
 ```javascript
 const API_KEY = 'YOUR_API_KEY';

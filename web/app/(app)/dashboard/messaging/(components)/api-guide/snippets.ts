@@ -36,8 +36,9 @@ export type Endpoint = {
 const PLACEHOLDER_DEVICE = 'YOUR_DEVICE_ID'
 
 // The send endpoints take deviceId as an optional body field, so the samples
-// have two variants: with a real id, and without one (the API then sends from
-// the account's default device). Both are built from this single set of
+// have two variants: with a real id, and without one. When deviceId is omitted,
+// the API sends from the account's default device, or otherwise the enabled
+// device with the most recent heartbeat. Both are built from this single set of
 // fragments so they cannot drift apart.
 const deviceIdField = (deviceId?: string) => ({
   curl: deviceId ? `\n    "deviceId": "${deviceId}",` : '',

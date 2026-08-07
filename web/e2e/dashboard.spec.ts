@@ -216,6 +216,7 @@ test.describe('dashboard (mocked API, no real backend)', () => {
     await page.route('**/api/v1/gateway/devices/*/set-default', (route) => {
       // A UI bug posting the Pixel's id would otherwise still move the badge
       expect(route.request().url()).toContain(mockDevices[1]._id)
+      expect(route.request().method()).toBe('POST')
       defaultDeviceId = mockDevices[1]._id
       return route.fulfill({
         status: 200,

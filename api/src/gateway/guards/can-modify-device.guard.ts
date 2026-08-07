@@ -27,15 +27,15 @@ export class CanModifyDevice implements CanActivate {
       )
     }
 
-    const device = await this.gatewayService.getDeviceById(deviceId)
-    if (
-      !!userId &&
-      (device?.user == userId.toString() ||
-        request.user?.role == UserRole.ADMIN)
-    ) {
-      return true
+    const device =
+      request.user?.role === UserRole.ADMIN
+        ? await this.gatewayService.getDeviceById(deviceId)
+        : await this.gatewayService.getDeviceById(deviceId, userId)
+
+    if (!device) {
+      throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
     }
 
-    throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+    return true
   }
 }

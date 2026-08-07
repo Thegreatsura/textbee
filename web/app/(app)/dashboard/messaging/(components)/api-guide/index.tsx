@@ -66,8 +66,8 @@ export default function ApiGuide() {
               x-api-key
             </code>{' '}
             header. A device id is optional when sending: leave it out and the
-            API uses your default device. The read endpoints still name a
-            device.
+            API uses your default device, or otherwise the enabled device with
+            the most recent heartbeat. The read endpoints still name a device.
           </p>
         </div>
 

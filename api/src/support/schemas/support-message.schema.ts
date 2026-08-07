@@ -1,12 +1,12 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, SchemaTypes, Types } from 'mongoose'
 import { User } from 'src/users/schemas/user.schema'
 
 export type SupportMessageDocument = SupportMessage & Document
 
 @Schema({ timestamps: true })
 export class SupportMessage {
-  @Prop({ type: Types.ObjectId, ref: User.name })
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name })
   user: User | Types.ObjectId
 
   @Prop()

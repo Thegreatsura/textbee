@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, SchemaTypes, Types } from 'mongoose'
 import { User } from '../../users/schemas/user.schema'
 
 export type DeviceDocument = Device & Document
@@ -11,7 +11,7 @@ export const DEFAULT_SMS_SEND_DELAY_SECONDS = 5
 export class Device {
   _id?: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: User.name })
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name })
   user: User | Types.ObjectId
 
   @Prop({ type: Boolean, default: false })

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, SchemaTypes, Types } from 'mongoose'
 import { User } from '../../users/schemas/user.schema'
 import { Plan } from './plan.schema'
 
@@ -17,10 +17,10 @@ export type SubscriptionDocument = Subscription & Document
 
 @Schema({ timestamps: true })
 export class Subscription {
-  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name, required: true })
   user: User | Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: Plan.name, required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: Plan.name, required: true })
   plan: Plan | Types.ObjectId
 
   @Prop({ type: String, index: true })

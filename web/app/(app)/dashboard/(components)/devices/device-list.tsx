@@ -4,6 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import {
   Smartphone,
   Copy,
   Plus,
@@ -254,12 +260,25 @@ export default function DeviceList() {
                           </Badge>
                         )}
                         {device.isDefault && (
-                          <Badge
-                            variant='outline'
-                            className='border-brand-300 bg-brand-50 text-xs text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300'
-                          >
-                            Default
-                          </Badge>
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Badge
+                                  tabIndex={0}
+                                  variant='outline'
+                                  className='cursor-default border-brand-300 bg-brand-50 text-xs text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300'
+                                >
+                                  Default
+                                </Badge>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className='max-w-[220px]'>
+                                  Sends that do not specify a deviceId go out
+                                  from this device.
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         )}
                         {/* Colour and text now come from the same field. The
                             variant used to key off device.status, which the

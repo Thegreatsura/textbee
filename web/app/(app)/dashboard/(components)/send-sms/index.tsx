@@ -133,7 +133,11 @@ export default function SendSms() {
                         disabled={!device.enabled}
                       >
                         {formatDeviceName(device)}
-                        {device.enabled ? '' : ' (disabled)'}
+                        {!device.enabled
+                          ? ' (disabled)'
+                          : device.isDefault
+                            ? ' (default)'
+                            : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>

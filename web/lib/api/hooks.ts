@@ -116,6 +116,17 @@ export function useDeleteDevice() {
   })
 }
 
+export function useSetDefaultDevice() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      httpBrowserClient.post(ApiEndpoints.gateway.setDefaultDevice(id)),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.devices })
+    },
+  })
+}
+
 // ---------- api keys ----------
 
 export function useApiKeys(
@@ -371,8 +382,9 @@ export function useWebhookNotifications(filters: WebhookNotificationFilters) {
 // Matches the zod-inferred SendSmsFormData shape; validation happens via the
 // schema before the payload reaches here.
 export type SendSmsPayload = {
-  // Required: it goes into the request path, so an absent one would POST to
-  // /gateway/devices/undefined/send-sms. Both callers validate it first.
+  // Optional to the API, which falls back to the default device, but required
+  // here: the dashboard always has an explicit selection, and the invalidation
+  // below keys the message list off it.
   deviceId: string
   recipients?: string[]
   message?: string
@@ -399,7 +411,7 @@ export function useSendSms() {
   return useMutation({
     mutationKey: ['send-sms'],
     mutationFn: (data: SendSmsPayload) =>
-      httpBrowserClient.post(ApiEndpoints.gateway.sendSMS(data.deviceId), data),
+      httpBrowserClient.post(ApiEndpoints.gateway.sendSMS(), data),
     onSuccess: (_, variables) =>
       invalidateAfterSend(queryClient, variables.deviceId),
   })

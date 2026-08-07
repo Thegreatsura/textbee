@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 import { authenticate } from './session'
 import { mockApi } from './mock-api'
+import { mockDevices } from '../test/fixtures'
 
 async function captureSend(page: import('@playwright/test').Page) {
   const payloads: any[] = []
-  await page.route('**/api/v1/gateway/devices/*/send-sms', (route) => {
+  await page.route('**/api/v1/gateway/send-sms', (route) => {
     payloads.push(route.request().postDataJSON())
     return route.fulfill({
       status: 200,
@@ -59,6 +60,9 @@ test.describe('send sms (mocked API, no real backend)', () => {
     // optional leading plus.
     expect(payloads[0].recipients).toEqual(['+14155550101', '+16475550187'])
     expect(payloads[0].message).toBe('Hello from the send page')
+    // The device is no longer in the URL, so the body is the only thing
+    // carrying the explicit selection.
+    expect(payloads[0].deviceId).toBe(mockDevices[0]._id)
   })
 
   test('splits a pasted list into separate chips', async ({

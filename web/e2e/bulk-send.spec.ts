@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { authenticate } from './session'
 import { mockApi } from './mock-api'
+import { mockDevices } from '../test/fixtures'
 
 // The defect this guards: the previous implementation mapped every parsed row
 // into the payload, so blank cells produced messages addressed to "" and the
@@ -56,7 +57,7 @@ test.describe('bulk send (mocked API, no real backend)', () => {
 
     // Capture what the app actually posts to the gateway.
     let payload: any = null
-    await page.route('**/api/v1/gateway/devices/*/send-bulk-sms', (route) => {
+    await page.route('**/api/v1/gateway/send-bulk-sms', (route) => {
       payload = route.request().postDataJSON()
       return route.fulfill({
         status: 200,
@@ -89,6 +90,9 @@ test.describe('bulk send (mocked API, no real backend)', () => {
     // The payload is the real assertion.
     expect(payload).not.toBeNull()
     expect(payload.messages).toHaveLength(2)
+    // The device is no longer in the URL, so the body is the only thing
+    // carrying the explicit selection.
+    expect(payload.deviceId).toBe(mockDevices[0]._id)
 
     const recipients = payload.messages.flatMap((m: any) => m.recipients)
     expect(recipients).toEqual(['+14155550101', '+16475550187'])

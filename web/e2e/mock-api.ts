@@ -53,6 +53,16 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
     if (/\/gateway\/devices\/[^/]+\/(messages|get-received-sms)/.test(path))
       return json(route, mockMessages)
 
+    // Sends are device-agnostic now: the id travels in the body.
+    if (path === '/gateway/send-sms' || path === '/gateway/send-bulk-sms')
+      return json(route, { data: { success: true } })
+
+    const setDefault = path.match(/\/gateway\/devices\/([^/]+)\/set-default/)
+    if (setDefault) {
+      const device = mockDevices.find((d) => d._id === setDefault[1])
+      return json(route, { data: { ...device, isDefault: true } })
+    }
+
     // Any unmapped backend call still gets a benign mocked response so the test
     // cannot fall through to a real backend.
     return json(route, { data: [] })

@@ -15,7 +15,12 @@ import {
 import Link from 'next/link'
 import { useToast } from '@/hooks/use-toast'
 import { Routes } from '@/config/routes'
-import { useDeleteDevice, useDevices, useSubscription } from '@/lib/api'
+import {
+  useDeleteDevice,
+  useDevices,
+  useSetDefaultDevice,
+  useSubscription,
+} from '@/lib/api'
 import EmptyState from '@/components/shared/empty-state'
 import ErrorState from '@/components/shared/error-state'
 import RelativeTime from '@/components/shared/relative-time'
@@ -49,6 +54,15 @@ type DeviceRow = DeviceVersionCandidate & {
   enabled?: boolean
 }
 
+// Mutation errors arrive as unknown, so both handlers narrow them the same way.
+const errorMessage = (err: unknown) =>
+  err &&
+  typeof err === 'object' &&
+  'message' in err &&
+  typeof (err as { message: unknown }).message === 'string'
+    ? (err as { message: string }).message
+    : 'Something went wrong'
+
 export default function DeviceList() {
   const addDeviceRef = useRef<AddDeviceHandle>(null)
   const [devicePendingDelete, setDevicePendingDelete] =
@@ -68,6 +82,8 @@ export default function DeviceList() {
     deviceLimit >= 2 && !isPending && activeDeviceCount === deviceLimit - 1
 
   const { mutate: deleteDevice, isPending: isDeletingDevice } = useDeleteDevice()
+  const { mutate: setDefaultDevice, isPending: isSettingDefaultDevice } =
+    useSetDefaultDevice()
 
   const handleDeleteDevice = (id: string) =>
     deleteDevice(id, {
@@ -76,17 +92,24 @@ export default function DeviceList() {
         toast({ title: 'Device removed' })
       },
       onError: (err: unknown) => {
-        const message =
-          err &&
-          typeof err === 'object' &&
-          'message' in err &&
-          typeof (err as { message: unknown }).message === 'string'
-            ? (err as { message: string }).message
-            : 'Something went wrong'
         toast({
           variant: 'destructive',
           title: 'Error removing device',
-          description: message,
+          description: errorMessage(err),
+        })
+      },
+    })
+
+  const handleSetDefaultDevice = (id: string) =>
+    setDefaultDevice(id, {
+      onSuccess: () => {
+        toast({ title: 'Default device updated' })
+      },
+      onError: (err: unknown) => {
+        toast({
+          variant: 'destructive',
+          title: 'Error setting default device',
+          description: errorMessage(err),
         })
       },
     })
@@ -230,6 +253,14 @@ export default function DeviceList() {
                             Update available
                           </Badge>
                         )}
+                        {device.isDefault && (
+                          <Badge
+                            variant='outline'
+                            className='border-brand-300 bg-brand-50 text-xs text-brand-700 dark:border-brand-800 dark:bg-brand-950/40 dark:text-brand-300'
+                          >
+                            Default
+                          </Badge>
+                        )}
                         {/* Colour and text now come from the same field. The
                             variant used to key off device.status, which the
                             API never sends, so an enabled device was styled
@@ -308,6 +339,14 @@ export default function DeviceList() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align='end'>
+                      {!device.isDefault && device.enabled && (
+                        <DropdownMenuItem
+                          disabled={isSettingDefaultDevice}
+                          onClick={() => handleSetDefaultDevice(device._id)}
+                        >
+                          Set as default
+                        </DropdownMenuItem>
+                      )}
                       <DropdownMenuItem
                         className='text-destructive focus:text-destructive'
                         onClick={() =>

@@ -25,7 +25,9 @@ import {
   RegisterDeviceInputDTO,
   RetrieveSMSResponseDTO,
   SendBulkSMSInputDTO,
+  SendBulkSMSRequestDTO,
   SendSMSInputDTO,
+  SendSMSRequestDTO,
   UpdateSMSStatusDTO,
   HeartbeatInputDTO,
   HeartbeatResponseDTO,
@@ -94,7 +96,58 @@ export class GatewayController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Send SMS to a device' })
+  @ApiOperation({ summary: 'Set device as the default sender' })
+  @UseGuards(AuthGuard, CanModifyDevice)
+  @Post('/devices/:id/set-default')
+  @HttpCode(HttpStatus.OK)
+  async setDefaultDevice(@Param('id') deviceId: string) {
+    const data = await this.gatewayService.setDefaultDevice(deviceId)
+    return { data }
+  }
+
+  @ApiOperation({
+    summary:
+      'Send SMS. deviceId is optional: defaults to your default device, else the most recently active enabled device.',
+  })
+  @UseGuards(AuthGuard)
+  @Post('/send-sms')
+  @HttpCode(HttpStatus.OK)
+  async sendSMSDeviceless(@Request() req, @Body() body: SendSMSRequestDTO) {
+    const device = await this.gatewayService.resolveSenderDevice(
+      req.user,
+      body.deviceId,
+    )
+    const data = await this.gatewayService.sendSMS(device._id.toString(), body)
+    return { data }
+  }
+
+  @ApiOperation({
+    summary:
+      'Send Bulk SMS. deviceId is optional: defaults to your default device, else the most recently active enabled device.',
+  })
+  @UseGuards(AuthGuard)
+  @Post('/send-bulk-sms')
+  @HttpCode(HttpStatus.OK)
+  async sendBulkSMSDeviceless(
+    @Request() req,
+    @Body() body: SendBulkSMSRequestDTO,
+  ) {
+    const device = await this.gatewayService.resolveSenderDevice(
+      req.user,
+      body.deviceId,
+    )
+    const data = await this.gatewayService.sendBulkSMS(
+      device._id.toString(),
+      body,
+    )
+    return { data }
+  }
+
+  @ApiOperation({
+    summary:
+      'Deprecated: use POST /gateway/send-sms with an optional deviceId in the body. Send SMS to a device.',
+    deprecated: true,
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   // deprecate sendSMS route in favor of send-sms, but allow both to prevent breaking changes
   @Post(['/devices/:id/sendSMS', '/devices/:id/send-sms'])
@@ -106,7 +159,11 @@ export class GatewayController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Send Bulk SMS' })
+  @ApiOperation({
+    summary:
+      'Deprecated: use POST /gateway/send-bulk-sms with an optional deviceId in the body. Send Bulk SMS.',
+    deprecated: true,
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Post(['/devices/:id/send-bulk-sms'])
   async sendBulkSMS(

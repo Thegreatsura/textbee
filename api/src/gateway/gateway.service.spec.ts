@@ -18,6 +18,7 @@ import { SMSType } from './sms-type.enum'
 import { WebhookEvent } from '../webhook/webhook-event.enum'
 import { RegisterDeviceInputDTO, SendBulkSMSInputDTO, SendSMSInputDTO } from './gateway.dto'
 import { User } from '../users/schemas/user.schema'
+import { UserRole } from '../users/user-roles.enum'
 import { BatchResponse } from 'firebase-admin/messaging'
 
 // Mock firebase-admin
@@ -44,6 +45,7 @@ describe('GatewayService', () => {
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findByIdAndDelete: jest.fn(),
+    updateMany: jest.fn(),
     create: jest.fn(),
     exec: jest.fn(),
     countDocuments: jest.fn(),
@@ -264,6 +266,51 @@ describe('GatewayService', () => {
       ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS })
       expect(mockDeviceModel.create).not.toHaveBeenCalled()
     })
+
+    it('should mark the first device of a user as the default', async () => {
+      mockDeviceModel.findOne.mockResolvedValue(null)
+      mockBillingService.getUserLimits.mockResolvedValue({ deviceLimit: -1 })
+      mockDeviceModel.countDocuments.mockResolvedValue(0)
+      mockDeviceModel.create.mockResolvedValue({ _id: 'device123' })
+
+      await service.registerDevice(mockDeviceInput, mockUser)
+
+      expect(mockDeviceModel.countDocuments).toHaveBeenCalledWith({
+        user: mockUser._id,
+      })
+      expect(mockDeviceModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ isDefault: true }),
+      )
+    })
+
+    it('should not mark a later device as the default', async () => {
+      mockDeviceModel.findOne.mockResolvedValue(null)
+      mockBillingService.getUserLimits.mockResolvedValue({ deviceLimit: -1 })
+      mockDeviceModel.countDocuments.mockResolvedValue(1)
+      mockDeviceModel.create.mockResolvedValue({ _id: 'device456' })
+
+      await service.registerDevice(mockDeviceInput, mockUser)
+
+      const created = mockDeviceModel.create.mock.calls[0][0]
+      expect(created.isDefault).toBeUndefined()
+    })
+
+    it('should ignore a client-sent isDefault', async () => {
+      // there is no ValidationPipe, so an unknown body field would otherwise
+      // be written straight through to the device
+      mockDeviceModel.findOne.mockResolvedValue(null)
+      mockBillingService.getUserLimits.mockResolvedValue({ deviceLimit: -1 })
+      mockDeviceModel.countDocuments.mockResolvedValue(1)
+      mockDeviceModel.create.mockResolvedValue({ _id: 'device456' })
+
+      await service.registerDevice(
+        { ...mockDeviceInput, isDefault: true } as any,
+        mockUser,
+      )
+
+      const created = mockDeviceModel.create.mock.calls[0][0]
+      expect(created.isDefault).toBeUndefined()
+    })
   })
 
   describe('getDevicesForUser', () => {
@@ -310,6 +357,207 @@ describe('GatewayService', () => {
     })
   })
 
+  // The deviceless send routes have no :id param, so CanModifyDevice cannot
+  // run and ownership has to be enforced by the resolution query itself.
+  describe('resolveSenderDevice', () => {
+    const OWN_DEVICE = '507f1f77bcf86cd799439011'
+    const OTHER_DEVICE = '507f1f77bcf86cd799439022'
+
+    const mockUser = {
+      _id: 'user123',
+      role: UserRole.REGULAR,
+    } as unknown as User
+
+    const mockAdmin = {
+      _id: 'admin123',
+      role: UserRole.ADMIN,
+    } as unknown as User
+
+    it('resolves an explicitly requested device the user owns', async () => {
+      const device = { _id: OWN_DEVICE, enabled: true, user: mockUser._id }
+      mockDeviceModel.findOne.mockResolvedValueOnce(device)
+
+      const result = await service.resolveSenderDevice(mockUser, OWN_DEVICE)
+
+      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
+        _id: OWN_DEVICE,
+        user: mockUser._id,
+      })
+      expect(result).toEqual(device)
+    })
+
+    it('rejects a malformed device id', async () => {
+      await expect(
+        service.resolveSenderDevice(mockUser, 'not-an-objectid'),
+      ).rejects.toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        response: { error: 'Invalid device id' },
+      })
+      expect(mockDeviceModel.findOne).not.toHaveBeenCalled()
+    })
+
+    it('rejects an empty device id instead of falling back to the default', async () => {
+      await expect(
+        service.resolveSenderDevice(mockUser, ''),
+      ).rejects.toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        response: { error: 'Invalid device id' },
+      })
+      expect(mockDeviceModel.findOne).not.toHaveBeenCalled()
+    })
+
+    it('rejects an unknown device id', async () => {
+      mockDeviceModel.findOne.mockResolvedValueOnce(null)
+
+      await expect(
+        service.resolveSenderDevice(mockUser, OTHER_DEVICE),
+      ).rejects.toMatchObject({
+        status: HttpStatus.UNAUTHORIZED,
+        response: { error: 'Unauthorized' },
+      })
+    })
+
+    it("rejects another user's device id", async () => {
+      // the owner filter is what makes this a miss, so it never leaks
+      // whether the device exists
+      mockDeviceModel.findOne.mockResolvedValueOnce(null)
+
+      await expect(
+        service.resolveSenderDevice(mockUser, OTHER_DEVICE),
+      ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED })
+      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
+        _id: OTHER_DEVICE,
+        user: mockUser._id,
+      })
+    })
+
+    it("lets an admin resolve another user's device", async () => {
+      const device = { _id: OTHER_DEVICE, enabled: true, user: 'user123' }
+      mockDeviceModel.findOne.mockResolvedValueOnce(device)
+
+      const result = await service.resolveSenderDevice(mockAdmin, OTHER_DEVICE)
+
+      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({ _id: OTHER_DEVICE })
+      expect(result).toEqual(device)
+    })
+
+    it('resolves an explicitly requested device that is disabled', async () => {
+      // sendSMS reports the disabled device, so the message stays canonical
+      const device = { _id: OWN_DEVICE, enabled: false, user: mockUser._id }
+      mockDeviceModel.findOne.mockResolvedValueOnce(device)
+
+      const result = await service.resolveSenderDevice(mockUser, OWN_DEVICE)
+
+      expect(result).toEqual(device)
+    })
+
+    it('prefers the enabled default device when no id is given', async () => {
+      const device = { _id: OWN_DEVICE, enabled: true, isDefault: true }
+      mockDeviceModel.findOne.mockResolvedValueOnce(device)
+
+      const result = await service.resolveSenderDevice(mockUser)
+
+      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
+        user: mockUser._id,
+        isDefault: true,
+        enabled: true,
+      })
+      expect(mockDeviceModel.findOne).toHaveBeenCalledTimes(1)
+      expect(result).toEqual(device)
+    })
+
+    it('falls back to the most recently active enabled device', async () => {
+      const device = { _id: OTHER_DEVICE, enabled: true }
+      const sort = jest.fn().mockResolvedValue(device)
+      mockDeviceModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockReturnValueOnce({ sort })
+
+      const result = await service.resolveSenderDevice(mockUser)
+
+      expect(mockDeviceModel.findOne).toHaveBeenLastCalledWith({
+        user: mockUser._id,
+        enabled: true,
+      })
+      expect(sort).toHaveBeenCalledWith({ lastHeartbeat: -1, _id: -1 })
+      expect(result).toEqual(device)
+    })
+
+    it('throws when the user has no enabled device', async () => {
+      const sort = jest.fn().mockResolvedValue(null)
+      mockDeviceModel.findOne
+        .mockResolvedValueOnce(null)
+        .mockReturnValueOnce({ sort })
+
+      await expect(service.resolveSenderDevice(mockUser)).rejects.toMatchObject({
+        status: HttpStatus.BAD_REQUEST,
+        response: {
+          success: false,
+          error: 'No enabled device found. Enable a device or pass a deviceId.',
+        },
+      })
+    })
+  })
+
+  describe('setDefaultDevice', () => {
+    const mockDeviceId = '507f1f77bcf86cd799439011'
+    const mockDevice = {
+      _id: mockDeviceId,
+      user: 'user123',
+      enabled: true,
+    }
+
+    it('clears the previous default before marking the new one', async () => {
+      mockDeviceModel.findById.mockResolvedValue(mockDevice)
+      mockDeviceModel.updateMany.mockResolvedValue({ modifiedCount: 1 })
+      mockDeviceModel.findByIdAndUpdate.mockResolvedValue({
+        ...mockDevice,
+        isDefault: true,
+      })
+
+      const result = await service.setDefaultDevice(mockDeviceId)
+
+      expect(mockDeviceModel.updateMany).toHaveBeenCalledWith(
+        {
+          user: mockDevice.user,
+          _id: { $ne: mockDevice._id },
+          isDefault: true,
+        },
+        { $set: { isDefault: false } },
+      )
+      expect(mockDeviceModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        mockDeviceId,
+        { $set: { isDefault: true } },
+        { new: true },
+      )
+      expect(result).toMatchObject({ isDefault: true })
+    })
+
+    it('throws if the device does not exist', async () => {
+      mockDeviceModel.findById.mockResolvedValue(null)
+
+      await expect(service.setDefaultDevice(mockDeviceId)).rejects.toMatchObject(
+        { status: HttpStatus.NOT_FOUND, response: { error: 'Device not found' } },
+      )
+      expect(mockDeviceModel.updateMany).not.toHaveBeenCalled()
+      expect(mockDeviceModel.findByIdAndUpdate).not.toHaveBeenCalled()
+    })
+
+    it('allows a disabled device to be made the default', async () => {
+      const disabledDevice = { ...mockDevice, enabled: false }
+      mockDeviceModel.findById.mockResolvedValue(disabledDevice)
+      mockDeviceModel.updateMany.mockResolvedValue({ modifiedCount: 0 })
+      mockDeviceModel.findByIdAndUpdate.mockResolvedValue({
+        ...disabledDevice,
+        isDefault: true,
+      })
+
+      const result = await service.setDefaultDevice(mockDeviceId)
+
+      expect(result).toMatchObject({ enabled: false, isDefault: true })
+    })
+  })
+
   describe('updateDevice', () => {
     const mockDeviceId = 'device123'
     const mockDeviceInput: RegisterDeviceInputDTO = {
@@ -349,6 +597,20 @@ describe('GatewayService', () => {
       ).rejects.toThrow(HttpException)
       expect(mockDeviceModel.findById).toHaveBeenCalledWith(mockDeviceId)
       expect(mockDeviceModel.findByIdAndUpdate).not.toHaveBeenCalled()
+    })
+
+    it('should ignore a client-sent isDefault', async () => {
+      // set-default is the only route allowed to move the default flag
+      mockDeviceModel.findById.mockResolvedValue(mockDevice)
+      mockDeviceModel.findByIdAndUpdate.mockResolvedValue(mockDevice)
+
+      await service.updateDevice(mockDeviceId, {
+        ...mockDeviceInput,
+        isDefault: true,
+      } as any)
+
+      const [, update] = mockDeviceModel.findByIdAndUpdate.mock.calls[0]
+      expect(update.$set.isDefault).toBeUndefined()
     })
   })
 

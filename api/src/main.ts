@@ -51,6 +51,13 @@ async function bootstrap() {
     )
     .build()
   const document = SwaggerModule.createDocument(app, config)
+  // Browsers heuristically cache the spec otherwise and keep serving old docs
+  app.use((req, res, next) => {
+    if (req.path === '/' || req.path === '/-json' || req.path === '/-yaml') {
+      res.setHeader('Cache-Control', 'no-cache')
+    }
+    next()
+  })
   SwaggerModule.setup('', app, document, {
     swaggerOptions: {
       persistAuthorization: true,

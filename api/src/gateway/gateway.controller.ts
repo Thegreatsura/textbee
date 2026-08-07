@@ -35,6 +35,20 @@ import {
 import { GatewayService } from './gateway.service'
 import { CanModifyDevice } from './guards/can-modify-device.guard'
 
+// Query params arrive as strings; non-integer or out-of-range values resolve
+// to the defaults (page 1, limit 50) and limit is capped at 100.
+function parsePagination(query: {
+  page?: string
+  limit?: string
+}): { page: number; limit: number } {
+  const page = parseInt(String(query?.page), 10)
+  const limit = parseInt(String(query?.limit), 10)
+  return {
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 50,
+  }
+}
+
 @ApiTags('gateway')
 @ApiBearerAuth()
 @ApiSecurity('x-api-key')
@@ -177,12 +191,27 @@ export class GatewayController {
 
   @ApiOperation({ summary: 'Received SMS from a device' })
   @HttpCode(HttpStatus.OK)
-  // deprecate receiveSMS route in favor of receive-sms
-  @Post(['/devices/:id/receiveSMS', '/devices/:id/receive-sms'])
+  @Post('/devices/:id/receive-sms')
   @UseGuards(AuthGuard, CanModifyDevice)
   async receiveSMS(@Param('id') deviceId: string, @Body() dto: ReceivedSMSDTO) {
     const data = await this.gatewayService.receiveSMS(deviceId, dto)
     return { data }
+  }
+
+  @ApiOperation({
+    summary:
+      'Deprecated: use POST /gateway/devices/{id}/receive-sms. Received SMS from a device.',
+    deprecated: true,
+  })
+  @HttpCode(HttpStatus.OK)
+  // legacy alias kept for older app versions and integrations
+  @Post('/devices/:id/receiveSMS')
+  @UseGuards(AuthGuard, CanModifyDevice)
+  async receiveSMSLegacy(
+    @Param('id') deviceId: string,
+    @Body() dto: ReceivedSMSDTO,
+  ) {
+    return await this.receiveSMS(deviceId, dto)
   }
 
   @ApiOperation({ summary: 'Get received SMS from a device' })
@@ -190,18 +219,35 @@ export class GatewayController {
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (default: 50, max: 100)' })
   @UseGuards(AuthGuard, CanModifyDevice)
-  // deprecate getReceivedSMS route in favor of get-received-sms
-  @Get(['/devices/:id/getReceivedSMS', '/devices/:id/get-received-sms'])
+  @Get('/devices/:id/get-received-sms')
   async getReceivedSMS(
     @Param('id') deviceId: string,
     @Request() req,
   ): Promise<RetrieveSMSResponseDTO> {
-    // Extract page and limit from query params, with defaults and max values
-    const page = req.query.page ? parseInt(req.query.page, 10) : 1;
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 100) : 50;
-    
+    // Malformed or out-of-range values fall back to defaults instead of
+    // erroring, so existing callers keep working.
+    const { page, limit } = parsePagination(req.query)
+
     const result = await this.gatewayService.getReceivedSMS(deviceId, page, limit)
     return result;
+  }
+
+  @ApiOperation({
+    summary:
+      'Deprecated: use GET /gateway/devices/{id}/get-received-sms. Get received SMS from a device.',
+    deprecated: true,
+  })
+  @ApiResponse({ status: 200, type: RetrieveSMSResponseDTO })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (default: 50, max: 100)' })
+  @UseGuards(AuthGuard, CanModifyDevice)
+  // legacy alias kept for older app versions and integrations
+  @Get('/devices/:id/getReceivedSMS')
+  async getReceivedSMSLegacy(
+    @Param('id') deviceId: string,
+    @Request() req,
+  ): Promise<RetrieveSMSResponseDTO> {
+    return await this.getReceivedSMS(deviceId, req)
   }
 
   @ApiOperation({ summary: 'Get message history (sent and received) from a device' })
@@ -215,9 +261,7 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Request() req,
   ): Promise<RetrieveSMSResponseDTO> {
-    // Extract page and limit from query params, with defaults and max values
-    const page = req.query.page ? parseInt(req.query.page, 10) : 1;
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 100) : 50;
+    const { page, limit } = parsePagination(req.query)
     const type = req.query.type || '';
     const search = req.query.search || '';
 

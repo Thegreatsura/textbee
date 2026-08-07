@@ -81,3 +81,63 @@ describe('httpBrowserClient auth interceptor', () => {
     expect(headers).toEqual(['Bearer tok2'])
   })
 })
+
+describe('httpBrowserClient session-expiry interceptor', () => {
+  // Set up initial pathname for the interceptor's window.location.pathname check.
+  function setInitialPathname(pathname = '/dashboard') {
+    window.history.pushState({}, '', pathname)
+  }
+
+  function respond401(body: Record<string, unknown>) {
+    server.use(
+      http.get(`${API_BASE_URL}/ping`, () =>
+        HttpResponse.json(body, { status: 401 })
+      )
+    )
+  }
+
+  it('redirects to logout on a 401 carrying the auth-failure code', async () => {
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
+    setSessionToken('abc')
+    setInitialPathname('/dashboard')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
+    respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(navigateMock).toHaveBeenCalledWith('/logout')
+  })
+
+  it('leaves a 401 without the auth-failure code to the caller', async () => {
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
+    setSessionToken('abc')
+    setInitialPathname('/dashboard')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
+    respond401({ error: 'Unauthorized' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it('does not redirect again from the logout page itself', async () => {
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
+    setSessionToken('abc')
+    setInitialPathname('/logout')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
+    respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
+
+    await expect(client.get('/ping')).rejects.toMatchObject({
+      response: { status: 401 },
+    })
+
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+})

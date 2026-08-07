@@ -6,7 +6,6 @@ import {
   Injectable,
 } from '@nestjs/common'
 import mongoose from 'mongoose'
-import { UserRole } from '../../users/user-roles.enum'
 import { GatewayService } from '../gateway.service'
 
 @Injectable()
@@ -27,19 +26,18 @@ export class CanModifyDevice implements CanActivate {
       )
     }
 
-    const isAdmin = request.user?.role === UserRole.ADMIN
-
     // Without a user id the scoped lookup would degrade to an unscoped one
-    if (!isAdmin && !userId) {
+    if (!userId) {
       throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
     }
 
-    const device = isAdmin
-      ? await this.gatewayService.getDeviceById(deviceId)
-      : await this.gatewayService.getDeviceById(deviceId, userId)
+    const device = await this.gatewayService.getDeviceById(deviceId, userId)
 
     if (!device) {
-      throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+      throw new HttpException(
+        { error: 'Device not found' },
+        HttpStatus.NOT_FOUND,
+      )
     }
 
     return true

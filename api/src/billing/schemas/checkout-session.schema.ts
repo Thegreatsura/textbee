@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, SchemaTypes, Types } from 'mongoose'
 import { User } from '../../users/schemas/user.schema'
 
 export type CheckoutSessionDocument = CheckoutSession & Document
@@ -8,7 +8,7 @@ export type CheckoutSessionDocument = CheckoutSession & Document
 export class CheckoutSession {
   _id?: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name, required: true })
   user: User
 
   @Prop({ type: String, required: true })

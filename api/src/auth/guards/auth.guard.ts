@@ -29,7 +29,7 @@ export class AuthGuard implements CanActivate {
         userId = payload.sub
       } catch (e) {
         throw new HttpException(
-          { error: 'Unauthorized' },
+          { error: 'Unauthorized', code: 'AUTH_INVALID' },
           HttpStatus.UNAUTHORIZED,
         )
       }
@@ -51,6 +51,9 @@ export class AuthGuard implements CanActivate {
       }
     }
 
-    throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+    throw new HttpException(
+      { error: 'Unauthorized', code: 'AUTH_INVALID' },
+      HttpStatus.UNAUTHORIZED,
+    )
   }
 }

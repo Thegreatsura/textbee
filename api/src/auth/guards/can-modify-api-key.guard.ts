@@ -6,7 +6,6 @@ import {
   Injectable,
 } from '@nestjs/common'
 import mongoose from 'mongoose'
-import { UserRole } from '../../users/user-roles.enum'
 import { AuthService } from '../auth.service'
 
 @Injectable()
@@ -24,17 +23,19 @@ export class CanModifyApiKey implements CanActivate {
       throw new HttpException({ error: 'Invalid id' }, HttpStatus.BAD_REQUEST)
     }
 
-    const apiKey = await this.authService.findApiKeyById(apiKeyId)
-
-
-    if (
-      !!userId &&
-      (apiKey?.user == userId.toString() ||
-        request.user?.role == UserRole.ADMIN)
-    ) {
-      return true
+    if (!userId) {
+      throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
     }
 
-    throw new HttpException({ error: 'Unauthorized' }, HttpStatus.UNAUTHORIZED)
+    const apiKey = await this.authService.findApiKeyById(apiKeyId)
+
+    if (!apiKey || apiKey.user?.toString() !== userId.toString()) {
+      throw new HttpException(
+        { error: 'API key not found' },
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    return true
   }
 }

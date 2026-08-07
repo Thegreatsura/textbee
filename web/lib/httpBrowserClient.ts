@@ -5,6 +5,17 @@ const httpBrowserClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || '',
 })
 
+// Navigation seam for testing; defaults to real window.location assignment.
+let navigate: (url: string) => void = (url) => {
+  if (typeof window !== 'undefined') {
+    window.location.href = url
+  }
+}
+
+export function setNavigate(fn: (url: string) => void) {
+  navigate = fn
+}
+
 // API access token, seeded from the server-fetched session by Providers and
 // kept current by its SessionTokenBridge. Held in module state so the request
 // interceptor attaches it synchronously instead of paying a /api/auth/session
@@ -44,20 +55,22 @@ httpBrowserClient.interceptors.request.use(async (config) => {
   return config
 })
 
-// Global session-expiry handling: any 401 from the API means the stored token
-// is no longer valid, so send the user to logout. This replaces the previous
-// per-navigation whoAmI check in the layout wrapper.
+// Global session-expiry handling: only a 401 carrying the API's auth-failure
+// code means the stored token is no longer valid, so send the user to logout.
+// Other 401s stay with the caller. This replaces the previous per-navigation
+// whoAmI check in the layout wrapper.
 httpBrowserClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (
       typeof window !== 'undefined' &&
-      error?.response?.status === 401
+      error?.response?.status === 401 &&
+      error?.response?.data?.code === 'AUTH_INVALID'
     ) {
       const { pathname } = window.location
       if (!pathname.includes('/logout') && !pathname.includes('/login')) {
         setSessionToken(null)
-        window.location.href = '/logout'
+        navigate('/logout')
       }
     }
     return Promise.reject(error)

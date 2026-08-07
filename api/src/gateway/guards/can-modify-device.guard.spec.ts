@@ -1,4 +1,4 @@
-import { HttpException } from '@nestjs/common'
+import { HttpException, HttpStatus } from '@nestjs/common'
 import { ExecutionContext } from '@nestjs/common'
 import { CanModifyDevice } from './can-modify-device.guard'
 import { GatewayService } from '../gateway.service'
@@ -41,32 +41,38 @@ describe('CanModifyDevice', () => {
     gatewayService.getDeviceById.mockImplementation(scopedLookupFor('owner'))
     const request = { params: { id: VALID_ID }, user: { id: 'attacker' } }
 
-    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
-      HttpException,
-    )
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
     expect(gatewayService.getDeviceById).toHaveBeenCalledWith(
       VALID_ID,
       'attacker',
     )
   })
 
-  it('rejects a non-admin request with no authenticated user id', async () => {
+  it('rejects a request with no authenticated user id', async () => {
     const request = { params: { id: VALID_ID }, user: {} }
 
-    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
-      HttpException,
-    )
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.UNAUTHORIZED,
+    })
     expect(gatewayService.getDeviceById).not.toHaveBeenCalled()
   })
 
-  it('allows an admin regardless of ownership', async () => {
-    gatewayService.getDeviceById.mockResolvedValue({ user: 'owner' })
+  it("scopes an admin to their own devices like any other user", async () => {
+    gatewayService.getDeviceById.mockImplementation(scopedLookupFor('owner'))
     const request = {
       params: { id: VALID_ID },
       user: { id: 'someone-else', role: UserRole.ADMIN },
     }
 
-    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
+    expect(gatewayService.getDeviceById).toHaveBeenCalledWith(
+      VALID_ID,
+      'someone-else',
+    )
   })
 
   it('throws 400 for an invalid device id', async () => {
@@ -82,8 +88,8 @@ describe('CanModifyDevice', () => {
     gatewayService.getDeviceById.mockResolvedValue(null)
     const request = { params: { id: VALID_ID }, user: { id: 'user_1' } }
 
-    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
-      HttpException,
-    )
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
   })
 })

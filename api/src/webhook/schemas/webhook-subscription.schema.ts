@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, Types } from 'mongoose'
+import { Document, SchemaTypes, Types } from 'mongoose'
 import { User } from '../../users/schemas/user.schema'
 import { WebhookEvent } from '../webhook-event.enum'
 
@@ -9,7 +9,7 @@ export type WebhookSubscriptionDocument = WebhookSubscription & Document
 export class WebhookSubscription {
   _id?: Types.ObjectId
 
-  @Prop({ type: Types.ObjectId, ref: User.name, required: true })
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name, required: true })
   user: User
 
   @Prop({ type: String, maxlength: 64, trim: true })

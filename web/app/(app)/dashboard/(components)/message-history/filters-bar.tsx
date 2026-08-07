@@ -69,7 +69,7 @@ export default function FiltersBar({
   return (
     <div className='space-y-3'>
       <div className='flex flex-col gap-2 sm:flex-row sm:items-center'>
-        <div className='relative flex-1'>
+        <div className='relative flex-1 sm:max-w-sm'>
           <Search className='pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground' />
           <Label htmlFor='message-search' className='sr-only'>
             Search messages
@@ -101,14 +101,18 @@ export default function FiltersBar({
             Device
           </Label>
           <Select value={currentDevice} onValueChange={onDeviceChange}>
-            <SelectTrigger id='history-device' className='h-9 w-full sm:w-52'>
+            <SelectTrigger id='history-device' className='h-9 w-full sm:w-64'>
               <SelectValue placeholder='Select a device' />
             </SelectTrigger>
             <SelectContent>
               {devices.map((device) => (
                 <SelectItem key={device._id} value={device._id}>
                   {formatDeviceName(device)}
-                  {device.enabled ? '' : ' (disabled)'}
+                  {!device.enabled
+                    ? ' (disabled)'
+                    : device.isDefault
+                      ? ' (default)'
+                      : ''}
                 </SelectItem>
               ))}
             </SelectContent>

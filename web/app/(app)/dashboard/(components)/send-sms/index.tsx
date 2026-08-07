@@ -65,15 +65,18 @@ export default function SendSms() {
   // because filter() returns a new array.
   const soleDeviceId =
     enabledDevices.length === 1 ? enabledDevices[0]._id : undefined
+  const preselectedDeviceId =
+    enabledDevices.find((d) => d.isDefault)?._id ?? soleDeviceId
 
-  // Preselect the only usable device once devices have loaded. This used to be
-  // computed in defaultValues, which react-hook-form reads once on mount while
-  // the query is still pending, so the auto-select never actually happened.
+  // Preselect the default device, or the only usable one, once devices have
+  // loaded. This used to be computed in defaultValues, which react-hook-form
+  // reads once on mount while the query is still pending, so the auto-select
+  // never actually happened.
   useEffect(() => {
-    if (!selectedDeviceId && soleDeviceId) {
-      setValue('deviceId', soleDeviceId)
+    if (!selectedDeviceId && preselectedDeviceId) {
+      setValue('deviceId', preselectedDeviceId)
     }
-  }, [selectedDeviceId, soleDeviceId, setValue])
+  }, [selectedDeviceId, preselectedDeviceId, setValue])
 
   const selectedDevice = devices?.find((d) => d._id === selectedDeviceId)
   const availableSims = Array.isArray((selectedDevice as any)?.simInfo?.sims)
@@ -130,7 +133,11 @@ export default function SendSms() {
                         disabled={!device.enabled}
                       >
                         {formatDeviceName(device)}
-                        {device.enabled ? '' : ' (disabled)'}
+                        {!device.enabled
+                          ? ' (disabled)'
+                          : device.isDefault
+                            ? ' (default)'
+                            : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>

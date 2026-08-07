@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import { authenticate } from './session'
 import { mockApi } from './mock-api'
+import { mockDevices } from '../test/fixtures'
 
 // The dashboard sections stream behind a loading.tsx boundary, so their HTML
 // can paint before React hydrates. A click landing in that gap hits a button
@@ -184,4 +185,66 @@ test.describe('dashboard (mocked API, no real backend)', () => {
     await expect(page.getByText('Connected now')).toHaveCount(0)
   })
 
+  // The default device is what the API sends from when a request omits
+  // deviceId, so promoting one has to be visible on the list straight away.
+  test('setting a default device moves the badge to that device', async ({
+    page,
+    context,
+  }) => {
+    await authenticate(context)
+    await mockApi(page)
+
+    // Fixtures start with the Pixel 8 as default. Both devices are served
+    // enabled because only enabled devices offer the promote action. The list
+    // refetches after the mutation, so the flipped flag has to come from the
+    // served list too: a 200 alone would leave the badge where it was.
+    let defaultDeviceId = mockDevices[0]._id
+    await page.route('**/api/v1/gateway/devices', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback()
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: mockDevices.map((device) => ({
+            ...device,
+            enabled: true,
+            isDefault: device._id === defaultDeviceId,
+          })),
+        }),
+      })
+    })
+    await page.route('**/api/v1/gateway/devices/*/set-default', (route) => {
+      // A UI bug posting the Pixel's id would otherwise still move the badge
+      expect(route.request().url()).toContain(mockDevices[1]._id)
+      expect(route.request().method()).toBe('POST')
+      defaultDeviceId = mockDevices[1]._id
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          data: { ...mockDevices[1], enabled: true, isDefault: true },
+        }),
+      })
+    })
+
+    await gotoDashboard(page)
+
+    // The badge sits in the row beside the device name, so the heading's
+    // parent is what scopes each assertion to one device.
+    const badges = (name: string) =>
+      page.getByRole('heading', { name, level: 3 }).locator('xpath=..')
+    const pixel = badges('Google Pixel 8')
+    const galaxy = badges('Samsung Galaxy S23')
+
+    await expect(pixel).toContainText('Default')
+    await expect(galaxy).not.toContainText('Default')
+
+    // Second row is the Galaxy; the already-default Pixel offers no such item.
+    await page.getByRole('button', { name: 'Device actions' }).nth(1).click()
+    await page.getByRole('menuitem', { name: 'Set as default' }).click()
+
+    await expect(page.getByText('Default device updated')).toBeVisible()
+    await expect(galaxy).toContainText('Default')
+    await expect(pixel).not.toContainText('Default')
+  })
 })

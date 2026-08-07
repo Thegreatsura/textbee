@@ -49,12 +49,13 @@ Manage SMS messages through a web dashboard or a REST API. textbee is ideal for 
 
 
 ### Sending an SMS
+
+Messages go out through your default device, or otherwise the enabled device with the most recent heartbeat. Pass an optional `deviceId` in the request body to send from a specific device instead. The older `/gateway/devices/{deviceId}/send-sms` route still works but is deprecated.
  
 ```javascript
 const API_KEY = 'YOUR_API_KEY';
-const DEVICE_ID = 'YOUR_DEVICE_ID';
  
-await axios.post(`https://api.textbee.dev/api/v1/gateway/devices/${DEVICE_ID}/send-sms`, {
+await axios.post('https://api.textbee.dev/api/v1/gateway/send-sms', {
   recipients: [ '+251912345678' ],
   message: 'Hello World!',
 }, {
@@ -68,10 +69,9 @@ await axios.post(`https://api.textbee.dev/api/v1/gateway/devices/${DEVICE_ID}/se
 import requests
  
 API_KEY = 'YOUR_API_KEY'
-DEVICE_ID = 'YOUR_DEVICE_ID'
  
 requests.post(
-    f'https://api.textbee.dev/api/v1/gateway/devices/{DEVICE_ID}/send-sms',
+    'https://api.textbee.dev/api/v1/gateway/send-sms',
     json={
         'recipients': ['+251912345678'],
         'message': 'Hello World!',
@@ -84,7 +84,7 @@ requests.post(
 <details>
 <summary><b>curl</b></summary>
 ```bash
-curl -X POST "https://api.textbee.dev/api/v1/gateway/devices/YOUR_DEVICE_ID/send-sms" \
+curl -X POST "https://api.textbee.dev/api/v1/gateway/send-sms" \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{

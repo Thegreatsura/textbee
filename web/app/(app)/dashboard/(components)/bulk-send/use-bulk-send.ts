@@ -211,10 +211,11 @@ export function useBulkSend() {
         ...(simSubscriptionId !== undefined && { simSubscriptionId }),
       }))
 
-      return httpBrowserClient.post(
-        ApiEndpoints.gateway.sendBulkSMS(deviceId!),
-        { messageTemplate: template, messages }
-      )
+      return httpBrowserClient.post(ApiEndpoints.gateway.sendBulkSMS(), {
+        deviceId,
+        messageTemplate: template,
+        messages,
+      })
     },
     // A campaign moves the quota bar the most, so it invalidates the same keys
     // as a single send.

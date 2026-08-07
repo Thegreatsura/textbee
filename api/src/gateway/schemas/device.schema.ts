@@ -17,6 +17,9 @@ export class Device {
   @Prop({ type: Boolean, default: false })
   enabled: boolean
 
+  @Prop({ type: Boolean, default: false })
+  isDefault: boolean
+
   @Prop({ type: String })
   fcmToken: string
 
@@ -206,3 +209,5 @@ export class Device {
 }
 
 export const DeviceSchema = SchemaFactory.createForClass(Device)
+
+DeviceSchema.index({ user: 1 })

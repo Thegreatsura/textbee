@@ -35,8 +35,22 @@ export type Endpoint = {
 
 const PLACEHOLDER_DEVICE = 'YOUR_DEVICE_ID'
 
+// The send endpoints take deviceId as an optional body field, so the samples
+// have two variants: with a real id, and without one. When deviceId is omitted,
+// the API sends from the account's default device, or otherwise the enabled
+// device with the most recent heartbeat. Both are built from this single set of
+// fragments so they cannot drift apart.
+const deviceIdField = (deviceId?: string) => ({
+  curl: deviceId ? `\n    "deviceId": "${deviceId}",` : '',
+  node: deviceId ? `\n      deviceId: '${deviceId}',` : '',
+  python: deviceId ? `\n        'deviceId': '${deviceId}',` : '',
+  php: deviceId ? `\n        'deviceId' => '${deviceId}',` : '',
+  go: deviceId ? `"deviceId":"${deviceId}",` : '',
+})
+
 export function buildEndpoints(deviceId?: string): Endpoint[] {
   const id = deviceId || PLACEHOLDER_DEVICE
+  const device = deviceIdField(deviceId)
 
   return [
     {
@@ -44,24 +58,24 @@ export function buildEndpoints(deviceId?: string): Endpoint[] {
       title: 'Send an SMS',
       blurb: 'Send one message to one or more recipients.',
       method: 'POST',
-      path: `/gateway/devices/${id}/send-sms`,
+      path: '/gateway/send-sms',
       samples: {
-        curl: `curl -X POST "${API_BASE_URL}/gateway/devices/${id}/send-sms" \\
+        curl: `curl -X POST "${API_BASE_URL}/gateway/send-sms" \\
   -H "x-api-key: $TEXTBEE_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{
+  -d '{${device.curl}
     "recipients": ["+14155550101"],
     "message": "Hello from textbee"
   }'`,
         node: `const res = await fetch(
-  '${API_BASE_URL}/gateway/devices/${id}/send-sms',
+  '${API_BASE_URL}/gateway/send-sms',
   {
     method: 'POST',
     headers: {
       'x-api-key': process.env.TEXTBEE_API_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: JSON.stringify({${device.node}
       recipients: ['+14155550101'],
       message: 'Hello from textbee',
     }),
@@ -72,9 +86,9 @@ console.log(await res.json())`,
         python: `import os, requests
 
 res = requests.post(
-    '${API_BASE_URL}/gateway/devices/${id}/send-sms',
+    '${API_BASE_URL}/gateway/send-sms',
     headers={'x-api-key': os.environ['TEXTBEE_API_KEY']},
-    json={
+    json={${device.python}
         'recipients': ['+14155550101'],
         'message': 'Hello from textbee',
     },
@@ -82,7 +96,7 @@ res = requests.post(
 
 print(res.json())`,
         php: `<?php
-$ch = curl_init('${API_BASE_URL}/gateway/devices/${id}/send-sms');
+$ch = curl_init('${API_BASE_URL}/gateway/send-sms');
 
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
@@ -91,7 +105,7 @@ curl_setopt_array($ch, [
         'x-api-key: ' . getenv('TEXTBEE_API_KEY'),
         'Content-Type: application/json',
     ],
-    CURLOPT_POSTFIELDS => json_encode([
+    CURLOPT_POSTFIELDS => json_encode([${device.php}
         'recipients' => ['+14155550101'],
         'message' => 'Hello from textbee',
     ]),
@@ -109,10 +123,10 @@ import (
 )
 
 func main() {
-	body := []byte(\`{"recipients":["+14155550101"],"message":"Hello from textbee"}\`)
+	body := []byte(\`{${device.go}"recipients":["+14155550101"],"message":"Hello from textbee"}\`)
 
 	req, _ := http.NewRequest("POST",
-		"${API_BASE_URL}/gateway/devices/${id}/send-sms",
+		"${API_BASE_URL}/gateway/send-sms",
 		bytes.NewBuffer(body))
 	req.Header.Set("x-api-key", os.Getenv("TEXTBEE_API_KEY"))
 	req.Header.Set("Content-Type", "application/json")
@@ -140,26 +154,26 @@ func main() {
       title: 'Send messages in bulk',
       blurb: 'Send different messages to different recipients in one request.',
       method: 'POST',
-      path: `/gateway/devices/${id}/send-bulk-sms`,
+      path: '/gateway/send-bulk-sms',
       samples: {
-        curl: `curl -X POST "${API_BASE_URL}/gateway/devices/${id}/send-bulk-sms" \\
+        curl: `curl -X POST "${API_BASE_URL}/gateway/send-bulk-sms" \\
   -H "x-api-key: $TEXTBEE_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{
+  -d '{${device.curl}
     "messages": [
       { "recipients": ["+14155550101"], "message": "Hi Alice" },
       { "recipients": ["+16475550187"], "message": "Hi Bob" }
     ]
   }'`,
         node: `const res = await fetch(
-  '${API_BASE_URL}/gateway/devices/${id}/send-bulk-sms',
+  '${API_BASE_URL}/gateway/send-bulk-sms',
   {
     method: 'POST',
     headers: {
       'x-api-key': process.env.TEXTBEE_API_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
+    body: JSON.stringify({${device.node}
       messages: [
         { recipients: ['+14155550101'], message: 'Hi Alice' },
         { recipients: ['+16475550187'], message: 'Hi Bob' },
@@ -172,9 +186,9 @@ console.log(await res.json())`,
         python: `import os, requests
 
 res = requests.post(
-    '${API_BASE_URL}/gateway/devices/${id}/send-bulk-sms',
+    '${API_BASE_URL}/gateway/send-bulk-sms',
     headers={'x-api-key': os.environ['TEXTBEE_API_KEY']},
-    json={
+    json={${device.python}
         'messages': [
             {'recipients': ['+14155550101'], 'message': 'Hi Alice'},
             {'recipients': ['+16475550187'], 'message': 'Hi Bob'},
@@ -184,7 +198,7 @@ res = requests.post(
 
 print(res.json())`,
         php: `<?php
-$ch = curl_init('${API_BASE_URL}/gateway/devices/${id}/send-bulk-sms');
+$ch = curl_init('${API_BASE_URL}/gateway/send-bulk-sms');
 
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
@@ -193,7 +207,7 @@ curl_setopt_array($ch, [
         'x-api-key: ' . getenv('TEXTBEE_API_KEY'),
         'Content-Type: application/json',
     ],
-    CURLOPT_POSTFIELDS => json_encode([
+    CURLOPT_POSTFIELDS => json_encode([${device.php}
         'messages' => [
             ['recipients' => ['+14155550101'], 'message' => 'Hi Alice'],
             ['recipients' => ['+16475550187'], 'message' => 'Hi Bob'],
@@ -213,13 +227,13 @@ import (
 )
 
 func main() {
-	body := []byte(\`{"messages":[
+	body := []byte(\`{${device.go}"messages":[
 		{"recipients":["+14155550101"],"message":"Hi Alice"},
 		{"recipients":["+16475550187"],"message":"Hi Bob"}
 	]}\`)
 
 	req, _ := http.NewRequest("POST",
-		"${API_BASE_URL}/gateway/devices/${id}/send-bulk-sms",
+		"${API_BASE_URL}/gateway/send-bulk-sms",
 		bytes.NewBuffer(body))
 	req.Header.Set("x-api-key", os.Getenv("TEXTBEE_API_KEY"))
 	req.Header.Set("Content-Type", "application/json")

@@ -155,6 +155,26 @@ export class SendBulkSMSInputDTO {
   messages: SMSData[]
 }
 
+export class SendSMSRequestDTO extends SendSMSInputDTO {
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Device to send from. When omitted, uses your default device, or the enabled device with the most recent heartbeat.',
+  })
+  deviceId?: string
+}
+
+export class SendBulkSMSRequestDTO extends SendBulkSMSInputDTO {
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Device to send from. When omitted, uses your default device, or the enabled device with the most recent heartbeat.',
+  })
+  deviceId?: string
+}
+
 export class ReceivedSMSDTO {
   @ApiProperty({
     type: String,

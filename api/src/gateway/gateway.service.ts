@@ -15,6 +15,7 @@ import {
   HeartbeatResponseDTO,
 } from './gateway.dto'
 import { User } from '../users/schemas/user.schema'
+import { UserRole } from '../users/user-roles.enum'
 import { AuthService } from '../auth/auth.service'
 import { SMS } from './schemas/sms.schema'
 import { SMSType } from './sms-type.enum'
@@ -78,7 +79,7 @@ export class GatewayService {
 
       throw new HttpException(
         {
-          message: `Active device limit reached — your plan allows up to ${deviceLimit} active device(s) and you have ${activeDeviceCount}. Disable or delete another device, or upgrade your plan at https://textbee.dev/pricing`,
+          message: `Active device limit reached: your plan allows up to ${deviceLimit} active device(s) and you have ${activeDeviceCount}. Disable or delete another device, or upgrade your plan at https://textbee.dev/pricing`,
           hasReachedLimit: true,
           deviceLimit,
           activeDeviceCount,
@@ -105,7 +106,9 @@ export class GatewayService {
 
     const now = new Date()
     const deviceData: any = { ...input, user }
-    
+    // set-default is the only writer; there is no ValidationPipe to strip it
+    delete deviceData.isDefault
+
     // Set default name to "brand model" if not provided
     if (!deviceData.name && input.brand && input.model) {
       deviceData.name = `${input.brand} ${input.model}`
@@ -135,6 +138,14 @@ export class GatewayService {
     } else {
       await this.assertDeviceLimitNotReached(user._id)
       deviceData.enabled = input.enabled ?? true
+
+      const existingDeviceCount = await this.deviceModel.countDocuments({
+        user: user._id,
+      })
+      if (existingDeviceCount === 0) {
+        deviceData.isDefault = true
+      }
+
       return await this.deviceModel.create(deviceData)
     }
   }
@@ -147,8 +158,93 @@ export class GatewayService {
     )
   }
 
-  async getDeviceById(deviceId: string): Promise<any> {
+  async getDeviceById(deviceId: string, userId?: string): Promise<any> {
+    if (userId) {
+      return await this.deviceModel.findOne({ _id: deviceId, user: userId })
+    }
     return await this.deviceModel.findById(deviceId)
+  }
+
+  // Picks the device a deviceless send should go out from. An explicit id is
+  // authorized here because the route has no :id param for CanModifyDevice.
+  async resolveSenderDevice(user: User, deviceId?: string): Promise<any> {
+    // An empty or malformed id must 400, not silently fall back to another device
+    if (deviceId != null) {
+      if (!Types.ObjectId.isValid(deviceId)) {
+        throw new HttpException(
+          { error: 'Invalid device id' },
+          HttpStatus.BAD_REQUEST,
+        )
+      }
+
+      const filter: any = { _id: deviceId }
+      if (user.role != UserRole.ADMIN) {
+        filter.user = user._id
+      }
+
+      const device = await this.deviceModel.findOne(filter)
+
+      if (!device) {
+        throw new HttpException(
+          { error: 'Unauthorized' },
+          HttpStatus.UNAUTHORIZED,
+        )
+      }
+
+      // sendSMS reports a disabled device
+      return device
+    }
+
+    const defaultDevice = await this.deviceModel.findOne({
+      user: user._id,
+      isDefault: true,
+      enabled: true,
+    })
+
+    if (defaultDevice) {
+      return defaultDevice
+    }
+
+    // BSON orders null/missing below dates, so never-heartbeated devices rank last
+    const lastActiveDevice = await this.deviceModel
+      .findOne({ user: user._id, enabled: true })
+      .sort({ lastHeartbeat: -1, _id: -1 })
+
+    if (lastActiveDevice) {
+      return lastActiveDevice
+    }
+
+    throw new HttpException(
+      {
+        success: false,
+        error: 'No enabled device found. Enable a device or pass a deviceId.',
+      },
+      HttpStatus.BAD_REQUEST,
+    )
+  }
+
+  async setDefaultDevice(deviceId: string): Promise<any> {
+    const device = await this.deviceModel.findById(deviceId)
+
+    if (!device) {
+      throw new HttpException(
+        {
+          error: 'Device not found',
+        },
+        HttpStatus.NOT_FOUND,
+      )
+    }
+
+    await this.deviceModel.updateMany(
+      { user: device.user, _id: { $ne: device._id }, isDefault: true },
+      { $set: { isDefault: false } },
+    )
+
+    return await this.deviceModel.findByIdAndUpdate(
+      deviceId,
+      { $set: { isDefault: true } },
+      { new: true },
+    )
   }
 
   async updateDevice(
@@ -180,7 +276,9 @@ export class GatewayService {
 
     const now = new Date()
     const updateData: any = { ...input }
-    
+    // set-default is the only writer; there is no ValidationPipe to strip it
+    delete updateData.isDefault
+
     // Handle simInfo if provided
     if (input.simInfo) {
       updateData.simInfo = {

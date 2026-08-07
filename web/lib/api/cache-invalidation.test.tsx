@@ -172,7 +172,7 @@ describe('cache invalidation', () => {
 
   it('sending an SMS refreshes the message list, the stats and the quota', async () => {
     server.use(
-      http.post(url(ApiEndpoints.gateway.sendSMS(deviceId)), () =>
+      http.post(url(ApiEndpoints.gateway.sendSMS()), () =>
         HttpResponse.json({ data: { success: true } })
       )
     )
@@ -207,7 +207,7 @@ describe('cache invalidation', () => {
 
   it('a bulk send refreshes the same caches as a single send', async () => {
     server.use(
-      http.post(url(ApiEndpoints.gateway.sendBulkSMS(deviceId)), () =>
+      http.post(url(ApiEndpoints.gateway.sendBulkSMS()), () =>
         HttpResponse.json({ data: { success: true } })
       )
     )

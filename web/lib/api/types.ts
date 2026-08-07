@@ -38,6 +38,8 @@ export interface Device {
   brand?: string
   model?: string
   enabled?: boolean
+  // The device the API sends from when a request omits deviceId.
+  isDefault?: boolean
   // No `status` field: the Device schema has none and the API never sends one,
   // so `device.status === 'online'` was always false and every device rendered
   // with the muted "inactive" badge even while enabled and working.

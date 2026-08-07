@@ -39,7 +39,11 @@ export default function ApiGuide() {
 
   const enabledDevices = devices?.filter((d) => d.enabled) ?? []
   const selectedDeviceId =
-    deviceId || enabledDevices[0]?._id || devices?.[0]?._id || ''
+    deviceId ||
+    enabledDevices.find((d) => d.isDefault)?._id ||
+    enabledDevices[0]?._id ||
+    devices?.[0]?._id ||
+    ''
   const hasDevice = Boolean(selectedDeviceId)
 
   const endpoints = useMemo(
@@ -61,7 +65,9 @@ export default function ApiGuide() {
             <code className='rounded bg-muted px-1 py-0.5 font-mono text-xs'>
               x-api-key
             </code>{' '}
-            header, and the id of the device that will send the message.
+            header. A device id is optional when sending: leave it out and the
+            API uses your default device, or otherwise the enabled device with
+            the most recent heartbeat. The read endpoints still name a device.
           </p>
         </div>
 

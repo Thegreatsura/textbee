@@ -10,6 +10,7 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common'
 import {
   ApiBearerAuth,
@@ -210,9 +211,23 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Request() req,
   ): Promise<RetrieveSMSResponseDTO> {
-    // Extract page and limit from query params, with defaults and max values
-    const page = req.query.page ? parseInt(req.query.page, 10) : 1;
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 100) : 50;
+    // Extract page and limit from query params, with defaults and validation
+    let page = 1;
+    let limit = 50;
+
+    if (req.query.page !== undefined) {
+      page = parseInt(req.query.page, 10);
+      if (isNaN(page) || !Number.isInteger(page) || page < 1) {
+        throw new BadRequestException('Page must be an integer greater than or equal to 1');
+      }
+    }
+
+    if (req.query.limit !== undefined) {
+      limit = parseInt(req.query.limit, 10);
+      if (isNaN(limit) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        throw new BadRequestException('Limit must be an integer between 1 and 100 inclusive');
+      }
+    }
 
     const result = await this.gatewayService.getReceivedSMS(deviceId, page, limit)
     return result;

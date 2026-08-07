@@ -1,4 +1,4 @@
-import { HttpException } from '@nestjs/common'
+import { HttpException, HttpStatus } from '@nestjs/common'
 import { ExecutionContext } from '@nestjs/common'
 import { CanModifyApiKey } from './can-modify-api-key.guard'
 import { AuthService } from '../auth.service'
@@ -31,19 +31,30 @@ describe('CanModifyApiKey', () => {
     authService.findApiKeyById.mockResolvedValue({ user: 'owner' })
     const request = { params: { id: VALID_ID }, user: { id: 'attacker' } }
 
-    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
-      HttpException,
-    )
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
   })
 
-  it('allows an admin regardless of ownership', async () => {
+  it('scopes an admin to their own api keys like any other user', async () => {
     authService.findApiKeyById.mockResolvedValue({ user: 'owner' })
     const request = {
       params: { id: VALID_ID },
       user: { id: 'someone-else', role: UserRole.ADMIN },
     }
 
-    await expect(guard.canActivate(contextFor(request))).resolves.toBe(true)
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
+  })
+
+  it('rejects a request with no authenticated user id', async () => {
+    const request = { params: { id: VALID_ID }, user: {} }
+
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.UNAUTHORIZED,
+    })
+    expect(authService.findApiKeyById).not.toHaveBeenCalled()
   })
 
   it('throws 400 for an invalid id', async () => {
@@ -59,8 +70,8 @@ describe('CanModifyApiKey', () => {
     authService.findApiKeyById.mockResolvedValue(null)
     const request = { params: { id: VALID_ID }, user: { id: 'user_1' } }
 
-    await expect(guard.canActivate(contextFor(request))).rejects.toThrow(
-      HttpException,
-    )
+    await expect(guard.canActivate(contextFor(request))).rejects.toMatchObject({
+      status: HttpStatus.NOT_FOUND,
+    })
   })
 })

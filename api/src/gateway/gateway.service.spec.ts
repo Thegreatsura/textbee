@@ -10,7 +10,7 @@ import { AuthService } from '../auth/auth.service'
 import { WebhookService } from '../webhook/webhook.service'
 import { BillingService } from '../billing/billing.service'
 import { SmsQueueService } from './queue/sms-queue.service'
-import { Model } from 'mongoose'
+import { Model, Types } from 'mongoose'
 import { ConfigModule } from '@nestjs/config'
 import { HttpException, HttpStatus } from '@nestjs/common'
 import * as firebaseAdmin from 'firebase-admin'
@@ -380,7 +380,7 @@ describe('GatewayService', () => {
       const result = await service.resolveSenderDevice(mockUser, OWN_DEVICE)
 
       expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
-        _id: OWN_DEVICE,
+        _id: new Types.ObjectId(OWN_DEVICE),
         user: mockUser._id,
       })
       expect(result).toEqual(device)
@@ -412,8 +412,8 @@ describe('GatewayService', () => {
       await expect(
         service.resolveSenderDevice(mockUser, OTHER_DEVICE),
       ).rejects.toMatchObject({
-        status: HttpStatus.UNAUTHORIZED,
-        response: { error: 'Unauthorized' },
+        status: HttpStatus.NOT_FOUND,
+        response: { error: 'Device not found' },
       })
     })
 
@@ -424,21 +424,23 @@ describe('GatewayService', () => {
 
       await expect(
         service.resolveSenderDevice(mockUser, OTHER_DEVICE),
-      ).rejects.toMatchObject({ status: HttpStatus.UNAUTHORIZED })
+      ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND })
       expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
-        _id: OTHER_DEVICE,
+        _id: new Types.ObjectId(OTHER_DEVICE),
         user: mockUser._id,
       })
     })
 
-    it("lets an admin resolve another user's device", async () => {
-      const device = { _id: OTHER_DEVICE, enabled: true, user: 'user123' }
-      mockDeviceModel.findOne.mockResolvedValueOnce(device)
+    it('scopes an admin to their own devices like any other user', async () => {
+      mockDeviceModel.findOne.mockResolvedValueOnce(null)
 
-      const result = await service.resolveSenderDevice(mockAdmin, OTHER_DEVICE)
-
-      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({ _id: OTHER_DEVICE })
-      expect(result).toEqual(device)
+      await expect(
+        service.resolveSenderDevice(mockAdmin, OTHER_DEVICE),
+      ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND })
+      expect(mockDeviceModel.findOne).toHaveBeenCalledWith({
+        _id: new Types.ObjectId(OTHER_DEVICE),
+        user: mockAdmin._id,
+      })
     })
 
     it('resolves an explicitly requested device that is disabled', async () => {
@@ -1193,8 +1195,8 @@ describe('GatewayService', () => {
         await service.getSMSById(OWN_DEVICE, OTHER_SMS)
 
         expect(mockSmsModel.findOne).toHaveBeenCalledWith({
-          _id: OTHER_SMS,
-          device: OWN_DEVICE,
+          _id: new Types.ObjectId(OTHER_SMS),
+          device: new Types.ObjectId(OWN_DEVICE),
         })
       })
 

@@ -15,7 +15,6 @@ import {
   HeartbeatResponseDTO,
 } from './gateway.dto'
 import { User } from '../users/schemas/user.schema'
-import { UserRole } from '../users/user-roles.enum'
 import { AuthService } from '../auth/auth.service'
 import { SMS } from './schemas/sms.schema'
 import { SMSType } from './sms-type.enum'
@@ -160,7 +159,12 @@ export class GatewayService {
 
   async getDeviceById(deviceId: string, userId?: string): Promise<any> {
     if (userId) {
-      return await this.deviceModel.findOne({ _id: deviceId, user: userId })
+      // Explicit casts so the scoped lookup never depends on schema-level
+      // string casting.
+      return await this.deviceModel.findOne({
+        _id: new Types.ObjectId(deviceId),
+        user: new Types.ObjectId(userId),
+      })
     }
     return await this.deviceModel.findById(deviceId)
   }
@@ -177,17 +181,15 @@ export class GatewayService {
         )
       }
 
-      const filter: any = { _id: deviceId }
-      if (user.role != UserRole.ADMIN) {
-        filter.user = user._id
-      }
-
-      const device = await this.deviceModel.findOne(filter)
+      const device = await this.deviceModel.findOne({
+        _id: new Types.ObjectId(deviceId),
+        user: user._id,
+      })
 
       if (!device) {
         throw new HttpException(
-          { error: 'Unauthorized' },
-          HttpStatus.UNAUTHORIZED,
+          { error: 'Device not found' },
+          HttpStatus.NOT_FOUND,
         )
       }
 
@@ -1283,7 +1285,10 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
   // the device that owns it. A mismatch is reported as not found.
   async getSMSById(deviceId: string, smsId: string): Promise<any> {
     const sms = Types.ObjectId.isValid(smsId)
-      ? await this.smsModel.findOne({ _id: smsId, device: deviceId })
+      ? await this.smsModel.findOne({
+          _id: new Types.ObjectId(smsId),
+          device: new Types.ObjectId(deviceId),
+        })
       : null;
 
     if (!sms) {

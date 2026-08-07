@@ -906,9 +906,13 @@ export class GatewayService {
       )
     }
 
+    // Type checks matter: without a global ValidationPipe the body is not
+    // coerced, and these fields flow into query filters.
     if (
       (!dto.receivedAt && !dto.receivedAtInMillis) ||
+      typeof dto.sender !== 'string' ||
       !dto.sender ||
+      typeof dto.message !== 'string' ||
       !dto.message
     ) {
       console.error(`receiveSMS: Invalid received SMS data (sender: ${dto.sender}, message: ${dto.message}) (receivedAt: ${dto.receivedAt}, receivedAtInMillis: ${dto.receivedAtInMillis})`)

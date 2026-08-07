@@ -10,7 +10,6 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
-  BadRequestException,
 } from '@nestjs/common'
 import {
   ApiBearerAuth,
@@ -35,6 +34,20 @@ import {
 } from './gateway.dto'
 import { GatewayService } from './gateway.service'
 import { CanModifyDevice } from './guards/can-modify-device.guard'
+
+// Query params arrive as strings; non-integer or out-of-range values resolve
+// to the defaults (page 1, limit 50) and limit is capped at 100.
+function parsePagination(query: {
+  page?: string
+  limit?: string
+}): { page: number; limit: number } {
+  const page = parseInt(String(query?.page), 10)
+  const limit = parseInt(String(query?.limit), 10)
+  return {
+    page: Number.isInteger(page) && page > 0 ? page : 1,
+    limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 50,
+  }
+}
 
 @ApiTags('gateway')
 @ApiBearerAuth()
@@ -211,23 +224,9 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Request() req,
   ): Promise<RetrieveSMSResponseDTO> {
-    // Extract page and limit from query params, with defaults and validation
-    let page = 1;
-    let limit = 50;
-
-    if (req.query.page !== undefined) {
-      page = parseInt(req.query.page, 10);
-      if (isNaN(page) || !Number.isInteger(page) || page < 1) {
-        throw new BadRequestException('Page must be an integer greater than or equal to 1');
-      }
-    }
-
-    if (req.query.limit !== undefined) {
-      limit = parseInt(req.query.limit, 10);
-      if (isNaN(limit) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
-        throw new BadRequestException('Limit must be an integer between 1 and 100 inclusive');
-      }
-    }
+    // Malformed or out-of-range values fall back to defaults instead of
+    // erroring, so existing callers keep working.
+    const { page, limit } = parsePagination(req.query)
 
     const result = await this.gatewayService.getReceivedSMS(deviceId, page, limit)
     return result;
@@ -262,9 +261,7 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Request() req,
   ): Promise<RetrieveSMSResponseDTO> {
-    // Extract page and limit from query params, with defaults and max values
-    const page = req.query.page ? parseInt(req.query.page, 10) : 1;
-    const limit = req.query.limit ? Math.min(parseInt(req.query.limit, 10), 100) : 50;
+    const { page, limit } = parsePagination(req.query)
     const type = req.query.type || '';
     const search = req.query.search || '';
 

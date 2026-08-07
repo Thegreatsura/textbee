@@ -79,6 +79,18 @@ export class GatewayController {
     return { data }
   }
 
+  @ApiOperation({ summary: 'Get device by id' })
+  @UseGuards(AuthGuard, CanModifyDevice)
+  @Get('/devices/:id')
+  async getDevice(@Param('id') deviceId: string) {
+    const data = await this.gatewayService.getDeviceById(
+      deviceId,
+      undefined,
+      '-fcmToken -serial',
+    )
+    return { data }
+  }
+
   @ApiOperation({ summary: 'Update device' })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Patch('/devices/:id')

@@ -157,16 +157,23 @@ export class GatewayService {
     )
   }
 
-  async getDeviceById(deviceId: string, userId?: string): Promise<any> {
+  async getDeviceById(
+    deviceId: string,
+    userId?: string,
+    projection?: string,
+  ): Promise<any> {
     if (userId) {
       // Explicit casts so the scoped lookup never depends on schema-level
       // string casting.
-      return await this.deviceModel.findOne({
-        _id: new Types.ObjectId(deviceId),
-        user: new Types.ObjectId(userId),
-      })
+      return await this.deviceModel.findOne(
+        {
+          _id: new Types.ObjectId(deviceId),
+          user: new Types.ObjectId(userId),
+        },
+        projection,
+      )
     }
-    return await this.deviceModel.findById(deviceId)
+    return await this.deviceModel.findById(deviceId, projection)
   }
 
   // Picks the device a deviceless send should go out from. An explicit id is

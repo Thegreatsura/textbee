@@ -83,24 +83,9 @@ describe('httpBrowserClient auth interceptor', () => {
 })
 
 describe('httpBrowserClient session-expiry interceptor', () => {
-  // Axios resolves relative URLs against window.location in jsdom, so the
-  // stub has to look like a real Location, not a bare object.
-  function stubLocation(pathname = '/dashboard') {
-    const base = 'http://localhost:3000'
-    const loc = {
-      pathname,
-      href: `${base}${pathname}`,
-      origin: base,
-      protocol: 'http:',
-      host: 'localhost:3000',
-      hostname: 'localhost',
-    }
-    Object.defineProperty(window, 'location', {
-      value: loc,
-      writable: true,
-      configurable: true,
-    })
-    return loc as { pathname: string; href: string }
+  // Set up initial pathname for the interceptor's window.location.pathname check.
+  function setInitialPathname(pathname = '/dashboard') {
+    window.history.pushState({}, '', pathname)
   }
 
   function respond401(body: Record<string, unknown>) {
@@ -112,41 +97,47 @@ describe('httpBrowserClient session-expiry interceptor', () => {
   }
 
   it('redirects to logout on a 401 carrying the auth-failure code', async () => {
-    const { default: client, setSessionToken } = await loadClient()
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
     setSessionToken('abc')
-    const loc = stubLocation()
+    setInitialPathname('/dashboard')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
     respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
 
     await expect(client.get('/ping')).rejects.toMatchObject({
       response: { status: 401 },
     })
 
-    expect(loc.href).toBe('/logout')
+    expect(navigateMock).toHaveBeenCalledWith('/logout')
   })
 
   it('leaves a 401 without the auth-failure code to the caller', async () => {
-    const { default: client, setSessionToken } = await loadClient()
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
     setSessionToken('abc')
-    const loc = stubLocation()
+    setInitialPathname('/dashboard')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
     respond401({ error: 'Unauthorized' })
 
     await expect(client.get('/ping')).rejects.toMatchObject({
       response: { status: 401 },
     })
 
-    expect(loc.href).toBe('http://localhost:3000/dashboard')
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 
   it('does not redirect again from the logout page itself', async () => {
-    const { default: client, setSessionToken } = await loadClient()
+    const { default: client, setSessionToken, setNavigate } = await loadClient()
     setSessionToken('abc')
-    const loc = stubLocation('/logout')
+    setInitialPathname('/logout')
+    const navigateMock = vi.fn()
+    setNavigate(navigateMock)
     respond401({ error: 'Unauthorized', code: 'AUTH_INVALID' })
 
     await expect(client.get('/ping')).rejects.toMatchObject({
       response: { status: 401 },
     })
 
-    expect(loc.href).toBe('http://localhost:3000/logout')
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 })

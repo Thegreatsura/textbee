@@ -54,7 +54,7 @@ const deviceIdField = (deviceId?: string) => ({
 
 // Prefix shared by every SDK sample, so the install step and client setup are
 // never missing from a snippet someone copies.
-const SDK_SETUP = `// npm install @textbee/sdk
+const SDK_SETUP = `// pnpm add @textbee/sdk
 import { Textbee } from '@textbee/sdk'
 
 const textbee = new Textbee({ apiKey: process.env.TEXTBEE_API_KEY })`
@@ -436,10 +436,7 @@ const { data, meta } = await textbee.getMessages('${id}', {
   limit: 20,
 })
 
-console.log(data, meta)
-
-// Or follow one message by id
-// const sms = await textbee.getSms('${id}', smsId)`,
+console.log(data, meta)`,
       },
       // Status values match the SMS schema: pending, dispatched, sent,
       // delivered, failed, unknown, received.

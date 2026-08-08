@@ -54,7 +54,11 @@ const deviceIdField = (deviceId?: string) => ({
 
 // Prefix shared by every SDK sample, so the install step and client setup are
 // never missing from a snippet someone copies.
-const SDK_SETUP = `// pnpm add @textbee/sdk
+//
+// npm, not pnpm: this runs in the reader's project, not in this repo, and npm
+// is the safe default for a copy-paste snippet. The pnpm-only rule applies to
+// our own scripts, CI, and Dockerfiles.
+const SDK_SETUP = `// npm install @textbee/sdk
 import { Textbee } from '@textbee/sdk'
 
 const textbee = new Textbee({ apiKey: process.env.TEXTBEE_API_KEY })`

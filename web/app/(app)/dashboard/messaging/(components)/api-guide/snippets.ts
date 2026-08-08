@@ -52,14 +52,13 @@ const deviceIdField = (deviceId?: string) => ({
   sdk: deviceId ? `\n  deviceId: '${deviceId}',` : '',
 })
 
-// Prefix shared by every SDK sample, so the install step and client setup are
-// never missing from a snippet someone copies.
-//
-// npm, not pnpm: this runs in the reader's project, not in this repo, and npm
-// is the safe default for a copy-paste snippet. The pnpm-only rule applies to
-// our own scripts, CI, and Dockerfiles.
-const SDK_SETUP = `// npm install @textbee/sdk
-import { Textbee } from '@textbee/sdk'
+/** Package the SDK samples install, surfaced by the package manager picker. */
+export const SDK_PACKAGE = '@textbee/sdk'
+
+// Client setup shared by every SDK sample. The install command is deliberately
+// not here: it is rendered by the package manager picker above the code, so the
+// copy button hands back runnable code and nothing else.
+const SDK_SETUP = `import { Textbee } from '@textbee/sdk'
 
 const textbee = new Textbee({ apiKey: process.env.TEXTBEE_API_KEY })`
 

@@ -242,6 +242,16 @@ export default function ApiGuide() {
               Full API reference
             </a>
           </Button>
+          <Button asChild variant='outline' size='sm'>
+            <a
+              href='https://www.npmjs.com/package/@textbee/sdk'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              <ExternalLink className='h-3.5 w-3.5' />
+              JavaScript SDK on npm
+            </a>
+          </Button>
         </div>
       </section>
     </div>

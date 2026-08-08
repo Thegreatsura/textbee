@@ -51,9 +51,17 @@ async function bootstrap() {
     )
     .build()
   const document = SwaggerModule.createDocument(app, config)
-  // Browsers heuristically cache the spec otherwise and keep serving old docs
+  // Every route that carries the spec itself, including swagger-ui-init.js,
+  // which embeds the whole document and is otherwise cached as a static .js
+  // by CDNs and browsers. The swagger-ui library assets stay cacheable.
+  const SPEC_ROUTES = new Set([
+    '/',
+    '/-json',
+    '/-yaml',
+    '/swagger-ui-init.js',
+  ])
   app.use((req, res, next) => {
-    if (req.path === '/' || req.path === '/-json' || req.path === '/-yaml') {
+    if (SPEC_ROUTES.has(req.path)) {
       res.setHeader('Cache-Control', 'no-cache')
     }
     next()

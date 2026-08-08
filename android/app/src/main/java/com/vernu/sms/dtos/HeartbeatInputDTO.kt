@@ -7,6 +7,8 @@ class HeartbeatInputDTO {
     var networkType: String? = null
     var appVersionName: String? = null
     var appVersionCode: Int? = null
+    var osVersion: String? = null
+    var osApiLevel: Int? = null
     var deviceUptimeMillis: Long? = null
     var memoryFreeBytes: Long? = null
     var memoryTotalBytes: Long? = null

@@ -83,6 +83,43 @@ describe('normalizeOsFields', () => {
         osApiLevel: 36,
       })
     })
+
+    // Current clients put the build string in its own field, because `os` now
+    // carries the plain 'Android' label and so has no '/' to parse. Without
+    // this the field is only ever writable by the backfill script.
+    it('keeps the build string reported in its own field', () => {
+      expect(
+        normalizeOsFields({
+          os: 'Android',
+          osVersion: '16',
+          osApiLevel: 36,
+          osBuildFingerprint: FP_16,
+        }),
+      ).toEqual({
+        osVersion: '16',
+        osApiLevel: 36,
+        osBuildFingerprint: FP_16,
+        os: 'Android',
+      })
+    })
+
+    it('prefers the reported build string over one parsed out of os', () => {
+      const patch = normalizeOsFields({ os: FP_14, osBuildFingerprint: FP_16 })
+      expect(patch.osBuildFingerprint).toBe(FP_16)
+    })
+
+    it('emits no build string when the reported one is blank', () => {
+      // BASE_OS is empty on many devices, and '' is not null, so it would
+      // otherwise reach $set.
+      for (const blank of ['', '   ']) {
+        const patch = normalizeOsFields({ os: 'Android', osBuildFingerprint: blank })
+        expect(patch).not.toHaveProperty('osBuildFingerprint')
+      }
+    })
+
+    it('falls back to os when no build string is reported', () => {
+      expect(normalizeOsFields({ os: FP_14 }).osBuildFingerprint).toBe(FP_14)
+    })
   })
 
   describe('partial payloads', () => {

@@ -56,6 +56,13 @@ export class Device {
   @Prop({ type: String })
   osVersion: string
 
+  @Prop({ type: Number })
+  osApiLevel: number
+
+  // Raw Build.VERSION.BASE_OS string, kept for per-OEM detail.
+  @Prop({ type: String })
+  osBuildFingerprint: string
+
   @Prop({ type: String })
   appVersionName: string
 

@@ -255,6 +255,69 @@ describe('GatewayService', () => {
       )
     })
 
+    describe('os version normalization', () => {
+      const FINGERPRINT =
+        'samsung/a13nnxx/a13:14/UP1A.231005.007/A135FXXUAEXL2:user/release-keys'
+
+      beforeEach(() => {
+        mockDeviceModel.findOne.mockResolvedValue(null)
+        mockBillingService.getUserLimits.mockResolvedValue({ deviceLimit: -1 })
+        mockDeviceModel.create.mockResolvedValue({ _id: 'device123' })
+      })
+
+      it('derives osVersion from a legacy client sending only BASE_OS', async () => {
+        await service.registerDevice(
+          { ...mockDeviceInput, os: FINGERPRINT } as RegisterDeviceInputDTO,
+          mockUser,
+        )
+
+        expect(mockDeviceModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            os: 'Android',
+            osVersion: '14',
+            osBuildFingerprint: FINGERPRINT,
+          }),
+        )
+      })
+
+      it('never persists a raw BASE_OS fingerprint in the display field', async () => {
+        await service.registerDevice(
+          { ...mockDeviceInput, os: FINGERPRINT } as RegisterDeviceInputDTO,
+          mockUser,
+        )
+
+        const created = mockDeviceModel.create.mock.calls[0][0]
+        expect(created.os).toBe('Android')
+      })
+
+      it('stores no osVersion when a legacy client reports a blank BASE_OS', async () => {
+        await service.registerDevice(
+          { ...mockDeviceInput, os: '' } as RegisterDeviceInputDTO,
+          mockUser,
+        )
+
+        const created = mockDeviceModel.create.mock.calls[0][0]
+        expect(created).not.toHaveProperty('osVersion')
+        expect(created).not.toHaveProperty('osBuildFingerprint')
+      })
+
+      it('passes through the version a current client reports', async () => {
+        await service.registerDevice(
+          {
+            ...mockDeviceInput,
+            os: 'Android',
+            osVersion: '16',
+            osApiLevel: 36,
+          } as RegisterDeviceInputDTO,
+          mockUser,
+        )
+
+        expect(mockDeviceModel.create).toHaveBeenCalledWith(
+          expect.objectContaining({ os: 'Android', osVersion: '16', osApiLevel: 36 }),
+        )
+      })
+    })
+
     it('should block registration when the device limit is already reached', async () => {
       mockDeviceModel.findOne.mockResolvedValue(null)
       mockBillingService.getUserLimits.mockResolvedValue({ deviceLimit: 1 })
@@ -609,6 +672,23 @@ describe('GatewayService', () => {
       ).rejects.toThrow(HttpException)
       expect(mockDeviceModel.findById).toHaveBeenCalledWith(mockDeviceId)
       expect(mockDeviceModel.findByIdAndUpdate).not.toHaveBeenCalled()
+    })
+
+    it('must not blank a stored osVersion when a legacy client sends an empty BASE_OS', async () => {
+      // BASE_OS is '' on many devices, and '' is not null, so it reaches
+      // $set unless normalizeOsFields drops it. If this regresses, a single
+      // re-register wipes the backfilled version for those devices.
+      mockDeviceModel.findById.mockResolvedValue({ ...mockDevice, osVersion: '14' })
+      mockDeviceModel.findByIdAndUpdate.mockResolvedValue(mockDevice)
+
+      await service.updateDevice(mockDeviceId, {
+        ...mockDeviceInput,
+        os: '',
+      } as RegisterDeviceInputDTO)
+
+      const [, update] = mockDeviceModel.findByIdAndUpdate.mock.calls[0]
+      expect(update.$set).not.toHaveProperty('osVersion')
+      expect(update.$set.os).toBe('Android')
     })
 
     it('should ignore a client-sent isDefault', async () => {

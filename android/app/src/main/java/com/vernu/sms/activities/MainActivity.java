@@ -501,7 +501,10 @@ public class MainActivity extends AppCompatActivity {
                     registerDeviceInput.setManufacturer(Build.MANUFACTURER);
                     registerDeviceInput.setModel(Build.MODEL);
                     registerDeviceInput.setBuildId(Build.ID);
-                    registerDeviceInput.setOs(Build.VERSION.BASE_OS);
+                    registerDeviceInput.setOs("Android");
+                    registerDeviceInput.setOsVersion(Build.VERSION.RELEASE);
+                    registerDeviceInput.setOsApiLevel(Build.VERSION.SDK_INT);
+                    registerDeviceInput.setOsBuildFingerprint(Build.VERSION.BASE_OS);
                     registerDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
                     registerDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
                     
@@ -680,7 +683,10 @@ public class MainActivity extends AppCompatActivity {
                     updateDeviceInput.setManufacturer(Build.MANUFACTURER);
                     updateDeviceInput.setModel(Build.MODEL);
                     updateDeviceInput.setBuildId(Build.ID);
-                    updateDeviceInput.setOs(Build.VERSION.BASE_OS);
+                    updateDeviceInput.setOs("Android");
+                    updateDeviceInput.setOsVersion(Build.VERSION.RELEASE);
+                    updateDeviceInput.setOsApiLevel(Build.VERSION.SDK_INT);
+                    updateDeviceInput.setOsBuildFingerprint(Build.VERSION.BASE_OS);
                     updateDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
                     updateDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
 

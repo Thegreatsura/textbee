@@ -25,6 +25,7 @@ import { WebhookService } from '../webhook/webhook.service'
 import { BillingService } from '../billing/billing.service'
 import { SmsQueueService } from './queue/sms-queue.service'
 import { escapeRegExp } from '../common/escape-regexp'
+import { normalizeOsFields } from './os-version'
 
 @Injectable()
 export class GatewayService {
@@ -107,6 +108,9 @@ export class GatewayService {
     const deviceData: any = { ...input, user }
     // set-default is the only writer; there is no ValidationPipe to strip it
     delete deviceData.isDefault
+    // normalizeOsFields owns these; raw BASE_OS must never reach the display field
+    delete deviceData.os
+    Object.assign(deviceData, normalizeOsFields(input))
 
     // Set default name to "brand model" if not provided
     if (!deviceData.name && input.brand && input.model) {
@@ -287,6 +291,9 @@ export class GatewayService {
     const updateData: any = { ...input }
     // set-default is the only writer; there is no ValidationPipe to strip it
     delete updateData.isDefault
+    // normalizeOsFields owns these; raw BASE_OS must never reach the display field
+    delete updateData.os
+    Object.assign(updateData, normalizeOsFields(input))
 
     // Handle simInfo if provided
     if (input.simInfo) {
@@ -1421,6 +1428,12 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
         updateData['appVersionInfo.versionCode'] = input.appVersionCode
       }
       updateData['appVersionInfo.lastUpdated'] = now
+    }
+
+    // Update OS info if provided. These change at most once per OS upgrade,
+    // so skip keys already matching the stored value to keep the write a no-op.
+    for (const [key, value] of Object.entries(normalizeOsFields(input))) {
+      if (device[key] !== value) updateData[key] = value
     }
 
     // Update deviceUptimeInfo if provided

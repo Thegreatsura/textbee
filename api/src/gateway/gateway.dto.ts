@@ -71,6 +71,12 @@ export class RegisterDeviceInputDTO {
   @ApiProperty({ type: String })
   osVersion?: string
 
+  @ApiProperty({ type: Number, required: false })
+  osApiLevel?: number
+
+  @ApiProperty({ type: String, required: false })
+  osBuildFingerprint?: string
+
   @ApiProperty({ type: String })
   appVersionName?: string
 
@@ -424,6 +430,20 @@ export class HeartbeatInputDTO {
     description: 'App version code',
   })
   appVersionCode?: number
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Android release version, e.g. "16"',
+  })
+  osVersion?: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Android SDK / API level, e.g. 36',
+  })
+  osApiLevel?: number
 
   @ApiProperty({
     type: Number,

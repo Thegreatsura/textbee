@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.StatFs
 import android.os.SystemClock
 import android.util.Log
@@ -79,6 +80,10 @@ object HeartbeatHelper {
             // App version
             heartbeatInput.appVersionName = BuildConfig.VERSION_NAME
             heartbeatInput.appVersionCode = BuildConfig.VERSION_CODE
+
+            // OS version, so devices backfill without needing to re-register
+            heartbeatInput.osVersion = Build.VERSION.RELEASE
+            heartbeatInput.osApiLevel = Build.VERSION.SDK_INT
 
             // Device uptime
             heartbeatInput.deviceUptimeMillis = SystemClock.uptimeMillis()

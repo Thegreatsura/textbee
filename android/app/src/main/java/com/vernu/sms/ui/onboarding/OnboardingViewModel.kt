@@ -104,7 +104,10 @@ class OnboardingViewModel : ViewModel() {
                     manufacturer = Build.MANUFACTURER
                     model = Build.MODEL
                     buildId = Build.ID
-                    os = Build.VERSION.BASE_OS
+                    os = "Android"
+                    osVersion = Build.VERSION.RELEASE
+                    osApiLevel = Build.VERSION.SDK_INT
+                    osBuildFingerprint = Build.VERSION.BASE_OS
                     appVersionCode = BuildConfig.VERSION_CODE
                     appVersionName = BuildConfig.VERSION_NAME
                     name = current.deviceName.ifEmpty { "${Build.BRAND} ${Build.MODEL}" }

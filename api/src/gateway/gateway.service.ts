@@ -114,13 +114,13 @@ export class GatewayService {
     delete deviceData.osApiLevel
     delete deviceData.osBuildFingerprint
     delete deviceData.osVersionSource
-    Object.assign(deviceData, normalizeOsFields(input, device?.osVersionSource))
+    const osFields = normalizeOsFields(input, device?.osVersionSource, device?.osVersion)
 
     // Set default name to "brand model" if not provided
     if (!deviceData.name && input.brand && input.model) {
       deviceData.name = `${input.brand} ${input.model}`
     }
-    
+
     // Handle simInfo if provided
     if (input.simInfo) {
       deviceData.simInfo = {
@@ -136,10 +136,10 @@ export class GatewayService {
     }
 
     if (device && device.appVersionCode <= 11) {
-      // re-enable path: updateDevice enforces the device limit on the
-      // disabled -> enabled transition
+      // re-enable path: use updateDevice which now handles atomic OS updates
       return await this.updateDevice(device._id.toString(), {
         ...deviceData,
+        ...osFields,
         enabled: true,
       })
     } else {
@@ -153,6 +153,8 @@ export class GatewayService {
         deviceData.isDefault = true
       }
 
+      // New device creation: no race possible, directly assign OS fields
+      Object.assign(deviceData, osFields)
       return await this.deviceModel.create(deviceData)
     }
   }
@@ -301,7 +303,7 @@ export class GatewayService {
     delete updateData.osApiLevel
     delete updateData.osBuildFingerprint
     delete updateData.osVersionSource
-    Object.assign(updateData, normalizeOsFields(input, device.osVersionSource))
+    const osFields = normalizeOsFields(input, device.osVersionSource, device.osVersion)
 
     // Handle simInfo if provided
     if (input.simInfo) {
@@ -316,12 +318,37 @@ export class GatewayService {
       updateData.fcmTokenInvalidatedAt = undefined
       updateData.fcmTokenInvalidReason = undefined
     }
-    
-    return await this.deviceModel.findByIdAndUpdate(
-      deviceId,
-      { $set: updateData },
+
+    // Atomic OS metadata update: build a filter that only allows the update
+    // when the current osVersionSource in the DB is not stronger than what
+    // we're writing. This prevents concurrent weaker writes from clobbering
+    // stronger ones.
+    const filter: any = { _id: deviceId }
+    if (osFields.osVersionSource) {
+      const newSourceRank = { buildId: 1, fingerprint: 2, reported: 3 }[osFields.osVersionSource]
+      // Only update if: no source exists, OR existing source rank <= new rank
+      filter.$or = [
+        { osVersionSource: { $exists: false } },
+        { osVersionSource: null },
+        { osVersionSource: 'buildId' }, // rank 1
+        ...(newSourceRank >= 2 ? [{ osVersionSource: 'fingerprint' }] : []),
+        ...(newSourceRank >= 3 ? [{ osVersionSource: 'reported' }] : []),
+      ]
+    }
+
+    const updated = await this.deviceModel.findOneAndUpdate(
+      filter,
+      { $set: { ...updateData, ...osFields } },
       { new: true },
     )
+
+    // If the filter rejected the update (stronger source already in DB), refetch
+    // to return current state with the stronger OS metadata
+    if (!updated) {
+      return await this.deviceModel.findById(deviceId)
+    }
+
+    return updated
   }
 
   async deleteDevice(deviceId: string): Promise<any> {
@@ -1440,9 +1467,8 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
 
     // Update OS info if provided. These change at most once per OS upgrade,
     // so skip keys already matching the stored value to keep the write a no-op.
-    for (const [key, value] of Object.entries(
-      normalizeOsFields(input, device.osVersionSource),
-    )) {
+    const osFields = normalizeOsFields(input, device.osVersionSource, device.osVersion)
+    for (const [key, value] of Object.entries(osFields)) {
       if (device[key] !== value) updateData[key] = value
     }
 
@@ -1471,12 +1497,30 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
       }
     }
 
-    // Update device with all changes
-    await this.deviceModel.findByIdAndUpdate(deviceId, {
+    // Atomic OS metadata update: build a filter that only allows the update
+    // when the current osVersionSource in the DB is not stronger than what
+    // we're writing. This prevents concurrent weaker writes from clobbering
+    // stronger ones.
+    const filter: any = { _id: deviceId }
+    if (osFields.osVersionSource && updateData.osVersionSource) {
+      const newSourceRank = { buildId: 1, fingerprint: 2, reported: 3 }[osFields.osVersionSource]
+      // Only update if: no source exists, OR existing source rank <= new rank
+      filter.$or = [
+        { osVersionSource: { $exists: false } },
+        { osVersionSource: null },
+        { osVersionSource: 'buildId' }, // rank 1
+        ...(newSourceRank >= 2 ? [{ osVersionSource: 'fingerprint' }] : []),
+        ...(newSourceRank >= 3 ? [{ osVersionSource: 'reported' }] : []),
+      ]
+    }
+
+    // Update device with all changes (filter only applies if OS fields changed)
+    await this.deviceModel.findOneAndUpdate(filter, {
       $set: updateData,
     })
 
-    // Fetch updated device to get current name
+    // Fetch updated device to get current name and OS metadata (which may not
+    // have been updated if a stronger source won the race)
     const updatedDevice = await this.deviceModel.findById(deviceId)
 
     return {

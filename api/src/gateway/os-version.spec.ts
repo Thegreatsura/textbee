@@ -216,6 +216,57 @@ describe('normalizeOsFields', () => {
     })
   })
 
+  describe('legacy device protection (Finding 2 regression tests)', () => {
+    // Legacy devices have a stored osVersion but no osVersionSource (predates
+    // provenance tracking). A buildId-only derivation must NOT replace that
+    // stored value, as the legacy value might have been directly reported/reliable.
+    it('rejects buildId-derived replacement when stored osVersion exists but source is missing', () => {
+      const patch = normalizeOsFields(
+        { os: '', buildId: 'TP1A.220624.014' },
+        undefined,
+        '14',
+      )
+      expect(patch).not.toHaveProperty('osVersion')
+      expect(patch).not.toHaveProperty('osVersionSource')
+    })
+
+    it('accepts fingerprint-derived replacement for legacy device with no source', () => {
+      const patch = normalizeOsFields(
+        { os: FP_16 },
+        undefined,
+        '14',
+      )
+      expect(patch).toMatchObject({ osVersion: '16', osVersionSource: 'fingerprint' })
+    })
+
+    it('accepts reported replacement for legacy device with no source', () => {
+      const patch = normalizeOsFields(
+        { os: 'Android', osVersion: '16' },
+        undefined,
+        '14',
+      )
+      expect(patch).toMatchObject({ osVersion: '16', osVersionSource: 'reported' })
+    })
+
+    it('accepts buildId-derived value when device has neither stored osVersion nor source', () => {
+      const patch = normalizeOsFields(
+        { os: '', buildId: 'TP1A.220624.014' },
+        undefined,
+        undefined,
+      )
+      expect(patch).toMatchObject({ osVersion: '13', osVersionSource: 'buildId' })
+    })
+
+    it('accepts buildId-derived value when stored source is buildId (same rank)', () => {
+      const patch = normalizeOsFields(
+        { os: '', buildId: 'BP2A.250605.031.A3' },
+        'buildId',
+        '13',
+      )
+      expect(patch).toMatchObject({ osVersion: '16', osVersionSource: 'buildId' })
+    })
+  })
+
   describe('partial payloads', () => {
     it('emits nothing for a settings-toggle style body', () => {
       expect(normalizeOsFields({} as any)).toEqual({})

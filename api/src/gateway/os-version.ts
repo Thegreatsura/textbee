@@ -122,11 +122,15 @@ function deriveOsVersion(
  * payload can never overwrite a stored value with '' or null.
  *
  * `storedSource` is the provenance already on the device, if any. It stops an
- * inferred release from overwriting one we actually measured.
+ * inferred release from overwriting one we actually measured. `storedOsVersion`
+ * is the already-stored osVersion value; when present alongside a missing
+ * storedSource (legacy device with no provenance tracking), buildId-derived
+ * values are rejected to avoid downgrading trustworthy legacy data.
  */
 export function normalizeOsFields(
   input: OsFieldsInput,
   storedSource?: string,
+  storedOsVersion?: string,
 ): Record<string, any> {
   const patch: Record<string, any> = {}
   const raw = input?.os?.trim()
@@ -134,7 +138,14 @@ export function normalizeOsFields(
   const derived = deriveOsVersion(input)
   if (derived) {
     const stored = isSource(storedSource) ? SOURCE_RANK[storedSource] : 0
-    if (SOURCE_RANK[derived.source] >= stored) {
+
+    // Legacy device protection: if a stored osVersion exists but storedSource
+    // is missing (device predates provenance tracking), reject buildId-only
+    // derivations to avoid replacing a trustworthy legacy value with a weak guess.
+    const isLegacyDevice = !storedSource && !!storedOsVersion
+    const isBuildIdDerived = derived.source === 'buildId'
+
+    if (SOURCE_RANK[derived.source] >= stored && !(isLegacyDevice && isBuildIdDerived)) {
       patch.osVersion = derived.version
       patch.osVersionSource = derived.source
     }

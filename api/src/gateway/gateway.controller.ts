@@ -23,6 +23,7 @@ import { AuthGuard } from '../auth/guards/auth.guard'
 import {
   ReceivedSMSDTO,
   RegisterDeviceInputDTO,
+  pickDeviceWritableFields,
   RetrieveSMSResponseDTO,
   SendBulkSMSInputDTO,
   SendBulkSMSRequestDTO,
@@ -67,7 +68,10 @@ export class GatewayController {
   @ApiOperation({ summary: 'Register device' })
   @Post('/devices')
   async registerDevice(@Body() input: RegisterDeviceInputDTO, @Request() req) {
-    const data = await this.gatewayService.registerDevice(input, req.user)
+    const data = await this.gatewayService.registerDevice(
+      pickDeviceWritableFields(input),
+      req.user,
+    )
     return { data }
   }
 
@@ -98,7 +102,10 @@ export class GatewayController {
     @Param('id') deviceId: string,
     @Body() input: RegisterDeviceInputDTO,
   ) {
-    const data = await this.gatewayService.updateDevice(deviceId, input)
+    const data = await this.gatewayService.updateDevice(
+      deviceId,
+      pickDeviceWritableFields(input),
+    )
     return { data }
   }
 

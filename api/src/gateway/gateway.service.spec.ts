@@ -691,6 +691,59 @@ describe('GatewayService', () => {
       expect(update.$set.os).toBe('Android')
     })
 
+    it('persists the build string a current client reports', async () => {
+      // `os` is the plain 'Android' label now, so the build string arrives in
+      // its own field. If the normalizer ignores it the field becomes writable
+      // only by the backfill script and no app build can ever populate it.
+      const fingerprint =
+        'samsung/e3qxxx/e3q:16/BP2A.250605.031.A3/S928BXXU4CYI7:user/release-keys'
+      mockDeviceModel.findById.mockResolvedValue(mockDevice)
+      mockDeviceModel.findByIdAndUpdate.mockResolvedValue(mockDevice)
+
+      await service.updateDevice(mockDeviceId, {
+        ...mockDeviceInput,
+        os: 'Android',
+        osVersion: '16',
+        osApiLevel: 36,
+        osBuildFingerprint: fingerprint,
+      } as RegisterDeviceInputDTO)
+
+      const [, update] = mockDeviceModel.findByIdAndUpdate.mock.calls[0]
+      expect(update.$set).toMatchObject({
+        os: 'Android',
+        osVersion: '16',
+        osApiLevel: 36,
+        osBuildFingerprint: fingerprint,
+      })
+    })
+
+    it.each([
+      ['osVersion', { osVersion: '' }],
+      ['osApiLevel', { osApiLevel: null }],
+      ['osBuildFingerprint', { osBuildFingerprint: '' }],
+    ])(
+      'must not blank a stored %s sent empty by a non-first-party client',
+      async (field, payload) => {
+        // The gateway API is public and has no ValidationPipe, so these can
+        // arrive from any client, not just the Android app.
+        mockDeviceModel.findById.mockResolvedValue({
+          ...mockDevice,
+          osVersion: '14',
+          osApiLevel: 34,
+          osBuildFingerprint: 'samsung/a13nnxx/a13:14/UP1A.231005.007/x:user/release-keys',
+        })
+        mockDeviceModel.findByIdAndUpdate.mockResolvedValue(mockDevice)
+
+        await service.updateDevice(mockDeviceId, {
+          ...mockDeviceInput,
+          ...payload,
+        } as RegisterDeviceInputDTO)
+
+        const [, update] = mockDeviceModel.findByIdAndUpdate.mock.calls[0]
+        expect(update.$set).not.toHaveProperty(field)
+      },
+    )
+
     it('should ignore a client-sent isDefault', async () => {
       // set-default is the only route allowed to move the default flag
       mockDeviceModel.findById.mockResolvedValue(mockDevice)

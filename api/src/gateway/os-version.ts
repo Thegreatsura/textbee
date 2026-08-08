@@ -45,7 +45,15 @@ export function normalizeOsFields(input: OsFieldsInput): Record<string, any> {
     patch.osApiLevel = input.osApiLevel
   }
 
-  if (raw && raw.includes('/')) patch.osBuildFingerprint = raw
+  // Current clients send the build string in its own field, since `os` now
+  // carries the plain 'Android' label. Older clients only ever put it in `os`.
+  const reportedFingerprint = input?.osBuildFingerprint?.trim()
+  if (reportedFingerprint) {
+    patch.osBuildFingerprint = reportedFingerprint
+  } else if (raw && raw.includes('/')) {
+    patch.osBuildFingerprint = raw
+  }
+
   if (input?.os !== undefined) patch.os = 'Android'
 
   return patch

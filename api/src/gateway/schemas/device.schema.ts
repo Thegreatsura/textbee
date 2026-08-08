@@ -59,6 +59,11 @@ export class Device {
   @Prop({ type: Number })
   osApiLevel: number
 
+  // How osVersion was arrived at: reported and fingerprint are measured,
+  // buildId is inferred from the build's leading letter.
+  @Prop({ type: String, enum: ['reported', 'fingerprint', 'buildId'] })
+  osVersionSource: string
+
   // Raw Build.VERSION.BASE_OS string, kept for per-OEM detail.
   @Prop({ type: String })
   osBuildFingerprint: string

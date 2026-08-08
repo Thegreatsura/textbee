@@ -87,6 +87,43 @@ export class RegisterDeviceInputDTO {
   simInfo?: SimInfoCollectionDTO
 }
 
+/**
+ * Fields a client may write on a device. There is no global ValidationPipe, so
+ * without this the whole request body reaches `$set` and any device field is
+ * settable, `user` and the SMS counters included.
+ *
+ * Applied at the controller, which is where input stops being trusted. The
+ * service also receives internally built payloads (registerDevice hands its own
+ * data to updateDevice) that legitimately carry fields absent from this list.
+ */
+const DEVICE_WRITABLE_FIELDS = [
+  'enabled',
+  'fcmToken',
+  'brand',
+  'manufacturer',
+  'model',
+  'name',
+  'serial',
+  'buildId',
+  'os',
+  'osVersion',
+  'osApiLevel',
+  'osBuildFingerprint',
+  'appVersionName',
+  'appVersionCode',
+  'simInfo',
+] as const
+
+export function pickDeviceWritableFields(
+  input: RegisterDeviceInputDTO,
+): RegisterDeviceInputDTO {
+  const picked: any = {}
+  for (const field of DEVICE_WRITABLE_FIELDS) {
+    if (input?.[field] !== undefined) picked[field] = input[field]
+  }
+  return picked
+}
+
 export class SMSData {
   @ApiProperty({
     type: String,

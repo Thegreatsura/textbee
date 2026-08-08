@@ -17,6 +17,7 @@ export interface OsFieldsInput {
   os?: string
   osVersion?: string
   osApiLevel?: number
+  osBuildFingerprint?: string
 }
 
 export function parseReleaseFromFingerprint(raw?: string): string | null {
@@ -44,7 +45,7 @@ export function normalizeOsFields(input: OsFieldsInput): Record<string, any> {
     patch.osApiLevel = input.osApiLevel
   }
 
-  if (raw?.includes('/')) patch.osBuildFingerprint = raw
+  if (raw && raw.includes('/')) patch.osBuildFingerprint = raw
   if (input?.os !== undefined) patch.os = 'Android'
 
   return patch

@@ -108,8 +108,11 @@ export class GatewayService {
     const deviceData: any = { ...input, user }
     // set-default is the only writer; there is no ValidationPipe to strip it
     delete deviceData.isDefault
-    // normalizeOsFields owns these; raw BASE_OS must never reach the display field
+    // normalizeOsFields owns these; raw OS metadata must never reach the display fields
     delete deviceData.os
+    delete deviceData.osVersion
+    delete deviceData.osApiLevel
+    delete deviceData.osBuildFingerprint
     Object.assign(deviceData, normalizeOsFields(input))
 
     // Set default name to "brand model" if not provided
@@ -291,8 +294,11 @@ export class GatewayService {
     const updateData: any = { ...input }
     // set-default is the only writer; there is no ValidationPipe to strip it
     delete updateData.isDefault
-    // normalizeOsFields owns these; raw BASE_OS must never reach the display field
+    // normalizeOsFields owns these; raw OS metadata must never reach the display fields
     delete updateData.os
+    delete updateData.osVersion
+    delete updateData.osApiLevel
+    delete updateData.osBuildFingerprint
     Object.assign(updateData, normalizeOsFields(input))
 
     // Handle simInfo if provided

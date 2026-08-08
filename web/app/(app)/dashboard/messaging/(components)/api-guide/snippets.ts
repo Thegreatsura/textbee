@@ -6,8 +6,10 @@
 
 export const API_BASE_URL = 'https://api.textbee.dev/api/v1'
 
-export type LanguageId = 'curl' | 'node' | 'python' | 'php' | 'go'
+export type LanguageId = 'curl' | 'node' | 'python' | 'php' | 'go' | 'sdk'
 
+// cURL stays first and stays the default. The SDK is an extra option for
+// JavaScript users, not a replacement for the REST examples.
 export const LANGUAGES: { id: LanguageId; label: string; highlight: string }[] =
   [
     { id: 'curl', label: 'cURL', highlight: 'bash' },
@@ -15,6 +17,7 @@ export const LANGUAGES: { id: LanguageId; label: string; highlight: string }[] =
     { id: 'python', label: 'Python', highlight: 'python' },
     { id: 'php', label: 'PHP', highlight: 'php' },
     { id: 'go', label: 'Go', highlight: 'go' },
+    { id: 'sdk', label: 'JS SDK', highlight: 'javascript' },
   ]
 
 export type EndpointId =
@@ -46,7 +49,18 @@ const deviceIdField = (deviceId?: string) => ({
   python: deviceId ? `\n        'deviceId': '${deviceId}',` : '',
   php: deviceId ? `\n        'deviceId' => '${deviceId}',` : '',
   go: deviceId ? `"deviceId":"${deviceId}",` : '',
+  sdk: deviceId ? `\n  deviceId: '${deviceId}',` : '',
 })
+
+/** Package the SDK samples install, surfaced by the package manager picker. */
+export const SDK_PACKAGE = '@textbee/sdk'
+
+// Client setup shared by every SDK sample. The install command is deliberately
+// not here: it is rendered by the package manager picker above the code, so the
+// copy button hands back runnable code and nothing else.
+const SDK_SETUP = `import { Textbee } from '@textbee/sdk'
+
+const textbee = new Textbee({ apiKey: process.env.TEXTBEE_API_KEY })`
 
 export function buildEndpoints(deviceId?: string): Endpoint[] {
   const id = deviceId || PLACEHOLDER_DEVICE
@@ -140,6 +154,14 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
+        sdk: `${SDK_SETUP}
+
+const result = await textbee.sendSms({${device.sdk}
+  recipients: ['+14155550101'],
+  message: 'Hello from textbee',
+})
+
+console.log(result)`,
       },
       response: `{
   "data": {
@@ -244,6 +266,27 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
+        // Bulk send is the one endpoint here with no SDK method yet, so this
+        // stays on the REST call rather than pretending otherwise.
+        sdk: `// Bulk send is not in @textbee/sdk yet. Use the REST API for now.
+const res = await fetch(
+  '${API_BASE_URL}/gateway/send-bulk-sms',
+  {
+    method: 'POST',
+    headers: {
+      'x-api-key': process.env.TEXTBEE_API_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({${device.node}
+      messages: [
+        { recipients: ['+14155550101'], message: 'Hi Alice' },
+        { recipients: ['+16475550187'], message: 'Hi Bob' },
+      ],
+    }),
+  }
+)
+
+console.log(await res.json())`,
       },
       response: `{
   "data": {
@@ -305,6 +348,17 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
+        // The SDK reads inbound messages through the history endpoint with a
+        // type filter, which returns the same messages as this REST route.
+        sdk: `${SDK_SETUP}
+
+const { data, meta } = await textbee.getMessages('${id}', {
+  type: 'received',
+  page: 1,
+  limit: 20,
+})
+
+console.log(data, meta)`,
       },
       response: `{
   "data": [
@@ -378,6 +432,14 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
+        sdk: `${SDK_SETUP}
+
+const { data, meta } = await textbee.getMessages('${id}', {
+  page: 1,
+  limit: 20,
+})
+
+console.log(data, meta)`,
       },
       // Status values match the SMS schema: pending, dispatched, sent,
       // delivered, failed, unknown, received.

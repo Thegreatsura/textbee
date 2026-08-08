@@ -21,11 +21,13 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useDevices } from '@/lib/api'
 import { formatDeviceName, cn } from '@/lib/utils'
+import PackageManagerTabs from '@/components/shared/package-manager-tabs'
 import CodeBlock from './code-block'
 import {
   API_BASE_URL,
   buildEndpoints,
   LANGUAGES,
+  SDK_PACKAGE,
   type LanguageId,
 } from './snippets'
 
@@ -176,6 +178,15 @@ export default function ApiGuide() {
         </div>
       </div>
 
+      {/* One install step for the whole guide, since the language picker above
+          is global. Only the SDK needs installing; the REST samples do not. */}
+      {language === 'sdk' && (
+        <div className='space-y-1.5'>
+          <p className='text-sm font-medium'>Install the SDK</p>
+          <PackageManagerTabs pkg={SDK_PACKAGE} />
+        </div>
+      )}
+
       {/* Endpoints */}
       <div className='space-y-8'>
         {endpoints.map((endpoint) => (
@@ -240,6 +251,16 @@ export default function ApiGuide() {
             >
               <ExternalLink className='h-3.5 w-3.5' />
               Full API reference
+            </a>
+          </Button>
+          <Button asChild variant='outline' size='sm'>
+            <a
+              href='https://www.npmjs.com/package/@textbee/sdk'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              <ExternalLink className='h-3.5 w-3.5' />
+              JavaScript SDK on npm
             </a>
           </Button>
         </div>

@@ -52,8 +52,11 @@ reviews:
         Never use em dashes or en dashes anywhere, including code comments,
         JSDoc, alt text, metadata, and commit messages. Use a period, comma,
         colon, parentheses, or a plain hyphen instead.
-        This project uses pnpm only. Flag npm or yarn commands in scripts,
-        docs, CI, and Dockerfiles.
+        This project uses pnpm only. Flag npm or yarn commands in our own
+        scripts, docs, CI, and Dockerfiles. Do not flag npm or yarn inside
+        user-facing code samples, such as the dashboard API guide snippets or
+        SDK install instructions: those run in the reader's project, not ours,
+        and npm is the right default there.
         Keep functions small and single-purpose.
         Never run package installs or commit pnpm-lock.yaml changes when
         applying fixes. Lockfiles change only together with a package.json

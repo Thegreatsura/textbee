@@ -113,7 +113,8 @@ export class GatewayService {
     delete deviceData.osVersion
     delete deviceData.osApiLevel
     delete deviceData.osBuildFingerprint
-    Object.assign(deviceData, normalizeOsFields(input))
+    delete deviceData.osVersionSource
+    Object.assign(deviceData, normalizeOsFields(input, device?.osVersionSource))
 
     // Set default name to "brand model" if not provided
     if (!deviceData.name && input.brand && input.model) {
@@ -299,7 +300,8 @@ export class GatewayService {
     delete updateData.osVersion
     delete updateData.osApiLevel
     delete updateData.osBuildFingerprint
-    Object.assign(updateData, normalizeOsFields(input))
+    delete updateData.osVersionSource
+    Object.assign(updateData, normalizeOsFields(input, device.osVersionSource))
 
     // Handle simInfo if provided
     if (input.simInfo) {
@@ -1438,7 +1440,9 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
 
     // Update OS info if provided. These change at most once per OS upgrade,
     // so skip keys already matching the stored value to keep the write a no-op.
-    for (const [key, value] of Object.entries(normalizeOsFields(input))) {
+    for (const [key, value] of Object.entries(
+      normalizeOsFields(input, device.osVersionSource),
+    )) {
       if (device[key] !== value) updateData[key] = value
     }
 

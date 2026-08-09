@@ -395,13 +395,10 @@ export type SendSmsPayload = {
 // the message list, the dashboard stats and the subscription usage. Exported
 // because the bulk sender posts its own mutation and must invalidate the same
 // three keys (issue #261).
-export function invalidateAfterSend(
-  queryClient: QueryClient,
-  deviceId: string
-) {
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.deviceMessages(deviceId),
-  })
+export function invalidateAfterSend(queryClient: QueryClient) {
+  // Whole prefix, not one device key: the visible list may be the 'all' view
+  // or a multi-device selection that does not key on the sending device.
+  void queryClient.invalidateQueries({ queryKey: queryKeys.messagesAll })
   void queryClient.invalidateQueries({ queryKey: queryKeys.stats })
   void queryClient.invalidateQueries({ queryKey: queryKeys.subscription })
 }
@@ -412,8 +409,7 @@ export function useSendSms() {
     mutationKey: ['send-sms'],
     mutationFn: (data: SendSmsPayload) =>
       httpBrowserClient.post(ApiEndpoints.gateway.sendSMS(), data),
-    onSuccess: (_, variables) =>
-      invalidateAfterSend(queryClient, variables.deviceId),
+    onSuccess: () => invalidateAfterSend(queryClient),
   })
 }
 
@@ -429,30 +425,32 @@ export type DeviceMessagesEnvelope = {
   meta?: { page?: number; limit?: number; total?: number; totalPages?: number }
 }
 
-// Returns the raw { data, meta } message-history envelope for a device.
-// `search` is handled server-side (gateway getMessages matches it against the
-// message body, recipient and sender), so it searches all of a device's
-// history rather than only the page already loaded.
+// Returns the raw { data, meta } message-history envelope for the account.
+// `deviceIds` narrows to a selection of devices; empty means every device.
+// `search` is handled server-side (it matches the message body, recipient and
+// sender), so it searches all history rather than only the page loaded.
 export function useDeviceMessages(
-  deviceId: string,
+  deviceIds: string[],
   params: DeviceMessagesParams = {},
   options?: QueryOpts<DeviceMessagesEnvelope>
 ) {
   const { type = 'all', page = 1, limit = 20, search = '' } = params
+  // Sorted so [a,b] and [b,a] share a cache entry.
+  const selection = deviceIds.length ? [...deviceIds].sort().join(',') : 'all'
   return useQuery({
     // search joins the key so each term caches separately.
-    queryKey: queryKeys.deviceMessages(deviceId, { type, page, limit, search }),
-    enabled: !!deviceId,
+    queryKey: queryKeys.deviceMessages(selection, { type, page, limit, search }),
     queryFn: () => {
       const query = new URLSearchParams({
-        type,
+        direction: type,
         page: String(page),
         limit: String(limit),
       })
+      if (selection !== 'all') query.set('deviceIds', selection)
       if (search) query.set('search', search)
 
       return httpBrowserClient
-        .get(`${ApiEndpoints.gateway.getMessages(deviceId)}?${query}`)
+        .get(`${ApiEndpoints.gateway.getMessages()}?${query}`)
         .then(unwrapBody<DeviceMessagesEnvelope>)
     },
     // Inbound messages arrive from outside the tab, so stay fresher than the

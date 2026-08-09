@@ -53,8 +53,7 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
     if (path === '/webhooks/notifications')
       return json(route, mockWebhookNotifications)
     if (path === '/auth/api-keys') return json(route, { data: mockApiKeys })
-    if (/\/gateway\/devices\/[^/]+\/(messages|get-received-sms)/.test(path))
-      return json(route, mockMessages)
+    if (path === '/gateway/messages') return json(route, mockMessages)
 
     // Sends are device-agnostic now: the id travels in the body.
     if (path === '/gateway/send-sms' || path === '/gateway/send-bulk-sms')

@@ -10,7 +10,8 @@ export type SMSDocument = SMS & Document
 export class SMS {
   _id?: Types.ObjectId
 
-  @Prop({ type: SchemaTypes.ObjectId, ref: User.name, required: true, index: true })
+  // No single-field index: user is the prefix of two compound indexes below
+  @Prop({ type: SchemaTypes.ObjectId, ref: User.name, required: true })
   user: User | Types.ObjectId
 
   @Prop({ type: SchemaTypes.ObjectId, ref: Device.name, required: true })
@@ -82,6 +83,10 @@ export class SMS {
   // misc metadata for debugging
   @Prop({ type: Object })
   metadata: Record<string, any>
+
+  // set by { timestamps: true }; declared here for typing only, no @Prop
+  createdAt?: Date
+  updatedAt?: Date
 }
 
 export const SMSSchema = SchemaFactory.createForClass(SMS)
@@ -89,3 +94,7 @@ export const SMSSchema = SchemaFactory.createForClass(SMS)
 
 SMSSchema.index({ device: 1, type: 1, receivedAt: -1 })
 SMSSchema.index({ user: 1, createdAt: -1, type: 1 })
+// Serves account-level keyset pagination: the sort is (createdAt, _id) and no
+// other index can supply it. Build on Atlas before deploying; autoIndex would
+// otherwise build it at boot.
+SMSSchema.index({ user: 1, createdAt: -1, _id: -1 })

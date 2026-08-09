@@ -21,10 +21,9 @@ export default function MessageHistory() {
   const [selectedMessage, setSelectedMessage] = useState<SmsMessage | null>(null)
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
 
-  // Derived, not synced through an effect: the selected device is whatever the
-  // user picked, otherwise the first one. An effect would render once with no
-  // device before correcting itself.
-  const [pickedDevice, setPickedDevice] = useState('')
+  // Empty means all devices: nothing is sent on the request, so the scope
+  // stays correct when a device is added mid-session.
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([])
   const [messageType, setMessageType] = useState('all')
   const [page, setPage] = useState(1)
   const [limit] = useState(20)
@@ -51,18 +50,12 @@ export default function MessageHistory() {
     error: devicesError,
   } = useDevices()
 
-  const currentDevice =
-    pickedDevice ||
-    devices?.find((device) => device.isDefault)?._id ||
-    devices?.[0]?._id ||
-    ''
-
   const {
     data: messagesResponse,
     isLoading: isLoadingMessages,
     error: messagesError,
     refetch,
-  } = useDeviceMessages(currentDevice, {
+  } = useDeviceMessages(selectedDeviceIds, {
     type: messageType,
     page,
     limit,
@@ -70,7 +63,6 @@ export default function MessageHistory() {
   })
 
   const handleRefresh = async () => {
-    if (!currentDevice) return
     setIsRefreshing(true)
     await refetch()
     setTimeout(() => setIsRefreshing(false), 500)
@@ -82,7 +74,7 @@ export default function MessageHistory() {
       refreshTimerRef.current = null
     }
 
-    if (autoRefreshInterval > 0 && currentDevice) {
+    if (autoRefreshInterval > 0) {
       refreshTimerRef.current = setInterval(() => {
         refetch()
         setIsRefreshing(true)
@@ -95,7 +87,7 @@ export default function MessageHistory() {
         clearInterval(refreshTimerRef.current)
       }
     }
-  }, [autoRefreshInterval, currentDevice, refetch])
+  }, [autoRefreshInterval, refetch])
 
   const messages = (messagesResponse?.data ?? []) as SmsMessage[]
   const pagination: MessagesPagination = {
@@ -106,15 +98,29 @@ export default function MessageHistory() {
   }
 
   const days = useMemo(() => groupMessagesByDay(messages), [messages])
-  const activeDevice = devices?.find((device) => device._id === currentDevice)
+
+  // Per-message device lookup: rows can now come from different devices, and
+  // the populated device on a message lacks fields like appVersionCode.
+  const devicesById = useMemo(
+    () => new Map((devices ?? []).map((device) => [device._id, device])),
+    [devices]
+  )
+
+  // Where a reply must go when a message somehow lacks its device: the first
+  // selected device, else the account default, else the first device.
+  const fallbackDeviceId =
+    selectedDeviceIds[0] ||
+    devices?.find((device) => device.isDefault)?._id ||
+    devices?.[0]?._id ||
+    ''
 
   const handleSelectMessage = (message: SmsMessage) => {
     setSelectedMessage(message)
     setIsDetailsDialogOpen(true)
   }
 
-  const handleDeviceChange = (deviceId: string) => {
-    setPickedDevice(deviceId)
+  const handleDeviceSelectionChange = (deviceIds: string[]) => {
+    setSelectedDeviceIds(deviceIds)
     setPage(1)
   }
 
@@ -157,8 +163,8 @@ export default function MessageHistory() {
     <div className='space-y-4'>
       <FiltersBar
         devices={devices}
-        currentDevice={currentDevice}
-        onDeviceChange={handleDeviceChange}
+        selectedDeviceIds={selectedDeviceIds}
+        onDeviceSelectionChange={handleDeviceSelectionChange}
         messageType={messageType}
         onMessageTypeChange={handleMessageTypeChange}
         search={searchInput}
@@ -204,7 +210,7 @@ export default function MessageHistory() {
             <EmptyState
               icon={MessageSquare}
               title='No messages yet'
-              hint='Messages sent or received by this device will appear here.'
+              hint='Messages sent or received by your devices will appear here.'
             />
           </div>
         )
@@ -226,7 +232,10 @@ export default function MessageHistory() {
                   <MessageRow
                     key={message._id}
                     message={message}
-                    device={activeDevice}
+                    device={
+                      devicesById.get(message.device?._id ?? '') ??
+                      devicesById.get(fallbackDeviceId)
+                    }
                     onSelect={handleSelectMessage}
                   />
                 ))}
@@ -248,7 +257,7 @@ export default function MessageHistory() {
       {selectedMessage && (
         <SmsDetailsDialog
           message={selectedMessage}
-          fallbackDeviceId={currentDevice}
+          fallbackDeviceId={fallbackDeviceId}
           open={isDetailsDialogOpen}
           onOpenChange={setIsDetailsDialogOpen}
         />

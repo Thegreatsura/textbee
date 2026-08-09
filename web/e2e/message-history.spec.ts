@@ -36,7 +36,7 @@ test.describe('message history (mocked API, no real backend)', () => {
       // Enough messages across several days to force scrolling.
       const at = (days: number, hours: number) =>
         new Date(Date.now() - days * 86400000 - hours * 3600000).toISOString()
-      await page.route('**/api/v1/gateway/devices/*/messages*', (route) =>
+      await page.route('**/api/v1/gateway/messages*', (route) =>
         route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -94,7 +94,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     const requested: string[] = []
     // fallback(), not continue(): continue() would send the request to the
     // network instead of chaining to the mockApi handler registered earlier.
-    await page.route('**/api/v1/gateway/devices/*/messages*', (route) => {
+    await page.route('**/api/v1/gateway/messages*', (route) => {
       requested.push(route.request().url())
       return route.fallback()
     })
@@ -121,7 +121,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     await mockApi(page)
 
     let searchRequests = 0
-    await page.route('**/api/v1/gateway/devices/*/messages*', (route) => {
+    await page.route('**/api/v1/gateway/messages*', (route) => {
       if (route.request().url().includes('search=')) searchRequests += 1
       return route.fallback()
     })
@@ -146,7 +146,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     await authenticate(context)
     await mockApi(page)
 
-    await page.route('**/api/v1/gateway/devices/*/messages*', (route) => {
+    await page.route('**/api/v1/gateway/messages*', (route) => {
       if (route.request().url().includes('search=')) {
         return route.fulfill({
           status: 200,
@@ -192,7 +192,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     await mockApi(page)
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
 
-    await page.route('**/api/v1/gateway/devices/*/messages*', (route) =>
+    await page.route('**/api/v1/gateway/messages*', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -252,7 +252,7 @@ test.describe('message history (mocked API, no real backend)', () => {
       await authenticate(context)
       await mockApi(page)
 
-      await page.route('**/api/v1/gateway/devices/*/messages*', (route) =>
+      await page.route('**/api/v1/gateway/messages*', (route) =>
         route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -334,7 +334,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     await mockApi(page)
 
     const requested: string[] = []
-    await page.route('**/api/v1/gateway/devices/*/messages*', (route) => {
+    await page.route('**/api/v1/gateway/messages*', (route) => {
       requested.push(route.request().url())
       return route.fallback()
     })
@@ -343,7 +343,7 @@ test.describe('message history (mocked API, no real backend)', () => {
     await page.getByRole('tab', { name: 'Received' }).click()
 
     await expect
-      .poll(() => requested.some((url) => url.includes('type=received')))
+      .poll(() => requested.some((url) => url.includes('direction=received')))
       .toBe(true)
   })
 })

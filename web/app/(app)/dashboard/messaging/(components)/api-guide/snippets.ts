@@ -299,14 +299,14 @@ console.log(await res.json())`,
     {
       id: 'received',
       title: 'Read received messages',
-      blurb: 'Poll for SMS your device has received.',
+      blurb: 'Poll for SMS your devices have received, across the whole account.',
       method: 'GET',
-      path: `/gateway/devices/${id}/get-received-sms`,
+      path: '/gateway/messages?direction=received',
       samples: {
-        curl: `curl "${API_BASE_URL}/gateway/devices/${id}/get-received-sms" \\
+        curl: `curl "${API_BASE_URL}/gateway/messages?direction=received" \\
   -H "x-api-key: $TEXTBEE_API_KEY"`,
         node: `const res = await fetch(
-  '${API_BASE_URL}/gateway/devices/${id}/get-received-sms',
+  '${API_BASE_URL}/gateway/messages?direction=received',
   { headers: { 'x-api-key': process.env.TEXTBEE_API_KEY } }
 )
 
@@ -314,13 +314,14 @@ console.log(await res.json())`,
         python: `import os, requests
 
 res = requests.get(
-    '${API_BASE_URL}/gateway/devices/${id}/get-received-sms',
+    '${API_BASE_URL}/gateway/messages',
     headers={'x-api-key': os.environ['TEXTBEE_API_KEY']},
+    params={'direction': 'received'},
 )
 
 print(res.json())`,
         php: `<?php
-$ch = curl_init('${API_BASE_URL}/gateway/devices/${id}/get-received-sms');
+$ch = curl_init('${API_BASE_URL}/gateway/messages?direction=received');
 
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
@@ -339,7 +340,7 @@ import (
 
 func main() {
 	req, _ := http.NewRequest("GET",
-		"${API_BASE_URL}/gateway/devices/${id}/get-received-sms", nil)
+		"${API_BASE_URL}/gateway/messages?direction=received", nil)
 	req.Header.Set("x-api-key", os.Getenv("TEXTBEE_API_KEY"))
 
 	res, _ := http.DefaultClient.Do(req)
@@ -348,8 +349,8 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
-        // The SDK reads inbound messages through the history endpoint with a
-        // type filter, which returns the same messages as this REST route.
+        // The SDK reads inbound messages through the device history endpoint
+        // for now; an account-level method ships in the next SDK release.
         sdk: `${SDK_SETUP}
 
 const { data, meta } = await textbee.getMessages('${id}', {
@@ -366,25 +367,24 @@ console.log(data, meta)`,
       "_id": "665f1c2a9b1e4a0012ab34ce",
       "sender": "+14155550101",
       "message": "Reply from a customer",
-      "type": "received",
+      "direction": "received",
       "status": "received",
       "receivedAt": "2026-07-18T09:14:22.000Z"
     }
-  ]
+  ],
+  "meta": { "page": 1, "limit": 50, "total": 1, "totalPages": 1 }
 }`,
     },
     {
       id: 'message-status',
       title: 'Check message history',
-      blurb: 'List messages for a device with their delivery status.',
+      blurb: 'List messages across your account with their delivery status.',
       method: 'GET',
-      path: `/gateway/devices/${id}/messages`,
+      path: '/gateway/messages',
       samples: {
-        curl: `curl "${API_BASE_URL}/gateway/devices/${id}/messages?page=1&limit=20" \\
+        curl: `curl "${API_BASE_URL}/gateway/messages?page=1&limit=20" \\
   -H "x-api-key: $TEXTBEE_API_KEY"`,
-        node: `const url = new URL(
-  '${API_BASE_URL}/gateway/devices/${id}/messages'
-)
+        node: `const url = new URL('${API_BASE_URL}/gateway/messages')
 url.searchParams.set('page', '1')
 url.searchParams.set('limit', '20')
 
@@ -396,14 +396,14 @@ console.log(await res.json())`,
         python: `import os, requests
 
 res = requests.get(
-    '${API_BASE_URL}/gateway/devices/${id}/messages',
+    '${API_BASE_URL}/gateway/messages',
     headers={'x-api-key': os.environ['TEXTBEE_API_KEY']},
     params={'page': 1, 'limit': 20},
 )
 
 print(res.json())`,
         php: `<?php
-$url = '${API_BASE_URL}/gateway/devices/${id}/messages?page=1&limit=20';
+$url = '${API_BASE_URL}/gateway/messages?page=1&limit=20';
 $ch = curl_init($url);
 
 curl_setopt_array($ch, [
@@ -423,7 +423,7 @@ import (
 
 func main() {
 	req, _ := http.NewRequest("GET",
-		"${API_BASE_URL}/gateway/devices/${id}/messages?page=1&limit=20", nil)
+		"${API_BASE_URL}/gateway/messages?page=1&limit=20", nil)
 	req.Header.Set("x-api-key", os.Getenv("TEXTBEE_API_KEY"))
 
 	res, _ := http.DefaultClient.Do(req)
@@ -449,7 +449,7 @@ console.log(data, meta)`,
       "_id": "665f1c2a9b1e4a0012ab34cd",
       "recipient": "+14155550101",
       "message": "Hello from textbee",
-      "type": "sent",
+      "direction": "sent",
       "status": "delivered",
       "requestedAt": "2026-07-18T09:12:00.000Z",
       "sentAt": "2026-07-18T09:12:03.000Z",

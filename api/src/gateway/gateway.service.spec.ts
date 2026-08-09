@@ -17,6 +17,7 @@ import * as firebaseAdmin from 'firebase-admin'
 import { SMSType } from './sms-type.enum'
 import { WebhookEvent } from '../webhook/webhook-event.enum'
 import { RegisterDeviceInputDTO, SendBulkSMSInputDTO, SendSMSInputDTO } from './gateway.dto'
+import { decodeCursor } from './cursor'
 import { User } from '../users/schemas/user.schema'
 import { UserRole } from '../users/user-roles.enum'
 import { BatchResponse } from 'firebase-admin/messaging'
@@ -1411,6 +1412,247 @@ describe('GatewayService', () => {
         expect(filter.device.toString()).toBe(OWN_DEVICE)
         expect(mockSmsBatchModel.findByIdAndUpdate).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('getMessagesForUser', () => {
+    const userId = new Types.ObjectId()
+    const user = { _id: userId } as any
+    const deviceA = new Types.ObjectId()
+    const deviceB = new Types.ObjectId()
+    const deletedDevice = new Types.ObjectId()
+
+    // In-memory store evaluated against the exact queries the service builds,
+    // so keyset predicate mistakes (missing _id tiebreaker, flipped
+    // comparators) surface as real repeats or gaps in the walk.
+    let store: any[]
+
+    const matches = (doc: any, q: any): boolean => {
+      for (const [key, cond] of Object.entries<any>(q)) {
+        if (key === '$and') {
+          if (!cond.every((sub: any) => matches(doc, sub))) return false
+        } else if (key === '$or') {
+          if (!cond.some((sub: any) => matches(doc, sub))) return false
+        } else if (cond && typeof cond === 'object' && !(cond instanceof Types.ObjectId) && !(cond instanceof Date) && !(cond instanceof RegExp)) {
+          for (const [op, v] of Object.entries<any>(cond)) {
+            const val = doc[key]
+            const cmp = (a: any, b: any) =>
+              String(a) === String(b) ? 0 : (a instanceof Date ? a.getTime() : String(a)) < (b instanceof Date ? b.getTime() : String(b)) ? -1 : 1
+            if (op === '$in' && !v.some((x: any) => String(x) === String(val))) return false
+            if (op === '$lt' && !(cmp(val, v) < 0)) return false
+            if (op === '$gt' && !(cmp(val, v) > 0)) return false
+            if (op === '$gte' && !(cmp(val, v) >= 0)) return false
+          }
+        } else if (cond instanceof RegExp) {
+          if (!cond.test(doc[key])) return false
+        } else if (String(doc[key]) !== String(cond)) {
+          return false
+        }
+      }
+      return true
+    }
+
+    const fakeFind = (query: any, _proj: any, opts: any) => {
+      let rows = store.filter((d) => matches(d, query))
+      const [[k1, d1], [k2, d2]] = Object.entries<any>(opts.sort)
+      rows = rows.sort((a, b) => {
+        const c1 = a[k1].getTime() - b[k1].getTime()
+        if (c1 !== 0) return c1 * d1
+        return String(a[k2]) < String(b[k2]) ? d2 * -1 : d2
+      })
+      if (opts.skip) rows = rows.slice(opts.skip)
+      rows = rows.slice(0, opts.limit)
+      return {
+        populate: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue(rows) }),
+      }
+    }
+
+    beforeEach(() => {
+      store = []
+      mockDeviceModel.find.mockResolvedValue([{ _id: deviceA }, { _id: deviceB }])
+      mockSmsModel.find.mockImplementation(fakeFind)
+      mockSmsModel.countDocuments.mockImplementation(async (q: any) => store.filter((d) => matches(d, q)).length)
+    })
+
+    const seed = (device: Types.ObjectId, n: number, base: Date, sameMs = false, type = SMSType.SENT) => {
+      for (let i = 0; i < n; i++) {
+        store.push({
+          _id: new Types.ObjectId(),
+          user: userId,
+          device,
+          type,
+          status: 'sent',
+          message: `msg ${i}`,
+          createdAt: sameMs ? base : new Date(base.getTime() + i * 1000),
+        })
+      }
+    }
+
+    it('always constrains device to live devices, so deleted-device rows never surface', async () => {
+      seed(deviceA, 2, new Date('2026-08-01T00:00:00Z'))
+      seed(deletedDevice, 3, new Date('2026-08-02T00:00:00Z'))
+
+      const result = await service.getMessagesForUser(user, { order: 'desc' } as any, 1, 50)
+
+      expect(result.data).toHaveLength(2)
+      // total must exclude them too, not just the page
+      expect(result.meta.total).toBe(2)
+    })
+
+    it('excludes rows from devices deleted before tombstones existed', async () => {
+      // No tombstone consulted at all: the $in on live ids is the whole filter
+      seed(deletedDevice, 5, new Date('2026-08-01T00:00:00Z'))
+      const result = await service.getMessagesForUser(user, { order: 'desc' } as any, 1, 50)
+      expect(result.data).toHaveLength(0)
+      expect(result.meta.total).toBe(0)
+    })
+
+    it('404s on a deviceIds entry the caller does not own, naming it', async () => {
+      const foreign = new Types.ObjectId()
+      // jest-circus has no global fail(), so capture and assert instead
+      const caught = await service
+        .getMessagesForUser(user, { order: 'desc', deviceIds: [foreign] } as any, 1, 50)
+        .then(() => undefined)
+        .catch((e) => e)
+      expect(caught).toBeInstanceOf(HttpException)
+      expect((caught as HttpException).getStatus()).toBe(404)
+      expect(((caught as HttpException).getResponse() as any).error).toContain(String(foreign))
+    })
+
+    it('narrows to the requested deviceIds subset', async () => {
+      seed(deviceA, 2, new Date('2026-08-01T00:00:00Z'))
+      seed(deviceB, 3, new Date('2026-08-02T00:00:00Z'))
+      const result = await service.getMessagesForUser(user, { order: 'desc', deviceIds: [deviceB] } as any, 1, 50)
+      expect(result.data).toHaveLength(3)
+      expect(result.data.every((m: any) => String(m.device) === String(deviceB))).toBe(true)
+    })
+
+    it('returns an empty page without querying sms when the user has no devices', async () => {
+      mockDeviceModel.find.mockResolvedValue([])
+      const result = await service.getMessagesForUser(user, { order: 'desc' } as any, 1, 50)
+      expect(result.data).toEqual([])
+      expect(result.meta.total).toBe(0)
+      expect(mockSmsModel.find).not.toHaveBeenCalled()
+      expect(mockSmsModel.countDocuments).not.toHaveBeenCalled()
+    })
+
+    it('walks a 150-message same-millisecond block with no repeats and no gaps', async () => {
+      seed(deviceA, 150, new Date('2026-08-01T12:00:00.000Z'), true)
+
+      const seen = new Set<string>()
+      let cursor: any = undefined
+      let pages = 0
+      while (true) {
+        const filters: any = { order: 'desc', cursor }
+        const result = await service.getMessagesForUser(user, filters, 1, 50)
+        for (const m of result.data) {
+          expect(seen.has(String(m._id))).toBe(false)
+          seen.add(String(m._id))
+        }
+        pages++
+        if (!result.meta.nextCursor) break
+        cursor = decodeCursor(result.meta.nextCursor)
+      }
+      expect(seen.size).toBe(150)
+      expect(pages).toBe(3)
+    })
+
+    it('keyset and offset modes return the same set', async () => {
+      seed(deviceA, 30, new Date('2026-08-01T00:00:00Z'))
+      seed(deviceB, 30, new Date('2026-08-01T00:00:10Z'))
+
+      const offsetIds: string[] = []
+      for (let page = 1; page <= 3; page++) {
+        const r = await service.getMessagesForUser(user, { order: 'desc' } as any, page, 25)
+        offsetIds.push(...r.data.map((m: any) => String(m._id)))
+      }
+
+      const keysetIds: string[] = []
+      let cursor: any = undefined
+      while (true) {
+        const r = await service.getMessagesForUser(user, { order: 'desc', cursor } as any, 1, 25)
+        keysetIds.push(...r.data.map((m: any) => String(m._id)))
+        if (!r.meta.nextCursor) break
+        cursor = decodeCursor(r.meta.nextCursor)
+      }
+
+      expect(keysetIds).toEqual(offsetIds)
+    })
+
+    it('asc keyset walk sees rows inserted behind the head mid-walk', async () => {
+      seed(deviceA, 10, new Date('2026-08-01T00:00:00Z'))
+
+      const first = await service.getMessagesForUser(user, { order: 'asc' } as any, 1, 5)
+      // New rows land after the cursor position while we are mid-walk
+      seed(deviceA, 3, new Date('2026-08-02T00:00:00Z'))
+
+      let cursor: any = decodeCursor(first.meta.nextCursor)
+      const rest: string[] = []
+      while (true) {
+        const r = await service.getMessagesForUser(user, { order: 'asc', cursor } as any, 1, 5)
+        rest.push(...r.data.map((m: any) => String(m._id)))
+        if (!r.meta.nextCursor) break
+        cursor = decodeCursor(r.meta.nextCursor)
+      }
+      expect(first.data.length + rest.length).toBe(13)
+    })
+
+    it('maps direction to the stored type and decorates responses with lowercase direction', async () => {
+      seed(deviceA, 1, new Date('2026-08-01T00:00:00Z'), false, SMSType.SENT)
+      seed(deviceA, 1, new Date('2026-08-02T00:00:00Z'), false, SMSType.RECEIVED)
+
+      const sent = await service.getMessagesForUser(user, { order: 'desc', direction: 'sent' } as any, 1, 50)
+      expect(sent.data).toHaveLength(1)
+      // the compatibility contract: both spellings side by side, exact casing
+      expect(sent.data[0].type).toBe('SENT')
+      expect(sent.data[0].direction).toBe('sent')
+    })
+
+    it('applies from inclusively and to exclusively on createdAt', async () => {
+      const t0 = new Date('2026-08-01T00:00:00.000Z')
+      const t1 = new Date('2026-08-01T01:00:00.000Z')
+      seed(deviceA, 1, t0)
+      seed(deviceA, 1, t1)
+
+      const result = await service.getMessagesForUser(
+        user,
+        { order: 'asc', from: t0, to: t1 } as any,
+        1,
+        50,
+      )
+      expect(result.data).toHaveLength(1)
+      expect(new Date(result.data[0].createdAt).getTime()).toBe(t0.getTime())
+    })
+
+    it('combines direction and status independently', async () => {
+      store.push(
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.SENT, status: 'failed', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.SENT, status: 'sent', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.RECEIVED, status: 'received', createdAt: new Date() },
+      )
+      const result = await service.getMessagesForUser(
+        user,
+        { order: 'desc', direction: 'sent', status: 'failed' } as any,
+        1,
+        50,
+      )
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].status).toBe('failed')
+    })
+
+    it('search escapes regex metacharacters', async () => {
+      store.push(
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.SENT, status: 'sent', message: 'price (usd)', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.SENT, status: 'sent', message: 'price usd', createdAt: new Date() },
+      )
+      const result = await service.getMessagesForUser(
+        user,
+        { order: 'desc', search: '(usd)' } as any,
+        1,
+        50,
+      )
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].message).toBe('price (usd)')
     })
   })
 })

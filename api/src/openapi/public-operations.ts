@@ -19,7 +19,7 @@ export const PUBLIC_OPERATIONS: readonly PublicOperation[] = [
   { method: 'post', path: '/gateway/send-bulk-sms' },
   { method: 'get', path: '/gateway/devices' },
   { method: 'get', path: '/gateway/devices/:id' },
-  { method: 'get', path: '/gateway/devices/:id/messages' },
+  { method: 'get', path: '/gateway/messages' },
   { method: 'get', path: '/gateway/devices/:id/sms/:smsId' },
   { method: 'get', path: '/gateway/devices/:id/sms-batch/:smsBatchId' },
   { method: 'get', path: '/gateway/stats' },

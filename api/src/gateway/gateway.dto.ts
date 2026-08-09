@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger'
+import { ApiProperty, getSchemaPath } from '@nestjs/swagger'
 import { SMSType } from './sms-type.enum'
 
 export class SimInfoDTO {
@@ -804,8 +804,9 @@ export class RetrieveSMSDTO {
 
   @ApiProperty({
     enum: SMSType,
+    deprecated: true,
     description:
-      'Direction of the message. Uppercase here, unlike the lowercase type filter on the message history query.',
+      'Direction of the message, uppercase. Deprecated: read the lowercase direction field instead, whose values match the direction query filter.',
   })
   type: string
 
@@ -970,6 +971,57 @@ export class RetrieveSMSResponseDTO {
     description: 'Pagination metadata',
   })
   meta?: PaginationMetaDTO
+}
+
+export class MessageDTO extends RetrieveSMSDTO {
+  @ApiProperty({
+    enum: ['sent', 'received'],
+    description:
+      'Direction of the message, lowercase. Values match the direction query filter, so a response value can be passed straight back as a filter. Not the same thing as status: direction=sent means outbound, status=sent means the device dispatched it.',
+  })
+  direction: 'sent' | 'received'
+
+  @ApiProperty({
+    enum: ['sms'],
+    required: false,
+    description:
+      'Message channel. Currently always sms; mms will appear here when supported. Absent means sms.',
+  })
+  channel?: string
+}
+
+export class CursorPaginationMetaDTO {
+  @ApiProperty({ type: Number, description: 'Number of items per page.' })
+  limit: number
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Opaque cursor for the next page. Pass it back as the cursor query parameter. Null when there is nothing further.',
+  })
+  nextCursor: string | null
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether more messages exist beyond this page.',
+  })
+  hasMore: boolean
+}
+
+export class MessageListResponseDTO {
+  @ApiProperty({ type: [MessageDTO], description: 'Messages, newest first unless order=asc.' })
+  data: MessageDTO[]
+
+  @ApiProperty({
+    description:
+      'Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count.',
+    oneOf: [
+      { $ref: getSchemaPath(PaginationMetaDTO) },
+      { $ref: getSchemaPath(CursorPaginationMetaDTO) },
+    ],
+  })
+  meta: PaginationMetaDTO | CursorPaginationMetaDTO
 }
 
 export class UpdateSMSStatusDTO {

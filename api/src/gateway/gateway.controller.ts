@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common'
 import {
   ApiBearerAuth,
+  ApiExtraModels,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -22,9 +23,12 @@ import {
 } from '@nestjs/swagger'
 import { AuthGuard } from '../auth/guards/auth.guard'
 import {
+  CursorPaginationMetaDTO,
   DeviceListResponseDTO,
   DeviceResponseDTO,
   GatewayStatsResponseDTO,
+  MessageListResponseDTO,
+  PaginationMetaDTO,
   ReceivedSMSDTO,
   RegisterDeviceInputDTO,
   pickDeviceWritableFields,
@@ -43,6 +47,7 @@ import {
 } from './gateway.dto'
 import { GatewayService } from './gateway.service'
 import { CanModifyDevice } from './guards/can-modify-device.guard'
+import { parseMessageQuery } from './message-query'
 
 const DEVICE_ID_PARAM = {
   name: 'id',
@@ -419,9 +424,118 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary: 'List received messages',
+    summary: 'List messages',
     description:
-      'Messages this device received, newest first. Prefer GET /gateway/devices/{id}/messages, which covers both directions.',
+      'Sent and received messages across your whole account, newest first, with delivery status on each. ' +
+      'Filter by device, direction, status, text, and time range. ' +
+      'Two pagination modes: page numbers for browsing, or cursor for polling. ' +
+      'To poll for new messages: request order=asc with a from timestamp, follow nextCursor until hasMore is false, then resume from the last nextCursor on the next poll. ' +
+      'Time filters apply to createdAt (when the platform stored the message); for received messages this is upload time, which can lag the receivedAt shown on the message if the device was offline.',
+  })
+  @ApiExtraModels(PaginationMetaDTO, CursorPaginationMetaDTO)
+  @ApiResponse({
+    status: 200,
+    description: 'A page of messages.',
+    type: MessageListResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Invalid deviceIds, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter.',
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
+  @ApiQuery({
+    name: 'deviceIds',
+    required: false,
+    type: String,
+    description:
+      'Comma-separated device ids to include, from GET /gateway/devices. Default: all devices on the account. Messages from deleted devices are never included.',
+  })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    type: String,
+    enum: ['all', 'sent', 'received'],
+    description:
+      'Direction to return. Default all. Matches the lowercase direction field on each message. Not the same as status: direction=sent means outbound, status=sent means the device dispatched it.',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    deprecated: true,
+    type: String,
+    enum: ['all', 'sent', 'received'],
+    description: 'Deprecated alias of direction. Still works; prefer direction.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    type: String,
+    enum: ['pending', 'dispatched', 'sent', 'delivered', 'failed', 'unknown', 'received'],
+    description:
+      'Delivery state to return. Combine with direction: direction=sent&status=failed lists sends that failed.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description:
+      'Match against the message text and the other party number. Encrypted messages cannot be searched.',
+  })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    type: String,
+    description:
+      'Inclusive lower bound on createdAt. ISO-8601 with an explicit timezone (2026-08-01T00:00:00Z or +03:00 form), or a date (2026-08-01, read as UTC midnight). A datetime without a timezone is rejected.',
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    type: String,
+    description:
+      'Exclusive upper bound on createdAt, same formats as from. Exclusive so consecutive windows never double-count a boundary message.',
+  })
+  @ApiQuery({
+    name: 'order',
+    required: false,
+    type: String,
+    enum: ['desc', 'asc'],
+    description: 'desc (default) for newest first; asc to walk forward in time when polling.',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page to return. Default 1. Mutually exclusive with cursor.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Messages per page. Default 50, maximum 100.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    type: String,
+    description:
+      'Opaque position from a previous response nextCursor. Returns the page after that position and switches meta to nextCursor/hasMore without a total count.',
+  })
+  @UseGuards(AuthGuard)
+  @Get('/messages')
+  async getAccountMessages(@Request() req): Promise<MessageListResponseDTO> {
+    const filters = parseMessageQuery(req.query)
+    const { page, limit } = parsePagination(req.query)
+    return await this.gatewayService.getMessagesForUser(req.user, filters, page, limit)
+  }
+
+  @ApiOperation({
+    summary: 'List received messages for one device',
+    description:
+      'Messages this device received, newest first. Prefer GET /gateway/messages, which covers the whole account and both directions.',
+    deprecated: true,
   })
   @ApiParam(DEVICE_ID_PARAM)
   @ApiResponse({
@@ -461,7 +575,7 @@ export class GatewayController {
   @ApiOperation({
     summary: 'List received messages, legacy path',
     description:
-      'Use GET /gateway/devices/{id}/messages instead, or GET /gateway/devices/{id}/get-received-sms. Kept so existing integrations keep working.',
+      'Use GET /gateway/messages with direction=received instead. Kept so existing integrations keep working.',
     deprecated: true,
   })
   @ApiParam(DEVICE_ID_PARAM)
@@ -493,9 +607,10 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary: 'List message history',
+    summary: 'List message history for one device',
     description:
-      'Sent and received messages for one device, newest first, with delivery status on each. This is the endpoint to poll for new messages.',
+      'Use GET /gateway/messages with deviceIds instead: it covers the whole account, adds time-range and status filters, and supports cursor polling. Kept so existing integrations keep working.',
+    deprecated: true,
   })
   @ApiParam(DEVICE_ID_PARAM)
   @ApiResponse({

@@ -204,40 +204,17 @@
         ]
       }
     },
-    "/api/v1/gateway/devices/{id}/messages": {
+    "/api/v1/gateway/messages": {
       "get": {
-        "description": "Sent and received messages for one device, newest first, with delivery status on each. This is the endpoint to poll for new messages.",
-        "operationId": "GatewayController_getMessages_v1",
+        "description": "Sent and received messages across your whole account, newest first, with delivery status on each. Filter by device, direction, status, text, and time range. Two pagination modes: page numbers for browsing, or cursor for polling. To poll for new messages: request order=asc with a from timestamp, follow nextCursor until hasMore is false, then resume from the last nextCursor on the next poll. Time filters apply to createdAt (when the platform stored the message); for received messages this is upload time, which can lag the receivedAt shown on the message if the device was offline.",
+        "operationId": "GatewayController_getAccountMessages_v1",
         "parameters": [
           {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "Device id, from GET /gateway/devices.",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "search",
+            "name": "cursor",
             "required": false,
             "in": "query",
-            "description": "Match against the message text and the other party number. Encrypted messages cannot be searched.",
+            "description": "Opaque position from a previous response nextCursor. Returns the page after that position and switches meta to nextCursor/hasMore without a total count.",
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "type",
-            "required": false,
-            "in": "query",
-            "description": "Direction to return, lowercase. Default all. Note the asymmetry: this filter is lowercase while the type field on each message comes back uppercase, and an unrecognised value such as SENT applies no filter at all rather than failing.",
-            "schema": {
-              "enum": [
-                "all",
-                "sent",
-                "received"
-              ],
               "type": "string"
             }
           },
@@ -254,9 +231,105 @@
             "name": "page",
             "required": false,
             "in": "query",
-            "description": "Page to return. Default 1.",
+            "description": "Page to return. Default 1. Mutually exclusive with cursor.",
             "schema": {
               "type": "number"
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "description": "desc (default) for newest first; asc to walk forward in time when polling.",
+            "schema": {
+              "enum": [
+                "desc",
+                "asc"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Exclusive upper bound on createdAt, same formats as from. Exclusive so consecutive windows never double-count a boundary message.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive lower bound on createdAt. ISO-8601 with an explicit timezone (2026-08-01T00:00:00Z or +03:00 form), or a date (2026-08-01, read as UTC midnight). A datetime without a timezone is rejected.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "description": "Match against the message text and the other party number. Encrypted messages cannot be searched.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Delivery state to return. Combine with direction: direction=sent&status=failed lists sends that failed.",
+            "schema": {
+              "enum": [
+                "pending",
+                "dispatched",
+                "sent",
+                "delivered",
+                "failed",
+                "unknown",
+                "received"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "deprecated": true,
+            "description": "Deprecated alias of direction. Still works; prefer direction.",
+            "schema": {
+              "enum": [
+                "all",
+                "sent",
+                "received"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "direction",
+            "required": false,
+            "in": "query",
+            "description": "Direction to return. Default all. Matches the lowercase direction field on each message. Not the same as status: direction=sent means outbound, status=sent means the device dispatched it.",
+            "schema": {
+              "enum": [
+                "all",
+                "sent",
+                "received"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "deviceIds",
+            "required": false,
+            "in": "query",
+            "description": "Comma-separated device ids to include, from GET /gateway/devices. Default: all devices on the account. Messages from deleted devices are never included.",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -266,13 +339,13 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RetrieveSMSResponseDTO"
+                  "$ref": "#/components/schemas/MessageListResponseDTO"
                 }
               }
             }
           },
           "400": {
-            "description": "The device id is not a valid id."
+            "description": "Invalid deviceIds, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter."
           },
           "401": {
             "description": "Missing, invalid, or revoked API key."
@@ -286,7 +359,7 @@
             "x-api-key": []
           }
         ],
-        "summary": "List message history",
+        "summary": "List messages",
         "tags": [
           "gateway"
         ]
@@ -1448,6 +1521,56 @@
           "messages"
         ]
       },
+      "PaginationMetaDTO": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Current page number"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of items per page"
+          },
+          "total": {
+            "type": "number",
+            "description": "Total number of items"
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "Total number of pages"
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "total",
+          "totalPages"
+        ]
+      },
+      "CursorPaginationMetaDTO": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Number of items per page."
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque cursor for the next page. Pass it back as the cursor query parameter. Null when there is nothing further."
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether more messages exist beyond this page."
+          }
+        },
+        "required": [
+          "limit",
+          "nextCursor",
+          "hasMore"
+        ]
+      },
       "MessageDeviceDTO": {
         "type": "object",
         "properties": {
@@ -1482,6 +1605,168 @@
           "buildId"
         ]
       },
+      "MessageDTO": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "Message id."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message text. Empty when the message is end to end encrypted."
+          },
+          "device": {
+            "description": "Device that sent or received the message.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MessageDeviceDTO"
+              }
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "SENT",
+              "RECEIVED"
+            ],
+            "deprecated": true,
+            "description": "Direction of the message, uppercase. Deprecated: read the lowercase direction field instead, whose values match the direction query filter."
+          },
+          "status": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "pending",
+              "dispatched",
+              "sent",
+              "delivered",
+              "failed",
+              "unknown",
+              "received"
+            ],
+            "description": "Delivery state, lowercase. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms. Absent on messages stored before status tracking, so treat a missing value as unknown."
+          },
+          "sender": {
+            "type": "string",
+            "description": "Sender number. Set on received messages."
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Destination number. Set on sent messages."
+          },
+          "smsBatch": {
+            "type": "string",
+            "description": "Id of the batch this message was sent in."
+          },
+          "encrypted": {
+            "type": "boolean",
+            "description": "Whether the body is end to end encrypted. Encrypted bodies can only be read by your own client."
+          },
+          "simSubscriptionId": {
+            "type": "number",
+            "description": "SIM the message was sent from."
+          },
+          "receivedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the message was received. Received messages only."
+          },
+          "requestedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the send was requested. Sent messages only."
+          },
+          "dispatchedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the send job reached the device."
+          },
+          "sentAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the device reported the message as sent."
+          },
+          "deliveredAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the carrier confirmed delivery."
+          },
+          "failedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the message failed."
+          },
+          "errorCode": {
+            "type": "string",
+            "description": "Failure code reported by the device."
+          },
+          "errorMessage": {
+            "type": "string",
+            "description": "Failure reason reported by the device."
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the record was created."
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the record was last updated."
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "received"
+            ],
+            "description": "Direction of the message, lowercase. Values match the direction query filter, so a response value can be passed straight back as a filter. Not the same thing as status: direction=sent means outbound, status=sent means the device dispatched it."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "sms"
+            ],
+            "description": "Message channel. Currently always sms; mms will appear here when supported. Absent means sms."
+          }
+        },
+        "required": [
+          "_id",
+          "device",
+          "type",
+          "createdAt",
+          "updatedAt",
+          "direction"
+        ]
+      },
+      "MessageListResponseDTO": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "description": "Messages, newest first unless order=asc.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageDTO"
+            }
+          },
+          "meta": {
+            "description": "Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PaginationMetaDTO"
+              },
+              {
+                "$ref": "#/components/schemas/CursorPaginationMetaDTO"
+              }
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "meta"
+        ]
+      },
       "RetrieveSMSDTO": {
         "type": "object",
         "properties": {
@@ -1507,7 +1792,8 @@
               "SENT",
               "RECEIVED"
             ],
-            "description": "Direction of the message. Uppercase here, unlike the lowercase type filter on the message history query."
+            "deprecated": true,
+            "description": "Direction of the message, uppercase. Deprecated: read the lowercase direction field instead, whose values match the direction query filter."
           },
           "status": {
             "type": "string",
@@ -1598,57 +1884,6 @@
           "type",
           "createdAt",
           "updatedAt"
-        ]
-      },
-      "PaginationMetaDTO": {
-        "type": "object",
-        "properties": {
-          "page": {
-            "type": "number",
-            "description": "Current page number"
-          },
-          "limit": {
-            "type": "number",
-            "description": "Number of items per page"
-          },
-          "total": {
-            "type": "number",
-            "description": "Total number of items"
-          },
-          "totalPages": {
-            "type": "number",
-            "description": "Total number of pages"
-          }
-        },
-        "required": [
-          "page",
-          "limit",
-          "total",
-          "totalPages"
-        ]
-      },
-      "RetrieveSMSResponseDTO": {
-        "type": "object",
-        "properties": {
-          "data": {
-            "description": "The received SMS data",
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RetrieveSMSDTO"
-            }
-          },
-          "meta": {
-            "description": "Pagination metadata",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/PaginationMetaDTO"
-              }
-            ]
-          }
-        },
-        "required": [
-          "data",
-          "meta"
         ]
       },
       "SMSResponseDTO": {

@@ -26,6 +26,9 @@ import { BillingService } from '../billing/billing.service'
 import { SmsQueueService } from './queue/sms-queue.service'
 import { escapeRegExp } from '../common/escape-regexp'
 import { normalizeOsFields } from './os-version'
+import { encodeCursor } from './cursor'
+import { toDirection, toStoredType } from './message-direction'
+import { ParsedMessageQuery } from './message-query'
 
 @Injectable()
 export class GatewayService {
@@ -1152,6 +1155,139 @@ export class GatewayService {
       },
       data,
     }
+  }
+
+  // Account-level history. Always constrains device to the caller's live
+  // devices: messages from deleted devices keep a dangling ref and must not
+  // surface (a future includeDeleted widens this same $in from tombstones).
+  async getMessagesForUser(
+    user: User,
+    filters: ParsedMessageQuery,
+    page = 1,
+    limit = 50,
+  ): Promise<{ data: any[]; meta: any }> {
+    const liveDevices = await this.deviceModel.find(
+      { user: user._id },
+      '_id',
+    )
+    const liveDeviceIds = liveDevices.map((d) => d._id)
+
+    let scopedDeviceIds = liveDeviceIds
+    if (filters.deviceIds?.length) {
+      const liveSet = new Set(liveDeviceIds.map(String))
+      const unknown = filters.deviceIds.find((id) => !liveSet.has(String(id)))
+      if (unknown) {
+        throw new HttpException(
+          { error: `Device not found: ${unknown}` },
+          HttpStatus.NOT_FOUND,
+        )
+      }
+      scopedDeviceIds = filters.deviceIds
+    }
+
+    if (scopedDeviceIds.length === 0) {
+      // Zero live devices: nothing can match, skip the sms collection
+      return filters.cursor
+        ? { meta: { limit, nextCursor: null, hasMore: false }, data: [] }
+        : { meta: { page, limit, total: 0, totalPages: 0 }, data: [] }
+    }
+
+    const query: any = {
+      user: user._id,
+      device: { $in: scopedDeviceIds },
+    }
+    if (filters.direction) {
+      query.type = toStoredType(filters.direction)
+    }
+    if (filters.status) {
+      query.status = filters.status
+    }
+    if (filters.search) {
+      const pattern = new RegExp(escapeRegExp(filters.search), 'i')
+      query.$or = [
+        { message: pattern },
+        { recipient: pattern },
+        { sender: pattern },
+      ]
+    }
+    if (filters.from || filters.to) {
+      query.createdAt = {
+        ...(filters.from && { $gte: filters.from }),
+        ...(filters.to && { $lt: filters.to }),
+      }
+    }
+
+    const desc = filters.order === 'desc'
+    const sort: Record<string, 1 | -1> = desc
+      ? { createdAt: -1, _id: -1 }
+      : { createdAt: 1, _id: 1 }
+
+    if (filters.cursor) {
+      // Keyset predicate with _id tiebreaker: bulk sends insert whole batches
+      // in one createdAt millisecond, so timestamp alone repeats or skips them
+      const { createdAt, id } = filters.cursor
+      const op = desc ? '$lt' : '$gt'
+      const keyset = {
+        $or: [
+          { createdAt: { [op]: createdAt } },
+          { createdAt, _id: { [op]: id } },
+        ],
+      }
+      const findQuery = query.$or
+        ? { $and: [query, keyset] }
+        : { ...query, ...keyset }
+
+      const data = await this.smsModel
+        .find(findQuery, null, { sort, limit: limit + 1 })
+        .populate({ path: 'device', select: '_id brand model buildId enabled' })
+        .lean()
+
+      const hasMore = data.length > limit
+      const pageData = hasMore ? data.slice(0, limit) : data
+      const last = pageData[pageData.length - 1]
+      return {
+        meta: {
+          limit,
+          nextCursor:
+            hasMore && last
+              ? encodeCursor(new Date(last.createdAt as any), last._id as any)
+              : null,
+          hasMore,
+        },
+        data: this.decorateDirection(pageData),
+      }
+    }
+
+    const skip = (page - 1) * limit
+    const total = await this.smsModel.countDocuments(query)
+    const data = await this.smsModel
+      .find(query, null, { sort, limit, skip })
+      .populate({ path: 'device', select: '_id brand model buildId enabled' })
+      .lean()
+
+    // nextCursor here too, so a poller can enter keyset mode from its first
+    // (cursorless) call instead of needing a separate bootstrap step
+    const hasMore = skip + data.length < total
+    const last = data[data.length - 1]
+    return {
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        nextCursor:
+          hasMore && last
+            ? encodeCursor(new Date(last.createdAt as any), last._id as any)
+            : null,
+        hasMore,
+      },
+      data: this.decorateDirection(data),
+    }
+  }
+
+  // API vocabulary: lowercase direction derived from the stored type field
+  private decorateDirection(messages: any[]): any[] {
+    return messages.map((m) => ({ ...m, direction: toDirection(m.type) }))
   }
 
   async updateSMSStatus(deviceId: string, dto: UpdateSMSStatusDTO): Promise<any> {

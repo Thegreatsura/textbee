@@ -186,7 +186,10 @@ export class WebhookListResponseDTO {
 }
 
 export class WebhookResponseDTO {
-  @ApiProperty({ type: WebhookSubscriptionDTO })
+  @ApiProperty({
+    type: WebhookSubscriptionDTO,
+    description: 'The subscription.',
+  })
   data: WebhookSubscriptionDTO
 }
 
@@ -196,7 +199,10 @@ export class WebhookDeletedResultDTO {
 }
 
 export class WebhookDeletedResponseDTO {
-  @ApiProperty({ type: WebhookDeletedResultDTO })
+  @ApiProperty({
+    type: WebhookDeletedResultDTO,
+    description: 'Outcome of the delete.',
+  })
   data: WebhookDeletedResultDTO
 }
 
@@ -310,6 +316,9 @@ export class WebhookNotificationPageDTO {
 }
 
 export class WebhookNotificationListResponseDTO {
-  @ApiProperty({ type: WebhookNotificationPageDTO })
+  @ApiProperty({
+    type: WebhookNotificationPageDTO,
+    description: 'Delivery records with pagination.',
+  })
   data: WebhookNotificationPageDTO
 }

@@ -228,12 +228,12 @@ export class AuthSessionDTO {
 }
 
 export class AuthSessionResponseDTO {
-  @ApiProperty({ type: AuthSessionDTO })
+  @ApiProperty({ type: AuthSessionDTO, description: 'Token and account.' })
   data: AuthSessionDTO
 }
 
 export class UserResponseDTO {
-  @ApiProperty({ type: UserDTO })
+  @ApiProperty({ type: UserDTO, description: 'The account.' })
   data: UserDTO
 }
 
@@ -282,7 +282,7 @@ export class ApiKeyDTO {
 }
 
 export class ApiKeyListResponseDTO {
-  @ApiProperty({ type: [ApiKeyDTO] })
+  @ApiProperty({ type: [ApiKeyDTO], description: 'Your keys, masked.' })
   data: ApiKeyDTO[]
 }
 

@@ -721,25 +721,53 @@ export class DeviceDTO {
   })
   lastHeartbeat?: Date
 
-  @ApiProperty({ type: BatteryInfoDTO, required: false })
+  @ApiProperty({
+    type: BatteryInfoDTO,
+    required: false,
+    description: 'Battery level at the last heartbeat.',
+  })
   batteryInfo?: BatteryInfoDTO
 
-  @ApiProperty({ type: NetworkInfoDTO, required: false })
+  @ApiProperty({
+    type: NetworkInfoDTO,
+    required: false,
+    description: 'Connection the device was on at the last heartbeat.',
+  })
   networkInfo?: NetworkInfoDTO
 
-  @ApiProperty({ type: AppVersionInfoDTO, required: false })
+  @ApiProperty({
+    type: AppVersionInfoDTO,
+    required: false,
+    description: 'textbee app version running on the device.',
+  })
   appVersionInfo?: AppVersionInfoDTO
 
-  @ApiProperty({ type: DeviceUptimeInfoDTO, required: false })
+  @ApiProperty({
+    type: DeviceUptimeInfoDTO,
+    required: false,
+    description: 'How long the device has been up.',
+  })
   deviceUptimeInfo?: DeviceUptimeInfoDTO
 
-  @ApiProperty({ type: MemoryInfoDTO, required: false })
+  @ApiProperty({
+    type: MemoryInfoDTO,
+    required: false,
+    description: 'Memory reported at the last heartbeat.',
+  })
   memoryInfo?: MemoryInfoDTO
 
-  @ApiProperty({ type: StorageInfoDTO, required: false })
+  @ApiProperty({
+    type: StorageInfoDTO,
+    required: false,
+    description: 'Storage reported at the last heartbeat.',
+  })
   storageInfo?: StorageInfoDTO
 
-  @ApiProperty({ type: DeviceSystemInfoDTO, required: false })
+  @ApiProperty({
+    type: DeviceSystemInfoDTO,
+    required: false,
+    description: 'Timezone and locale of the device.',
+  })
   systemInfo?: DeviceSystemInfoDTO
 
   @ApiProperty({
@@ -1128,7 +1156,11 @@ export class HeartbeatInputDTO {
   })
   smsSendDelaySeconds?: number
 
-  @ApiProperty({ type: SimInfoCollectionDTO, required: false })
+  @ApiProperty({
+    type: SimInfoCollectionDTO,
+    required: false,
+    description: 'SIMs installed in the device at the time of the heartbeat.',
+  })
   simInfo?: SimInfoCollectionDTO
 }
 
@@ -1183,17 +1215,17 @@ export class GatewayStatsDTO {
 }
 
 export class GatewayStatsResponseDTO {
-  @ApiProperty({ type: GatewayStatsDTO })
+  @ApiProperty({ type: GatewayStatsDTO, description: 'Account totals.' })
   data: GatewayStatsDTO
 }
 
 export class DeviceListResponseDTO {
-  @ApiProperty({ type: [DeviceDTO] })
+  @ApiProperty({ type: [DeviceDTO], description: 'Your devices.' })
   data: DeviceDTO[]
 }
 
 export class DeviceResponseDTO {
-  @ApiProperty({ type: DeviceDTO })
+  @ApiProperty({ type: DeviceDTO, description: 'The device.' })
   data: DeviceDTO
 }
 
@@ -1203,7 +1235,7 @@ export class SuccessResultDTO {
 }
 
 export class SuccessResponseDTO {
-  @ApiProperty({ type: SuccessResultDTO })
+  @ApiProperty({ type: SuccessResultDTO, description: 'Outcome of the action.' })
   data: SuccessResultDTO
 }
 
@@ -1255,12 +1287,12 @@ export class SendSMSResultDTO {
 }
 
 export class SendSMSResponseDTO {
-  @ApiProperty({ type: SendSMSResultDTO })
+  @ApiProperty({ type: SendSMSResultDTO, description: 'Outcome of the send.' })
   data: SendSMSResultDTO
 }
 
 export class SMSResponseDTO {
-  @ApiProperty({ type: RetrieveSMSDTO })
+  @ApiProperty({ type: RetrieveSMSDTO, description: 'The message.' })
   data: RetrieveSMSDTO
 }
 
@@ -1349,6 +1381,9 @@ export class SMSBatchResultDTO {
 }
 
 export class SMSBatchResponseDTO {
-  @ApiProperty({ type: SMSBatchResultDTO })
+  @ApiProperty({
+    type: SMSBatchResultDTO,
+    description: 'The batch and the messages in it.',
+  })
   data: SMSBatchResultDTO
 }

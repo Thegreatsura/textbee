@@ -811,7 +811,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/GatewayStatsDTO"
+            "description": "Account totals.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GatewayStatsDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1140,25 +1145,60 @@
             "description": "Last heartbeat. A device silent for long is likely offline and sends will queue."
           },
           "batteryInfo": {
-            "$ref": "#/components/schemas/BatteryInfoDTO"
+            "description": "Battery level at the last heartbeat.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BatteryInfoDTO"
+              }
+            ]
           },
           "networkInfo": {
-            "$ref": "#/components/schemas/NetworkInfoDTO"
+            "description": "Connection the device was on at the last heartbeat.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NetworkInfoDTO"
+              }
+            ]
           },
           "appVersionInfo": {
-            "$ref": "#/components/schemas/AppVersionInfoDTO"
+            "description": "textbee app version running on the device.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AppVersionInfoDTO"
+              }
+            ]
           },
           "deviceUptimeInfo": {
-            "$ref": "#/components/schemas/DeviceUptimeInfoDTO"
+            "description": "How long the device has been up.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceUptimeInfoDTO"
+              }
+            ]
           },
           "memoryInfo": {
-            "$ref": "#/components/schemas/MemoryInfoDTO"
+            "description": "Memory reported at the last heartbeat.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemoryInfoDTO"
+              }
+            ]
           },
           "storageInfo": {
-            "$ref": "#/components/schemas/StorageInfoDTO"
+            "description": "Storage reported at the last heartbeat.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StorageInfoDTO"
+              }
+            ]
           },
           "systemInfo": {
-            "$ref": "#/components/schemas/DeviceSystemInfoDTO"
+            "description": "Timezone and locale of the device.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceSystemInfoDTO"
+              }
+            ]
           },
           "simInfo": {
             "description": "SIMs installed in the device.",
@@ -1204,7 +1244,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/DeviceDTO"
+            "description": "The device.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DeviceDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1215,6 +1260,7 @@
         "type": "object",
         "properties": {
           "data": {
+            "description": "Your devices.",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeviceDTO"
@@ -1315,7 +1361,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/SendSMSResultDTO"
+            "description": "Outcome of the send.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SendSMSResultDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1604,7 +1655,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/RetrieveSMSDTO"
+            "description": "The message.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RetrieveSMSDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1718,7 +1774,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/SMSBatchResultDTO"
+            "description": "The batch and the messages in it.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SMSBatchResultDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1988,7 +2049,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/WebhookNotificationPageDTO"
+            "description": "Delivery records with pagination.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookNotificationPageDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -1999,7 +2065,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/WebhookSubscriptionDTO"
+            "description": "The subscription.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookSubscriptionDTO"
+              }
+            ]
           }
         },
         "required": [
@@ -2106,7 +2177,12 @@
         "type": "object",
         "properties": {
           "data": {
-            "$ref": "#/components/schemas/WebhookDeletedResultDTO"
+            "description": "Outcome of the delete.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WebhookDeletedResultDTO"
+              }
+            ]
           }
         },
         "required": [

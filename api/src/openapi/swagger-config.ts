@@ -38,6 +38,11 @@ export interface SwaggerConfigOptions {
   servers?: string[]
 }
 
+const LICENSE = {
+  name: 'MIT',
+  url: 'https://github.com/vernu/textbee/blob/main/LICENSE',
+} as const
+
 // The server and the openapi exporter both call this, so the documented paths
 // cannot drift from the ones the app actually serves.
 export function applyApiConventions(app: INestApplication): void {
@@ -58,6 +63,7 @@ export function buildSwaggerConfig({
     .setTitle(title)
     .setDescription(description)
     .setVersion(version)
+    .setLicense(LICENSE.name, LICENSE.url)
     .addBearerAuth()
     .addApiKey(
       {

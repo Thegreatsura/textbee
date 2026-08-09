@@ -1,12 +1,13 @@
 import 'dotenv/config'
 import * as crypto from 'crypto'
-import { VersioningType, Logger } from '@nestjs/common'
+import { Logger } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
 import * as firebase from 'firebase-admin'
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger'
+import { SwaggerModule } from '@nestjs/swagger'
 import * as express from 'express'
 import { NestExpressApplication } from '@nestjs/platform-express'
+import { applyApiConventions, buildSwaggerConfig } from './openapi/swagger-config'
 
 // Ensure crypto is available globally for @nestjs/schedule
 if (typeof globalThis.crypto === 'undefined') {
@@ -30,26 +31,12 @@ async function bootstrap() {
   const app: NestExpressApplication = await NestFactory.create(AppModule)
   const PORT = process.env.PORT || 3001
 
-  app.setGlobalPrefix('api')
-  app.enableVersioning({
-    defaultVersion: '1',
-    type: VersioningType.URI,
-  })
+  applyApiConventions(app)
 
-  const config = new DocumentBuilder()
-    .setTitle('TextBee API Docs')
-    .setDescription('TextBee - Android SMS Gateway API Docs')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addApiKey(
-      {
-        type: 'apiKey',
-        name: 'x-api-key',
-        in: 'header',
-      },
-      'x-api-key',
-    )
-    .build()
+  const config = buildSwaggerConfig({
+    title: 'TextBee API Docs',
+    description: 'TextBee - Android SMS Gateway API Docs',
+  })
   const document = SwaggerModule.createDocument(app, config)
   // Every route that carries the spec itself, including swagger-ui-init.js,
   // which embeds the whole document and is otherwise cached as a static .js

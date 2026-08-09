@@ -14,6 +14,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiResponse,
   ApiSecurity,
@@ -21,6 +22,9 @@ import {
 } from '@nestjs/swagger'
 import { AuthGuard } from '../auth/guards/auth.guard'
 import {
+  DeviceListResponseDTO,
+  DeviceResponseDTO,
+  GatewayStatsResponseDTO,
   ReceivedSMSDTO,
   RegisterDeviceInputDTO,
   pickDeviceWritableFields,
@@ -29,12 +33,36 @@ import {
   SendBulkSMSRequestDTO,
   SendSMSInputDTO,
   SendSMSRequestDTO,
+  SendSMSResponseDTO,
+  SMSBatchResponseDTO,
+  SMSResponseDTO,
+  SuccessResponseDTO,
   UpdateSMSStatusDTO,
   HeartbeatInputDTO,
   HeartbeatResponseDTO,
 } from './gateway.dto'
 import { GatewayService } from './gateway.service'
 import { CanModifyDevice } from './guards/can-modify-device.guard'
+
+const DEVICE_ID_PARAM = {
+  name: 'id',
+  description: 'Device id, from GET /gateway/devices.',
+} as const
+
+const UNAUTHORIZED_RESPONSE = {
+  status: 401,
+  description: 'Missing, invalid, or revoked API key.',
+} as const
+
+const DEVICE_NOT_FOUND_RESPONSE = {
+  status: 404,
+  description: 'No device with that id on your account.',
+} as const
+
+const INVALID_DEVICE_ID_RESPONSE = {
+  status: 400,
+  description: 'The device id is not a valid id.',
+} as const
 
 // Query params arrive as strings; non-integer or out-of-range values resolve
 // to the defaults (page 1, limit 50) and limit is capped at 100.
@@ -58,6 +86,17 @@ export class GatewayController {
   constructor(private readonly gatewayService: GatewayService) {}
 
   @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary: 'Get account totals',
+    description:
+      'Messages sent, messages received, devices, and API keys across your whole account.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Account totals.',
+    type: GatewayStatsResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Get('/stats')
   async getStats(@Request() req) {
     const data = await this.gatewayService.getStatsForUser(req.user)
@@ -65,7 +104,17 @@ export class GatewayController {
   }
 
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'Register device' })
+  @ApiOperation({
+    summary: 'Register a device',
+    description:
+      'Pairs an Android phone with your account. The textbee app calls this on setup and again whenever the push token changes.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The registered device.',
+    type: DeviceResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Post('/devices')
   async registerDevice(@Body() input: RegisterDeviceInputDTO, @Request() req) {
     const data = await this.gatewayService.registerDevice(
@@ -76,14 +125,37 @@ export class GatewayController {
   }
 
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'List of registered devices' })
+  @ApiOperation({
+    summary: 'List your devices',
+    description:
+      'Every phone paired with your account. The push token and hardware serial are never returned.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Your devices.',
+    type: DeviceListResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Get('/devices')
   async getDevices(@Request() req) {
     const data = await this.gatewayService.getDevicesForUser(req.user)
     return { data }
   }
 
-  @ApiOperation({ summary: 'Get device by id' })
+  @ApiOperation({
+    summary: 'Get a device',
+    description:
+      'Full state of one device, including its last heartbeat, battery, and SIM list.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The device.',
+    type: DeviceResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @Get('/devices/:id')
   async getDevice(@Param('id') deviceId: string) {
@@ -95,7 +167,20 @@ export class GatewayController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Update device' })
+  @ApiOperation({
+    summary: 'Update a device',
+    description:
+      'Changes device settings such as the name or whether it is enabled. Only writable device fields are applied.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The updated device.',
+    type: DeviceResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @Patch('/devices/:id')
   async updateDevice(
@@ -109,7 +194,20 @@ export class GatewayController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Device heartbeat' })
+  @ApiOperation({
+    summary: 'Report a device heartbeat',
+    description:
+      'Called by the textbee app on a schedule to report that the phone is online, refresh its push token, and upload battery, storage, and SIM state.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'Heartbeat accepted.',
+    type: HeartbeatResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @Post('/devices/:id/heartbeat')
   @HttpCode(HttpStatus.OK)
@@ -121,7 +219,20 @@ export class GatewayController {
     return data
   }
 
-  @ApiOperation({ summary: 'Delete device' })
+  @ApiOperation({
+    summary: 'Delete a device',
+    description:
+      'Unpairs the phone. Message history is kept, and the app has to pair again to send from this phone.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The device was deleted.',
+    type: SuccessResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @Delete('/devices/:id')
   async deleteDevice(@Param('id') deviceId: string) {
@@ -129,7 +240,20 @@ export class GatewayController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Set device as the default sender' })
+  @ApiOperation({
+    summary: 'Set the default sending device',
+    description:
+      'Sends that omit deviceId go out from this device. Any other device loses the flag.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The device is now the default.',
+    type: DeviceResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @Post('/devices/:id/set-default')
   @HttpCode(HttpStatus.OK)
@@ -139,8 +263,26 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Send SMS. deviceId is optional: defaults to your default device, else the most recently active enabled device.',
+    summary: 'Send an SMS',
+    description:
+      'Sends one message to one or more recipients from a phone on your account. deviceId is optional: without it textbee uses your default device, otherwise the enabled device with the most recent heartbeat. Every recipient counts as one message against your plan.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'The send was accepted. Use smsBatchId to follow delivery. Acceptance is not delivery: the phone still has to be online.',
+    type: SendSMSResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'No enabled device to send from, the device is disabled, your email is not verified, or the message could not be pushed to the phone.',
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({
+    status: 429,
+    description:
+      'Your daily, monthly, or per-batch plan limit is used up. The body says which one.',
   })
   @UseGuards(AuthGuard)
   @Post('/send-sms')
@@ -155,8 +297,25 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Send Bulk SMS. deviceId is optional: defaults to your default device, else the most recently active enabled device.',
+    summary: 'Send several SMS in one call',
+    description:
+      'Sends a batch where every entry has its own text and recipients. deviceId is optional and resolves the same way as POST /gateway/send-sms.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The batch was accepted.',
+    type: SendSMSResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'No enabled device to send from, the device is disabled, your email is not verified, or the batch could not be pushed to the phone.',
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({
+    status: 429,
+    description:
+      'Your daily, monthly, or per-batch plan limit is used up. The body says which one.',
   })
   @UseGuards(AuthGuard)
   @Post('/send-bulk-sms')
@@ -177,9 +336,16 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Deprecated: use POST /gateway/send-sms with an optional deviceId in the body. Send SMS to a device.',
+    summary: 'Send an SMS from a named device',
+    description:
+      'Use POST /gateway/send-sms with an optional deviceId in the body instead. Kept so existing integrations keep working.',
     deprecated: true,
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 201,
+    description: 'The send was accepted.',
+    type: SendSMSResponseDTO,
   })
   @UseGuards(AuthGuard, CanModifyDevice)
   // deprecate sendSMS route in favor of send-sms, but allow both to prevent breaking changes
@@ -193,9 +359,16 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Deprecated: use POST /gateway/send-bulk-sms with an optional deviceId in the body. Send Bulk SMS.',
+    summary: 'Send several SMS from a named device',
+    description:
+      'Use POST /gateway/send-bulk-sms with an optional deviceId in the body instead. Kept so existing integrations keep working.',
     deprecated: true,
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 201,
+    description: 'The batch was accepted.',
+    type: SendSMSResponseDTO,
   })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Post(['/devices/:id/send-bulk-sms'])
@@ -208,7 +381,16 @@ export class GatewayController {
   }
 
 
-  @ApiOperation({ summary: 'Received SMS from a device' })
+  @ApiOperation({
+    summary: 'Report an incoming SMS',
+    description:
+      'Called by the textbee app when the phone receives a message. This is how received message history and MESSAGE_RECEIVED webhooks get their data.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({ status: 200, description: 'The message was stored.' })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @HttpCode(HttpStatus.OK)
   @Post('/devices/:id/receive-sms')
   @UseGuards(AuthGuard, CanModifyDevice)
@@ -218,10 +400,13 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Deprecated: use POST /gateway/devices/{id}/receive-sms. Received SMS from a device.',
+    summary: 'Report an incoming SMS, legacy path',
+    description:
+      'Use POST /gateway/devices/{id}/receive-sms instead. Kept for older builds of the Android app.',
     deprecated: true,
   })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({ status: 200, description: 'The message was stored.' })
   @HttpCode(HttpStatus.OK)
   // legacy alias kept for older app versions and integrations
   @Post('/devices/:id/receiveSMS')
@@ -233,10 +418,32 @@ export class GatewayController {
     return await this.receiveSMS(deviceId, dto)
   }
 
-  @ApiOperation({ summary: 'Get received SMS from a device' })
-  @ApiResponse({ status: 200, type: RetrieveSMSResponseDTO })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (default: 50, max: 100)' })
+  @ApiOperation({
+    summary: 'List received messages',
+    description:
+      'Messages this device received, newest first. Prefer GET /gateway/devices/{id}/messages, which covers both directions.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'A page of received messages.',
+    type: RetrieveSMSResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page to return. Default 1.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Messages per page. Default 50, maximum 100.',
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Get('/devices/:id/get-received-sms')
   async getReceivedSMS(
@@ -252,13 +459,29 @@ export class GatewayController {
   }
 
   @ApiOperation({
-    summary:
-      'Deprecated: use GET /gateway/devices/{id}/get-received-sms. Get received SMS from a device.',
+    summary: 'List received messages, legacy path',
+    description:
+      'Use GET /gateway/devices/{id}/messages instead, or GET /gateway/devices/{id}/get-received-sms. Kept so existing integrations keep working.',
     deprecated: true,
   })
-  @ApiResponse({ status: 200, type: RetrieveSMSResponseDTO })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (default: 50, max: 100)' })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'A page of received messages.',
+    type: RetrieveSMSResponseDTO,
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page to return. Default 1.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Messages per page. Default 50, maximum 100.',
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   // legacy alias kept for older app versions and integrations
   @Get('/devices/:id/getReceivedSMS')
@@ -269,11 +492,46 @@ export class GatewayController {
     return await this.getReceivedSMS(deviceId, req)
   }
 
-  @ApiOperation({ summary: 'Get message history (sent and received) from a device' })
-  @ApiResponse({ status: 200, type: RetrieveSMSResponseDTO })
-  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
-  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Number of items per page (default: 50, max: 100)' })
-  @ApiQuery({ name: 'type', required: false, type: String, description: 'Filter by message type: all, sent, or received (default: all)' })
+  @ApiOperation({
+    summary: 'List message history',
+    description:
+      'Sent and received messages for one device, newest first, with delivery status on each. This is the endpoint to poll for new messages.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'A page of messages.',
+    type: RetrieveSMSResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    description: 'Page to return. Default 1.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Messages per page. Default 50, maximum 100.',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    type: String,
+    enum: ['all', 'sent', 'received'],
+    description: 'Direction to return. Default all.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    description:
+      'Match against the message text and the other party number. Encrypted messages cannot be searched.',
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Get('/devices/:id/messages')
   async getMessages(
@@ -288,7 +546,16 @@ export class GatewayController {
     return result;
   }
 
-  @ApiOperation({ summary: 'Update SMS status' })
+  @ApiOperation({
+    summary: 'Update the delivery status of an SMS',
+    description:
+      'Called by the textbee app once the carrier reports the outcome. This is what moves a message from sent to delivered or failed.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiResponse({ status: 200, description: 'The status was recorded.' })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @UseGuards(AuthGuard, CanModifyDevice)
   @HttpCode(HttpStatus.OK)
   @Patch('/devices/:id/sms-status')
@@ -300,7 +567,27 @@ export class GatewayController {
     return { data };
   }
 
-  @ApiOperation({ summary: 'Get a single SMS by ID' })
+  @ApiOperation({
+    summary: 'Get one message',
+    description:
+      'A single sent or received message with its delivery timestamps. Use it to check the outcome of one recipient.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiParam({
+    name: 'smsId',
+    description: 'Message id, from the message history response.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The message.',
+    type: SMSResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({
+    status: 404,
+    description: 'No such message on this device.',
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Get('/devices/:id/sms/:smsId')
   async getSMSById(
@@ -311,7 +598,27 @@ export class GatewayController {
     return { data };
   }
 
-  @ApiOperation({ summary: 'Get an SMS batch by ID with all its SMS messages' })
+  @ApiOperation({
+    summary: 'Get a send batch',
+    description:
+      'The batch returned by a send, plus one message per recipient. Poll this to see how a send is progressing.',
+  })
+  @ApiParam(DEVICE_ID_PARAM)
+  @ApiParam({
+    name: 'smsBatchId',
+    description: 'Batch id, returned as smsBatchId by the send endpoints.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The batch and its messages.',
+    type: SMSBatchResponseDTO,
+  })
+  @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({
+    status: 404,
+    description: 'No such batch on this device.',
+  })
   @UseGuards(AuthGuard, CanModifyDevice)
   @Get('/devices/:id/sms-batch/:smsBatchId')
   async getSmsBatchById(

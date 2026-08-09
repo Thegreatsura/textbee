@@ -15,21 +15,43 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiQuery,
+  ApiResponse,
   ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger'
 import {
+  ApiKeyCreatedResponseDTO,
+  ApiKeyListResponseDTO,
+  AuthSessionResponseDTO,
+  ChangePasswordInputDTO,
+  GoogleLoginInputDTO,
   LoginInputDTO,
+  MessageResponseDTO,
   RegisterInputDTO,
+  RenameApiKeyInputDTO,
   RequestResetPasswordInputDTO,
   ResetPasswordInputDTO,
   UpdateOnboardingDTO,
+  UpdateProfileInputDTO,
+  UserResponseDTO,
+  VerifyEmailInputDTO,
 } from './auth.dto'
 import { AuthGuard } from './guards/auth.guard'
 import { AuthService } from './auth.service'
 import { UsersService } from '../users/users.service'
 import { CanModifyApiKey } from './guards/can-modify-api-key.guard'
+
+const API_KEY_ID_PARAM = {
+  name: 'id',
+  description: 'API key id, from GET /auth/api-keys.',
+} as const
+
+const UNAUTHORIZED_RESPONSE = {
+  status: 401,
+  description: 'Missing or invalid credentials.',
+} as const
 
 @ApiTags('auth')
 @Controller('auth')
@@ -39,7 +61,24 @@ export class AuthController {
     private usersService: UsersService,
   ) {}
 
-  @ApiOperation({ summary: 'Login' })
+  @ApiOperation({
+    summary: 'Sign in with email and password',
+    description:
+      'Returns a JWT for the dashboard. Programmatic callers use an API key instead and never need this endpoint.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Signed in.',
+    type: AuthSessionResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The Turnstile check failed.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Wrong email or password.',
+  })
   @HttpCode(HttpStatus.OK)
   @Post('/login')
   async login(@Body() input: LoginInputDTO) {
@@ -47,22 +86,59 @@ export class AuthController {
     return { data }
   }
 
-  @ApiOperation({ summary: 'Login With Google' })
+  @ApiOperation({
+    summary: 'Sign in with Google',
+    description:
+      'Exchanges a Google ID token for a textbee session. Creates the account on first sign in.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Signed in.',
+    type: AuthSessionResponseDTO,
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'The Google token is invalid, was issued for another app, or its email is unverified.',
+  })
   @HttpCode(HttpStatus.OK)
   @Post('/google-login')
-  async googleLogin(@Body() input: any) {
+  async googleLogin(@Body() input: GoogleLoginInputDTO) {
     const data = await this.authService.loginWithGoogle(input.idToken)
     return { data }
   }
 
-  @ApiOperation({ summary: 'Register' })
+  @ApiOperation({
+    summary: 'Create an account',
+    description:
+      'Creates the account and signs it in. Verify the email before sending, since unverified accounts cannot send messages.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The account was created.',
+    type: AuthSessionResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The email is already in use, or the Turnstile check failed.',
+  })
   @Post('/register')
   async register(@Body() input: RegisterInputDTO) {
     const data = await this.authService.register(input)
     return { data }
   }
 
-  @ApiOperation({ summary: 'Get current logged in user' })
+  @ApiOperation({
+    summary: 'Get the current account',
+    description:
+      'The account behind the credentials on the request. Useful to check which account an API key belongs to.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The current account.',
+    type: UserResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
@@ -71,34 +147,63 @@ export class AuthController {
     return { data: req.user }
   }
 
-  @ApiOperation({ summary: 'Update Profile' })
+  @ApiOperation({
+    summary: 'Update your profile',
+    description: 'Changes the name and phone number on the account.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The updated account.',
+    type: UserResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Patch('/update-profile')
   async updateProfile(
-    @Body() input: { name: string; phone: string },
+    @Body() input: UpdateProfileInputDTO,
     @Request() req,
   ) {
     return await this.authService.updateProfile(input, req.user)
   }
 
-  @ApiOperation({ summary: 'Change Password' })
+  @ApiOperation({
+    summary: 'Change your password',
+    description: 'Requires the current password.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The password was changed.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse({ status: 400, description: 'The current password is wrong.' })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
   @Post('/change-password')
   async changePassword(
-    @Body() input: { oldPassword: string; newPassword: string },
+    @Body() input: ChangePasswordInputDTO,
     @Request() req,
   ) {
     return await this.authService.changePassword(input, req.user)
   }
 
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'Generate Api Key' })
+  @ApiOperation({
+    summary: 'Create an API key',
+    description:
+      'Creates a key with full access to the account. The full key is returned once and only stored hashed, so copy it now.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The new key, in full.',
+    type: ApiKeyCreatedResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @Post('/api-keys')
@@ -108,14 +213,24 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'Get Api Key List (masked***)' })
+  @ApiOperation({
+    summary: 'List your API keys',
+    description:
+      'Keys are returned masked, newest first. The full key is only ever shown when it is created.',
+  })
   @ApiQuery({
     name: 'status',
     required: false,
     enum: ['active', 'revoked', 'all'],
-    description:
-      'Filter keys: active (default), revoked only, or all (legacy full list)',
+    description: 'Which keys to return. Default active.',
   })
+  @ApiResponse({
+    status: 200,
+    description: 'Your keys, masked.',
+    type: ApiKeyListResponseDTO,
+  })
+  @ApiResponse({ status: 400, description: 'Unknown status value.' })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @Get('/api-keys')
@@ -128,7 +243,19 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard, CanModifyApiKey)
-  @ApiOperation({ summary: 'Delete Api Key' })
+  @ApiOperation({
+    summary: 'Delete an API key',
+    description:
+      'Removes the key and its usage record. Revoke instead if you want to keep the record.',
+  })
+  @ApiParam(API_KEY_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The key was deleted.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({ status: 404, description: 'No such key on your account.' })
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
@@ -139,7 +266,19 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard, CanModifyApiKey)
-  @ApiOperation({ summary: 'Revoke Api Key' })
+  @ApiOperation({
+    summary: 'Revoke an API key',
+    description:
+      'Stops the key working immediately while keeping it in the list. Use this when a key may have leaked.',
+  })
+  @ApiParam(API_KEY_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The key was revoked.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({ status: 404, description: 'No such key on your account.' })
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
@@ -150,17 +289,37 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard, CanModifyApiKey)
-  @ApiOperation({ summary: 'Rename Api Key' })
+  @ApiOperation({
+    summary: 'Rename an API key',
+    description: 'Changes the label only. The key itself is unchanged.',
+  })
+  @ApiParam(API_KEY_ID_PARAM)
+  @ApiResponse({
+    status: 200,
+    description: 'The key was renamed.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse({ status: 404, description: 'No such key on your account.' })
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @HttpCode(HttpStatus.OK)
   @Patch('/api-keys/:id/rename')
-  async renameApiKey(@Param() params, @Body() input: { name: string }) {
+  async renameApiKey(@Param() params, @Body() input: RenameApiKeyInputDTO) {
     await this.authService.renameApiKey(params.id, input.name)
     return { message: 'API Key Renamed' }
   }
 
-  @ApiOperation({ summary: 'Update dashboard onboarding progress' })
+  @ApiOperation({
+    summary: 'Update dashboard onboarding progress',
+    description: 'Tracks which onboarding step the dashboard should show next.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The updated account.',
+    type: UserResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
   @UseGuards(AuthGuard)
@@ -173,14 +332,36 @@ export class AuthController {
     return { data: user }
   }
 
-  @ApiOperation({ summary: 'Request Password Reset' })
+  @ApiOperation({
+    summary: 'Request a password reset code',
+    description:
+      'Emails a one time code. The response is the same whether or not the address has an account.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The request was accepted.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse({ status: 400, description: 'The Turnstile check failed.' })
   @HttpCode(HttpStatus.OK)
   @Post('/request-password-reset')
   async requestPasswordReset(@Body() input: RequestResetPasswordInputDTO) {
     return await this.authService.requestResetPassword(input)
   }
 
-  @ApiOperation({ summary: 'Reset Password' })
+  @ApiOperation({
+    summary: 'Set a new password with a reset code',
+    description: 'Completes the reset started by the request endpoint.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The password was reset.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The code is wrong or has expired.',
+  })
   @HttpCode(HttpStatus.OK)
   @Post('/reset-password')
   async resetPassword(@Body() input: ResetPasswordInputDTO) {
@@ -188,7 +369,17 @@ export class AuthController {
   }
 
   // send email verification code
-  @ApiOperation({ summary: 'Send Email Verification Code' })
+  @ApiOperation({
+    summary: 'Send an email verification code',
+    description:
+      'Emails a code to the current account. Sending messages is blocked until the email is verified.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The email was sent.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiSecurity('x-api-key')
@@ -198,11 +389,24 @@ export class AuthController {
     return await this.authService.sendEmailVerificationEmail(req.user)
   }
 
-  @ApiOperation({ summary: 'Verify Email' })
+  @ApiOperation({
+    summary: 'Verify an email address',
+    description: 'Confirms the code from the verification email.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'The email is verified.',
+    type: MessageResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'The code is wrong or has expired.',
+  })
+  @ApiResponse({ status: 404, description: 'No such account.' })
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @Post('/verify-email')
-  async verifyEmail(@Body() input: { userId: string; verificationCode: string }) {
+  async verifyEmail(@Body() input: VerifyEmailInputDTO) {
     return await this.authService.verifyEmail(input)
   }
 }

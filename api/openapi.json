@@ -231,7 +231,7 @@
             "name": "type",
             "required": false,
             "in": "query",
-            "description": "Direction to return. Default all.",
+            "description": "Direction to return, lowercase. Default all. Note the asymmetry: this filter is lowercase while the type field on each message comes back uppercase, and an unrecognised value such as SENT applies no filter at all rather than failing.",
             "schema": {
               "enum": [
                 "all",
@@ -1504,13 +1504,14 @@
           "type": {
             "type": "string",
             "enum": [
-              "sent",
-              "received"
+              "SENT",
+              "RECEIVED"
             ],
-            "description": "Direction of the message."
+            "description": "Direction of the message. Uppercase here, unlike the lowercase type filter on the message history query."
           },
           "status": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "pending",
               "dispatched",
@@ -1520,7 +1521,7 @@
               "unknown",
               "received"
             ],
-            "description": "Delivery state. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms."
+            "description": "Delivery state, lowercase. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms. Absent on messages stored before status tracking, so treat a missing value as unknown."
           },
           "sender": {
             "type": "string",
@@ -1595,7 +1596,6 @@
           "_id",
           "device",
           "type",
-          "status",
           "createdAt",
           "updatedAt"
         ]
@@ -1705,15 +1705,18 @@
           },
           "status": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "pending",
               "processing",
               "completed",
               "partial_success",
               "failed",
-              "unknown"
+              "unknown",
+              "sent",
+              "delivered"
             ],
-            "description": "Progress of the batch as a whole."
+            "description": "Progress of the batch as a whole, lowercase. Absent on batches stored before status tracking. sent and delivered appear on older batches that mirrored the per-message state."
           },
           "error": {
             "type": "string",
@@ -1741,7 +1744,6 @@
           "recipientCount",
           "successCount",
           "failureCount",
-          "status",
           "createdAt",
           "updatedAt"
         ]

@@ -14,14 +14,22 @@ const at = (daysAgo: number, hour = 12) => {
 }
 
 describe('messageDirection', () => {
+  // The API sends SENT and RECEIVED uppercase. These fixtures used to be
+  // lowercase, which no row ever is, so every case silently exercised the
+  // fallback instead of the type it claimed to test.
   it('uses the type the API returns', () => {
-    expect(messageDirection(msg({ type: 'received' }))).toBe('received')
-    expect(messageDirection(msg({ type: 'sent' }))).toBe('sent')
+    expect(messageDirection(msg({ type: 'RECEIVED' }))).toBe('received')
+    expect(messageDirection(msg({ type: 'SENT' }))).toBe('sent')
   })
 
   it('trusts type over the presence of a sender', () => {
     // A sent row that happens to carry a sender must not flip to received.
-    expect(messageDirection(msg({ type: 'sent', sender: '+1415' }))).toBe('sent')
+    expect(messageDirection(msg({ type: 'SENT', sender: '+1415' }))).toBe('sent')
+  })
+
+  it('accepts either casing, so a normalized payload still works', () => {
+    expect(messageDirection(msg({ type: 'sent' as never }))).toBe('sent')
+    expect(messageDirection(msg({ type: 'received' as never }))).toBe('received')
   })
 
   it('falls back to the sender check for rows written before type existed', () => {

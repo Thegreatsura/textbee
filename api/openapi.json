@@ -300,6 +300,15 @@
             }
           },
           {
+            "name": "smsBatchId",
+            "required": false,
+            "in": "query",
+            "description": "Only messages from this batch, using the smsBatchId returned by a send. Combine with status=failed to list the recipients of a batch that failed.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "type",
             "required": false,
             "in": "query",
@@ -350,13 +359,13 @@
             }
           },
           "400": {
-            "description": "Invalid deviceIds, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter."
+            "description": "Invalid deviceIds, smsBatchId, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter."
           },
           "401": {
             "description": "Missing, invalid, or revoked API key."
           },
           "404": {
-            "description": "No device with that id on your account."
+            "description": "A deviceIds entry or the smsBatchId is not on your account."
           }
         },
         "security": [

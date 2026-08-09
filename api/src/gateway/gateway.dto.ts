@@ -267,7 +267,7 @@ export class SMSData {
     required: true,
     description:
       'Phone numbers to send to, in international format. Each recipient is billed as one message.',
-    example: ['+2519xxxxxxxx', '+2517xxxxxxxx'],
+    example: ['+12025550123', '+12025550124'],
   })
   recipients: string[]
 
@@ -311,7 +311,7 @@ export class SMSData {
     deprecated: true,
     description:
       'Legacy alias for recipients. Used only when recipients is absent.',
-    example: ['+2519xxxxxxxx', '+2517xxxxxxxx'],
+    example: ['+12025550123', '+12025550124'],
   })
   receivers: string[]
 }
@@ -1397,7 +1397,7 @@ export class SMSBatchDTO {
     type: String,
     required: false,
     description: 'Short preview of the recipient list.',
-    example: '+2519xxxxxxxx and 3 others',
+    example: '+12025550123 and 3 others',
   })
   recipientPreview?: string
 

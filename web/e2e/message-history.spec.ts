@@ -43,7 +43,7 @@ test.describe('message history (mocked API, no real backend)', () => {
           body: JSON.stringify({
             data: Array.from({ length: 12 }).map((_, i) => ({
               _id: `m${i}`,
-              sender: `+2519403617${40 + i}`,
+              sender: `+120255501${40 + i}`,
               message: 'A message long enough to wrap onto a second line here',
               status: 'received',
               type: 'received',
@@ -60,7 +60,7 @@ test.describe('message history (mocked API, no real backend)', () => {
       await page.evaluate(() => window.scrollTo(0, 420))
 
       const headers = await page.locator('h3').all()
-      const rows = await page.getByRole('button', { name: /\+2519/ }).all()
+      const rows = await page.getByRole('button', { name: /\+1202555/ }).all()
 
       for (const header of headers) {
         const hb = await header.boundingBox()
@@ -79,7 +79,7 @@ test.describe('message history (mocked API, no real backend)', () => {
 
       // A covering header also swallowed the row's click, so the row must
       // still be clickable after scrolling.
-      await page.getByRole('button', { name: /\+2519/ }).first().click()
+      await page.getByRole('button', { name: /\+1202555/ }).first().click()
       await expect(page.getByRole('dialog')).toBeVisible()
     })
   }
@@ -260,7 +260,7 @@ test.describe('message history (mocked API, no real backend)', () => {
             data: [
               {
                 _id: 'longurl_1',
-                recipient: '+251912657519',
+                recipient: '+12025550123',
                 message:
                   'Support request - textbee support\nUrgency: Urgent\nView conversation:\nhttps://dash.supporthq.app/dashboard/projects/69a591f28bdb2cda5452246b/conversations/69c2a0a058b1a815140a9be5',
                 status: 'failed',

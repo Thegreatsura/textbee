@@ -56,7 +56,7 @@ Messages go out through your default device, or otherwise the enabled device wit
 const API_KEY = 'YOUR_API_KEY';
  
 await axios.post('https://api.textbee.dev/api/v1/gateway/send-sms', {
-  recipients: [ '+251912345678' ],
+  recipients: [ '+12025550123' ],
   message: 'Hello World!',
 }, {
   headers: { 'x-api-key': API_KEY },
@@ -73,7 +73,7 @@ API_KEY = 'YOUR_API_KEY'
 requests.post(
     'https://api.textbee.dev/api/v1/gateway/send-sms',
     json={
-        'recipients': ['+251912345678'],
+        'recipients': ['+12025550123'],
         'message': 'Hello World!',
     },
     headers={'x-api-key': API_KEY},
@@ -88,7 +88,7 @@ curl -X POST "https://api.textbee.dev/api/v1/gateway/send-sms" \
   -H 'x-api-key: YOUR_API_KEY' \
   -H 'Content-Type: application/json' \
   -d '{
-    "recipients": [ "+251912345678" ],
+    "recipients": [ "+12025550123" ],
     "message": "Hello World!"
   }'
 ```

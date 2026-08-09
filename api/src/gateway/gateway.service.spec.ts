@@ -17,6 +17,7 @@ import * as firebaseAdmin from 'firebase-admin'
 import { SMSType } from './sms-type.enum'
 import { WebhookEvent } from '../webhook/webhook-event.enum'
 import { RegisterDeviceInputDTO, SendBulkSMSInputDTO, SendSMSInputDTO } from './gateway.dto'
+import { decodeCursor } from './cursor'
 import { User } from '../users/schemas/user.schema'
 import { UserRole } from '../users/user-roles.enum'
 import { BatchResponse } from 'firebase-admin/messaging'
@@ -1550,7 +1551,6 @@ describe('GatewayService', () => {
         }
         pages++
         if (!result.meta.nextCursor) break
-        const { decodeCursor } = require('./cursor')
         cursor = decodeCursor(result.meta.nextCursor)
       }
       expect(seen.size).toBe(150)
@@ -1567,7 +1567,6 @@ describe('GatewayService', () => {
         offsetIds.push(...r.data.map((m: any) => String(m._id)))
       }
 
-      const { decodeCursor } = require('./cursor')
       const keysetIds: string[] = []
       let cursor: any = undefined
       while (true) {
@@ -1582,7 +1581,6 @@ describe('GatewayService', () => {
 
     it('asc keyset walk sees rows inserted behind the head mid-walk', async () => {
       seed(deviceA, 10, new Date('2026-08-01T00:00:00Z'))
-      const { decodeCursor } = require('./cursor')
 
       const first = await service.getMessagesForUser(user, { order: 'asc' } as any, 1, 5)
       // New rows land after the cursor position while we are mid-walk

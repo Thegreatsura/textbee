@@ -507,13 +507,13 @@ export class GatewayController {
   @ApiQuery({
     name: 'page',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, default: 1 },
     description: 'Page to return. Default 1. Mutually exclusive with cursor.',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
     description: 'Messages per page. Default 50, maximum 100.',
   })
   @ApiQuery({
@@ -549,13 +549,13 @@ export class GatewayController {
   @ApiQuery({
     name: 'page',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, default: 1 },
     description: 'Page to return. Default 1.',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
     description: 'Messages per page. Default 50, maximum 100.',
   })
   @UseGuards(AuthGuard, CanModifyDevice)
@@ -587,13 +587,13 @@ export class GatewayController {
   @ApiQuery({
     name: 'page',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, default: 1 },
     description: 'Page to return. Default 1.',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
     description: 'Messages per page. Default 50, maximum 100.',
   })
   @UseGuards(AuthGuard, CanModifyDevice)
@@ -624,13 +624,13 @@ export class GatewayController {
   @ApiQuery({
     name: 'page',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, default: 1 },
     description: 'Page to return. Default 1.',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    type: Number,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
     description: 'Messages per page. Default 50, maximum 100.',
   })
   @ApiQuery({

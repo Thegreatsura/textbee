@@ -222,19 +222,24 @@
             "name": "limit",
             "required": false,
             "in": "query",
-            "description": "Messages per page. Default 50, maximum 100.",
             "schema": {
-              "type": "number"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "description": "Messages per page. Default 50, maximum 100."
           },
           {
             "name": "page",
             "required": false,
             "in": "query",
-            "description": "Page to return. Default 1. Mutually exclusive with cursor.",
             "schema": {
-              "type": "number"
-            }
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page to return. Default 1. Mutually exclusive with cursor."
           },
           {
             "name": "order",
@@ -1525,19 +1530,19 @@
         "type": "object",
         "properties": {
           "page": {
-            "type": "number",
+            "type": "integer",
             "description": "Current page number"
           },
           "limit": {
-            "type": "number",
+            "type": "integer",
             "description": "Number of items per page"
           },
           "total": {
-            "type": "number",
+            "type": "integer",
             "description": "Total number of items"
           },
           "totalPages": {
-            "type": "number",
+            "type": "integer",
             "description": "Total number of pages"
           },
           "nextCursor": {
@@ -1563,7 +1568,7 @@
         "type": "object",
         "properties": {
           "limit": {
-            "type": "number",
+            "type": "integer",
             "description": "Number of items per page."
           },
           "nextCursor": {
@@ -1901,19 +1906,19 @@
         "type": "object",
         "properties": {
           "page": {
-            "type": "number",
+            "type": "integer",
             "description": "Current page number"
           },
           "limit": {
-            "type": "number",
+            "type": "integer",
             "description": "Number of items per page"
           },
           "total": {
-            "type": "number",
+            "type": "integer",
             "description": "Total number of items"
           },
           "totalPages": {
-            "type": "number",
+            "type": "integer",
             "description": "Total number of pages"
           }
         },

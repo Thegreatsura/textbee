@@ -929,28 +929,28 @@ export class RetrieveSMSDTO {
 
 export class PaginationMetaDTO {
   @ApiProperty({
-    type: Number,
+    type: 'integer',
     required: true,
     description: 'Current page number',
   })
   page: number;
 
   @ApiProperty({
-    type: Number,
+    type: 'integer',
     required: true,
     description: 'Number of items per page',
   })
   limit: number;
 
   @ApiProperty({
-    type: Number,
+    type: 'integer',
     required: true,
     description: 'Total number of items',
   })
   total: number;
 
   @ApiProperty({
-    type: Number,
+    type: 'integer',
     required: true,
     description: 'Total number of pages',
   })
@@ -991,7 +991,7 @@ export class MessageDTO extends RetrieveSMSDTO {
 }
 
 export class CursorPaginationMetaDTO {
-  @ApiProperty({ type: Number, description: 'Number of items per page.' })
+  @ApiProperty({ type: 'integer', description: 'Number of items per page.' })
   limit: number
 
   @ApiProperty({

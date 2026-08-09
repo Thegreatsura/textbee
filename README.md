@@ -96,13 +96,12 @@ curl -X POST "https://api.textbee.dev/api/v1/gateway/send-sms" \
 </details>
 ### Receiving SMS
  
-Enable SMS receiving in the mobile app, then access incoming messages via the REST API, the dashboard, or webhook notifications delivered to your preferred URL.
+Enable SMS receiving in the mobile app, then access incoming messages via the REST API, the dashboard, or webhook notifications delivered to your preferred URL. Message history is account-level: one call covers every device, no device id needed.
  
 ```javascript
 const API_KEY = 'YOUR_API_KEY';
-const DEVICE_ID = 'YOUR_DEVICE_ID';
  
-await axios.get(`https://api.textbee.dev/api/v1/gateway/devices/${DEVICE_ID}/get-received-sms`, {
+await axios.get('https://api.textbee.dev/api/v1/gateway/messages?direction=received', {
   headers: { 'x-api-key': API_KEY },
 });
 ```
@@ -110,7 +109,7 @@ await axios.get(`https://api.textbee.dev/api/v1/gateway/devices/${DEVICE_ID}/get
 <details>
 <summary><b>curl</b></summary>
 ```bash
-curl -X GET "https://api.textbee.dev/api/v1/gateway/devices/YOUR_DEVICE_ID/get-received-sms" \
+curl -X GET "https://api.textbee.dev/api/v1/gateway/messages?direction=received" \
   -H "x-api-key: YOUR_API_KEY"
 ```
  

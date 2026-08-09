@@ -69,10 +69,17 @@ export default function FiltersBar({
         )
       : `${selectedDeviceIds.length} devices`
 
+  // Checked always means included: with the all-devices scope active every
+  // device renders checked, and unchecking one narrows to the rest.
+  const isDeviceSelected = (deviceId: string) =>
+    allSelected || selectedDeviceIds.includes(deviceId)
+
   const toggleDevice = (deviceId: string, checked: boolean) => {
-    const next = checked
-      ? [...selectedDeviceIds, deviceId]
-      : selectedDeviceIds.filter((id) => id !== deviceId)
+    const next = allSelected
+      ? devices.filter((d) => d._id !== deviceId).map((d) => d._id)
+      : checked
+        ? [...selectedDeviceIds, deviceId]
+        : selectedDeviceIds.filter((id) => id !== deviceId)
     // Selecting every device manually is the same thing as all devices;
     // collapse to the empty selection so new devices stay included.
     onDeviceSelectionChange(next.length === devices.length ? [] : next)
@@ -138,9 +145,7 @@ export default function FiltersBar({
               {devices.map((device) => (
                 <DropdownMenuCheckboxItem
                   key={device._id}
-                  checked={
-                    !allSelected && selectedDeviceIds.includes(device._id)
-                  }
+                  checked={isDeviceSelected(device._id)}
                   onCheckedChange={(checked) =>
                     toggleDevice(device._id, checked === true)
                   }

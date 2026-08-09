@@ -28,7 +28,7 @@ import {
   DeviceResponseDTO,
   GatewayStatsResponseDTO,
   MessageListResponseDTO,
-  PaginationMetaDTO,
+  MessagePageMetaDTO,
   ReceivedSMSDTO,
   RegisterDeviceInputDTO,
   pickDeviceWritableFields,
@@ -432,7 +432,7 @@ export class GatewayController {
       'To poll for new messages: request order=asc with a from timestamp, follow nextCursor until hasMore is false, then resume from the last nextCursor on the next poll. ' +
       'Time filters apply to createdAt (when the platform stored the message); for received messages this is upload time, which can lag the receivedAt shown on the message if the device was offline.',
   })
-  @ApiExtraModels(PaginationMetaDTO, CursorPaginationMetaDTO)
+  @ApiExtraModels(MessagePageMetaDTO, CursorPaginationMetaDTO)
   @ApiResponse({
     status: 200,
     description: 'A page of messages.',

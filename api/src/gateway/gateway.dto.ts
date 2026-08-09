@@ -1009,19 +1009,37 @@ export class CursorPaginationMetaDTO {
   hasMore: boolean
 }
 
+// Page mode carries the cursor fields too, so a poller can start from a plain
+// page-mode call and switch to cursor mode without a bootstrap step.
+export class MessagePageMetaDTO extends PaginationMetaDTO {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Opaque cursor positioned after the last message on this page. Pass it back as the cursor query parameter. Null on the final page.',
+  })
+  nextCursor: string | null
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether more messages exist beyond this page.',
+  })
+  hasMore: boolean
+}
+
 export class MessageListResponseDTO {
   @ApiProperty({ type: [MessageDTO], description: 'Messages, newest first unless order=asc.' })
   data: MessageDTO[]
 
   @ApiProperty({
     description:
-      'Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count.',
-    oneOf: [
-      { $ref: getSchemaPath(PaginationMetaDTO) },
+      'Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count. anyOf rather than oneOf: a page-mode object also satisfies the cursor-mode shape, and oneOf would make strict validators reject it.',
+    anyOf: [
+      { $ref: getSchemaPath(MessagePageMetaDTO) },
       { $ref: getSchemaPath(CursorPaginationMetaDTO) },
     ],
   })
-  meta: PaginationMetaDTO | CursorPaginationMetaDTO
+  meta: MessagePageMetaDTO | CursorPaginationMetaDTO
 }
 
 export class UpdateSMSStatusDTO {

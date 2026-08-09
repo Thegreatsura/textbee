@@ -1508,14 +1508,14 @@ describe('GatewayService', () => {
 
     it('404s on a deviceIds entry the caller does not own, naming it', async () => {
       const foreign = new Types.ObjectId()
-      try {
-        await service.getMessagesForUser(user, { order: 'desc', deviceIds: [foreign] } as any, 1, 50)
-        fail('expected 404')
-      } catch (e) {
-        expect(e).toBeInstanceOf(HttpException)
-        expect((e as HttpException).getStatus()).toBe(404)
-        expect(((e as HttpException).getResponse() as any).error).toContain(String(foreign))
-      }
+      // jest-circus has no global fail(), so capture and assert instead
+      const caught = await service
+        .getMessagesForUser(user, { order: 'desc', deviceIds: [foreign] } as any, 1, 50)
+        .then(() => undefined)
+        .catch((e) => e)
+      expect(caught).toBeInstanceOf(HttpException)
+      expect((caught as HttpException).getStatus()).toBe(404)
+      expect(((caught as HttpException).getResponse() as any).error).toContain(String(foreign))
     })
 
     it('narrows to the requested deviceIds subset', async () => {

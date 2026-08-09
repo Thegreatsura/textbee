@@ -1521,7 +1521,7 @@
           "messages"
         ]
       },
-      "PaginationMetaDTO": {
+      "MessagePageMetaDTO": {
         "type": "object",
         "properties": {
           "page": {
@@ -1539,13 +1539,24 @@
           "totalPages": {
             "type": "number",
             "description": "Total number of pages"
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Opaque cursor positioned after the last message on this page. Pass it back as the cursor query parameter. Null on the final page."
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether more messages exist beyond this page."
           }
         },
         "required": [
           "page",
           "limit",
           "total",
-          "totalPages"
+          "totalPages",
+          "nextCursor",
+          "hasMore"
         ]
       },
       "CursorPaginationMetaDTO": {
@@ -1751,10 +1762,10 @@
             }
           },
           "meta": {
-            "description": "Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count.",
-            "oneOf": [
+            "description": "Pagination metadata. Page mode (no cursor) returns page, limit, total, totalPages plus nextCursor and hasMore; cursor mode returns limit, nextCursor, and hasMore only, skipping the expensive total count. anyOf rather than oneOf: a page-mode object also satisfies the cursor-mode shape, and oneOf would make strict validators reject it.",
+            "anyOf": [
               {
-                "$ref": "#/components/schemas/PaginationMetaDTO"
+                "$ref": "#/components/schemas/MessagePageMetaDTO"
               },
               {
                 "$ref": "#/components/schemas/CursorPaginationMetaDTO"
@@ -1884,6 +1895,33 @@
           "type",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "PaginationMetaDTO": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Current page number"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of items per page"
+          },
+          "total": {
+            "type": "number",
+            "description": "Total number of items"
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "Total number of pages"
+          }
+        },
+        "required": [
+          "page",
+          "limit",
+          "total",
+          "totalPages"
         ]
       },
       "SMSResponseDTO": {

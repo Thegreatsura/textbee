@@ -299,7 +299,8 @@ console.log(await res.json())`,
     {
       id: 'received',
       title: 'Read received messages',
-      blurb: 'Poll for SMS your devices have received, across the whole account.',
+      blurb:
+        'Poll for SMS your devices have received, across the whole account. Add order=asc and follow meta.nextCursor to read every message exactly once.',
       method: 'GET',
       path: '/gateway/messages?direction=received',
       samples: {
@@ -349,17 +350,23 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
-        // The SDK reads inbound messages through the device history endpoint
-        // for now; an account-level method ships in the next SDK release.
         sdk: `${SDK_SETUP}
 
-const { data, meta } = await textbee.getMessages('${id}', {
-  type: 'received',
+const { data, meta } = await textbee.getMessages({
+  direction: 'received',
   page: 1,
   limit: 20,
 })
 
-console.log(data, meta)`,
+console.log(data, meta)
+
+// Or drain every match, following the cursor for you
+for await (const message of textbee.iterateMessages({
+  direction: 'received',
+  order: 'asc',
+})) {
+  console.log(message.sender, message.message)
+}`,
       },
       response: `{
   "data": [
@@ -378,11 +385,16 @@ console.log(data, meta)`,
     {
       id: 'message-status',
       title: 'Check message history',
-      blurb: 'List messages across your account with their delivery status.',
+      blurb:
+        'List messages across your account with their delivery status. Optional filters: deviceIds, smsBatchId, direction, status, search, from/to, order. Use cursor instead of page to poll without duplicates.',
       method: 'GET',
       path: '/gateway/messages',
       samples: {
         curl: `curl "${API_BASE_URL}/gateway/messages?page=1&limit=20" \\
+  -H "x-api-key: $TEXTBEE_API_KEY"
+
+# Which recipients of a batch failed, using the smsBatchId a send returns
+curl "${API_BASE_URL}/gateway/messages?smsBatchId=YOUR_BATCH_ID&status=failed" \\
   -H "x-api-key: $TEXTBEE_API_KEY"`,
         node: `const url = new URL('${API_BASE_URL}/gateway/messages')
 url.searchParams.set('page', '1')
@@ -434,12 +446,16 @@ func main() {
 }`,
         sdk: `${SDK_SETUP}
 
-const { data, meta } = await textbee.getMessages('${id}', {
+const { data, meta } = await textbee.getMessages({
   page: 1,
   limit: 20,
 })
 
-console.log(data, meta)`,
+console.log(data, meta)
+
+// Narrow to one device, or to the recipients of a batch that failed
+await textbee.getMessages({ deviceIds: ['${id}'] })
+await textbee.getMessages({ smsBatchId, status: 'failed' })`,
       },
       // Status values match the SMS schema: pending, dispatched, sent,
       // delivered, failed, unknown, received.

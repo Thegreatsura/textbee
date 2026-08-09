@@ -69,11 +69,6 @@ export const handlers = [
     dataEnvelope(mockBillingPlans)
   ),
 
-  // Per-device message history (id is dynamic).
-  http.get(`${API_BASE_URL}/gateway/devices/:id/messages`, () =>
-    raw(mockMessages)
-  ),
-  http.get(`${API_BASE_URL}/gateway/devices/:id/get-received-sms`, () =>
-    raw(mockMessages)
-  ),
+  // Account-level message history; device scoping travels as a query param.
+  http.get(`${API_BASE_URL}/gateway/messages`, () => raw(mockMessages)),
 ]

@@ -32,8 +32,9 @@ export const ApiEndpoints = {
     // falls back to the account's default device when it is absent.
     sendSMS: () => '/gateway/send-sms',
     sendBulkSMS: () => '/gateway/send-bulk-sms',
-    getReceivedSMS: (id: string) => `/gateway/devices/${id}/get-received-sms`,
-    getMessages: (id: string) => `/gateway/devices/${id}/messages`,
+    // Account-level: device selection travels as a deviceIds query param,
+    // absent means every live device on the account.
+    getMessages: () => '/gateway/messages',
 
     getWebhooks: () => '/webhooks',
     getWebhookNotifications: () => '/webhooks/notifications',

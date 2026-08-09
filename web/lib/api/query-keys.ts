@@ -18,10 +18,16 @@ export const queryKeys = {
   // lists at once, and invalidating only apiKeys('active') leaves the other
   // two serving stale data.
   apiKeysAll: ['apiKeys'] as const,
-  deviceMessages: (deviceId: string, filters?: Record<string, unknown>) =>
+  // selection is the normalized device scope: sorted ids joined with a comma,
+  // or 'all' when no filter is applied.
+  deviceMessages: (selection: string, filters?: Record<string, unknown>) =>
     filters
-      ? (['messages', deviceId, filters] as const)
-      : (['messages', deviceId] as const),
+      ? (['messages', selection, filters] as const)
+      : (['messages', selection] as const),
+  // Prefix covering every message list regardless of device selection or
+  // filters. A send must invalidate this: the sending device may not be part
+  // of the selection key currently on screen (e.g. the 'all' view).
+  messagesAll: ['messages'] as const,
   // start/end must be part of the key: they are sent on the request URL, and
   // react-query only refetches when the key changes (see issue #256).
   webhookNotifications: (filters: {

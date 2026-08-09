@@ -126,12 +126,17 @@ describe('cache invalidation', () => {
   // nothing corrected them for a minute.
   const deviceId = 'device-1'
 
-  // Primed under the filtered key the message list actually uses, so this also
-  // covers the prefix match: deviceMessages(deviceId) has to reach
-  // deviceMessages(deviceId, filters).
+  // Primed under the filtered keys the message list actually uses, so this
+  // also covers the prefix match: messagesAll has to reach every selection,
+  // including the 'all devices' view, which does not key on the sending
+  // device at all.
   const primeSendCaches = (queryClient: QueryClient) => {
     queryClient.setQueryData(
       queryKeys.deviceMessages(deviceId, { type: 'all', page: 1, limit: 20 }),
+      { data: [] }
+    )
+    queryClient.setQueryData(
+      queryKeys.deviceMessages('all', { type: 'all', page: 1, limit: 20 }),
       { data: [] }
     )
     queryClient.setQueryData(queryKeys.stats, { sentSMSCount: 0 })
@@ -152,7 +157,7 @@ describe('cache invalidation', () => {
     waitFor(() => {
       const keys = invalidatedKeys()
       expect(keys, 'the message list must be invalidated').toContain(
-        JSON.stringify(queryKeys.deviceMessages(deviceId))
+        JSON.stringify(queryKeys.messagesAll)
       )
       expect(keys, 'the dashboard stats must be invalidated').toContain(
         JSON.stringify(queryKeys.stats)
@@ -196,11 +201,16 @@ describe('cache invalidation', () => {
     await expectSendKeysInvalidated(invalidatedKeys)
 
     // Nothing observes the message list here, so its flag survives to be read:
-    // proof the device-level key reaches the filtered entry the list caches
-    // under.
+    // proof the messages prefix reaches the filtered entries the list caches
+    // under, whichever device selection is active.
     expect(
       queryClient.getQueryState(
         queryKeys.deviceMessages(deviceId, { type: 'all', page: 1, limit: 20 })
+      )?.isInvalidated
+    ).toBe(true)
+    expect(
+      queryClient.getQueryState(
+        queryKeys.deviceMessages('all', { type: 'all', page: 1, limit: 20 })
       )?.isInvalidated
     ).toBe(true)
   })

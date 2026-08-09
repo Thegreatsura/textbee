@@ -219,9 +219,7 @@ export function useBulkSend() {
     },
     // A campaign moves the quota bar the most, so it invalidates the same keys
     // as a single send.
-    onSuccess: () => {
-      if (deviceId) invalidateAfterSend(queryClient, deviceId)
-    },
+    onSuccess: () => invalidateAfterSend(queryClient),
   })
 
   const insertVariable = (column: string) => {

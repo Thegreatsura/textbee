@@ -84,6 +84,24 @@ describe('parseMessageQuery', () => {
     })
   })
 
+  describe('smsBatchId', () => {
+    it('parses a valid id and treats empty as absent', () => {
+      const batchId = new Types.ObjectId().toHexString()
+      expect(parseMessageQuery({ smsBatchId: batchId }).smsBatchId?.toString()).toBe(batchId)
+      expect(parseMessageQuery({ smsBatchId: '' }).smsBatchId).toBeUndefined()
+      expect(parseMessageQuery({}).smsBatchId).toBeUndefined()
+    })
+
+    it('400s on a malformed id, naming it', () => {
+      expect400(() => parseMessageQuery({ smsBatchId: 'not-an-id' }), /not-an-id/)
+    })
+
+    it('400s (not 500s) on a repeated key', () => {
+      const batchId = new Types.ObjectId().toHexString()
+      expect(() => parseMessageQuery({ smsBatchId: [batchId, batchId] })).toThrow(HttpException)
+    })
+  })
+
   describe('direction and the deprecated type alias', () => {
     it('is case-insensitive', () => {
       for (const v of ['sent', 'SENT', 'Sent']) {

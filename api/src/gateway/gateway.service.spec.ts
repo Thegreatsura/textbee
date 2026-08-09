@@ -1597,6 +1597,68 @@ describe('GatewayService', () => {
       expect(first.data.length + rest.length).toBe(13)
     })
 
+    it('filters by an owned smsBatchId and composes with status', async () => {
+      const batchId = new Types.ObjectId()
+      mockSmsBatchModel.findOne.mockResolvedValue({ _id: batchId, user: userId })
+      store.push(
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, smsBatch: batchId, type: SMSType.SENT, status: 'failed', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, smsBatch: batchId, type: SMSType.SENT, status: 'delivered', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, type: SMSType.SENT, status: 'failed', createdAt: new Date() },
+      )
+
+      const result = await service.getMessagesForUser(
+        user,
+        { order: 'desc', smsBatchId: batchId, status: 'failed' } as any,
+        1,
+        50,
+      )
+
+      expect(result.data).toHaveLength(1)
+      expect(String(result.data[0].smsBatch)).toBe(String(batchId))
+      expect(result.data[0].status).toBe('failed')
+    })
+
+    it('404s on an smsBatchId owned by another user, naming it', async () => {
+      const batchId = new Types.ObjectId()
+      mockSmsBatchModel.findOne.mockResolvedValue({ _id: batchId, user: new Types.ObjectId() })
+
+      const caught = await service
+        .getMessagesForUser(user, { order: 'desc', smsBatchId: batchId } as any, 1, 50)
+        .then(() => undefined)
+        .catch((e) => e)
+      expect(caught).toBeInstanceOf(HttpException)
+      expect((caught as HttpException).getStatus()).toBe(404)
+      expect(((caught as HttpException).getResponse() as any).error).toContain(String(batchId))
+    })
+
+    it('404s on an smsBatchId that does not exist', async () => {
+      mockSmsBatchModel.findOne.mockResolvedValue(null)
+      const caught = await service
+        .getMessagesForUser(user, { order: 'desc', smsBatchId: new Types.ObjectId() } as any, 1, 50)
+        .then(() => undefined)
+        .catch((e) => e)
+      expect((caught as HttpException).getStatus()).toBe(404)
+    })
+
+    it('lets a legacy user-less batch through, still scoped by live devices', async () => {
+      const batchId = new Types.ObjectId()
+      // Pre-backfill batches lack user; the device $in is what protects them
+      mockSmsBatchModel.findOne.mockResolvedValue({ _id: batchId })
+      store.push(
+        { _id: new Types.ObjectId(), user: userId, device: deviceA, smsBatch: batchId, type: SMSType.SENT, status: 'sent', createdAt: new Date() },
+        { _id: new Types.ObjectId(), user: new Types.ObjectId(), device: deletedDevice, smsBatch: batchId, type: SMSType.SENT, status: 'sent', createdAt: new Date() },
+      )
+
+      const result = await service.getMessagesForUser(
+        user,
+        { order: 'desc', smsBatchId: batchId } as any,
+        1,
+        50,
+      )
+      expect(result.data).toHaveLength(1)
+      expect(String(result.data[0].device)).toBe(String(deviceA))
+    })
+
     it('maps direction to the stored type and decorates responses with lowercase direction', async () => {
       seed(deviceA, 1, new Date('2026-08-01T00:00:00Z'), false, SMSType.SENT)
       seed(deviceA, 1, new Date('2026-08-02T00:00:00Z'), false, SMSType.RECEIVED)

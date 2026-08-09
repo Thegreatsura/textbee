@@ -28,6 +28,7 @@ const DATETIME_WITH_OFFSET =
 
 export interface ParsedMessageQuery {
   deviceIds?: Types.ObjectId[]
+  smsBatchId?: Types.ObjectId
   direction?: MessageDirection
   status?: MessageStatus
   search?: string
@@ -112,6 +113,16 @@ export function parseMessageQuery(query: Record<string, unknown>): ParsedMessage
   const deviceIds = parseDeviceIds(query.deviceIds)
   const direction = parseDirection(query)
 
+  const smsBatchIdRaw = asSingleString(query.smsBatchId, 'smsBatchId')
+  let smsBatchId: Types.ObjectId | undefined
+  if (smsBatchIdRaw !== undefined && smsBatchIdRaw.trim() !== '') {
+    const trimmed = smsBatchIdRaw.trim()
+    if (!Types.ObjectId.isValid(trimmed)) {
+      badRequest(`Invalid smsBatchId '${smsBatchIdRaw}'`)
+    }
+    smsBatchId = new Types.ObjectId(trimmed)
+  }
+
   const statusRaw = asSingleString(query.status, 'status')
   let status: MessageStatus | undefined
   if (statusRaw !== undefined && statusRaw.trim() !== '') {
@@ -150,5 +161,5 @@ export function parseMessageQuery(query: Record<string, unknown>): ParsedMessage
     cursor = decodeCursor(cursorRaw.trim())
   }
 
-  return { deviceIds, direction, status, search, from, to, order, cursor }
+  return { deviceIds, smsBatchId, direction, status, search, from, to, order, cursor }
 }

@@ -1196,6 +1196,22 @@ export class GatewayService {
       user: user._id,
       device: { $in: scopedDeviceIds },
     }
+    if (filters.smsBatchId) {
+      // 404 on an unowned batch, matching the deviceIds contract. A legacy
+      // batch without a user field falls through; the device $in above still
+      // scopes what its filter can return.
+      const batch = await this.smsBatchModel.findOne(
+        { _id: filters.smsBatchId },
+        'user',
+      )
+      if (!batch || (batch.user && String(batch.user) !== String(user._id))) {
+        throw new HttpException(
+          { error: `Batch not found: ${filters.smsBatchId}` },
+          HttpStatus.NOT_FOUND,
+        )
+      }
+      query.smsBatch = filters.smsBatchId
+    }
     if (filters.direction) {
       query.type = toStoredType(filters.direction)
     }

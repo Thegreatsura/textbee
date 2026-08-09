@@ -441,10 +441,13 @@ export class GatewayController {
   @ApiResponse({
     status: 400,
     description:
-      'Invalid deviceIds, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter.',
+      'Invalid deviceIds, smsBatchId, direction, status, from, to, order, or cursor value. Unknown filter values fail rather than silently applying no filter.',
   })
   @ApiResponse(UNAUTHORIZED_RESPONSE)
-  @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
+  @ApiResponse({
+    status: 404,
+    description: 'A deviceIds entry or the smsBatchId is not on your account.',
+  })
   @ApiQuery({
     name: 'deviceIds',
     required: false,
@@ -467,6 +470,13 @@ export class GatewayController {
     type: String,
     enum: ['all', 'sent', 'received'],
     description: 'Deprecated alias of direction. Still works; prefer direction.',
+  })
+  @ApiQuery({
+    name: 'smsBatchId',
+    required: false,
+    type: String,
+    description:
+      'Only messages from this batch, using the smsBatchId returned by a send. Combine with status=failed to list the recipients of a batch that failed.',
   })
   @ApiQuery({
     name: 'status',

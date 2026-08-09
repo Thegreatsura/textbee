@@ -192,7 +192,7 @@ describe('cache invalidation', () => {
     act(() => {
       result.current.mutate({
         deviceId,
-        recipients: ['+251900000000'],
+        recipients: ['+12025550100'],
         message: 'hi',
       })
     })

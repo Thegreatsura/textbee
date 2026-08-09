@@ -23,9 +23,15 @@ export function messageDate(message: SmsMessage): Date | null {
  * Prefer the `type` the API returns. The previous code inferred direction from
  * whether `sender` was present, which is only a proxy, so that check is kept
  * as a fallback for rows written before `type` existed.
+ *
+ * The API sends SENT and RECEIVED uppercase, so this compares case-insensitively.
+ * Matching the lowercase spelling alone never hit, which quietly left every
+ * message on the fallback.
  */
 export function messageDirection(message: SmsMessage): 'sent' | 'received' {
-  if (message.type === 'sent' || message.type === 'received') return message.type
+  const type = message.type?.toLowerCase()
+  if (type === 'sent') return 'sent'
+  if (type === 'received') return 'received'
   return message.sender ? 'received' : 'sent'
 }
 

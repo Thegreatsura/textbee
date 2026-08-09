@@ -523,7 +523,8 @@ export class GatewayController {
     required: false,
     type: String,
     enum: ['all', 'sent', 'received'],
-    description: 'Direction to return. Default all.',
+    description:
+      'Direction to return, lowercase. Default all. Note the asymmetry: this filter is lowercase while the type field on each message comes back uppercase, and an unrecognised value such as SENT applies no filter at all rather than failing.',
   })
   @ApiQuery({
     name: 'search',

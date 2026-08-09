@@ -6,9 +6,9 @@ export type SmsMessage = {
   _id: string
   message?: string
   status?: string
-  // Direction as recorded by the API (SMSType). Optional because rows written
-  // before it existed do not carry it.
-  type?: 'sent' | 'received'
+  // Direction as recorded by the API (SMSType), which sends it uppercase.
+  // Optional because rows written before it existed do not carry it.
+  type?: 'SENT' | 'RECEIVED'
   sender?: string
   recipient?: string
   recipients?: string[]

@@ -7,6 +7,7 @@ import {
 } from './build-public-document'
 import { PUBLIC_OPERATION_KEYS, toOperationKey } from './public-operations'
 import { API_KEY_SECURITY_SCHEME } from './swagger-config'
+import { SMSType } from '../gateway/sms-type.enum'
 
 const COMMITTED_SPEC_PATH = join(__dirname, '..', '..', 'openapi.json')
 const REGENERATE_HINT = 'Run `pnpm run export:openapi` and commit openapi.json.'
@@ -72,6 +73,15 @@ describe('public openapi document', () => {
       .map(([key]) => key)
 
     expect(empty).toEqual([])
+  })
+
+  // The wire format is uppercase and the query filter that selects it is
+  // lowercase, so a hand-written enum here drifts silently and teaches every
+  // consumer a comparison that never matches.
+  it('documents the message direction with the values the API really sends', () => {
+    expect(
+      document.components.schemas['RetrieveSMSDTO']['properties'].type.enum,
+    ).toEqual(Object.values(SMSType))
   })
 
   // A mismatch means a decorator changed without the spec being regenerated.

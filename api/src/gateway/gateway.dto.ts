@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger'
+import { SMSType } from './sms-type.enum'
 
 export class SimInfoDTO {
   @ApiProperty({
@@ -802,14 +803,16 @@ export class RetrieveSMSDTO {
   device: MessageDeviceDTO
 
   @ApiProperty({
-    type: String,
-    enum: ['sent', 'received'],
-    description: 'Direction of the message.',
+    enum: SMSType,
+    description:
+      'Direction of the message. Uppercase here, unlike the lowercase type filter on the message history query.',
   })
   type: string
 
   @ApiProperty({
     type: String,
+    required: false,
+    nullable: true,
     enum: [
       'pending',
       'dispatched',
@@ -820,9 +823,9 @@ export class RetrieveSMSDTO {
       'received',
     ],
     description:
-      'Delivery state. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms.',
+      'Delivery state, lowercase. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms. Absent on messages stored before status tracking, so treat a missing value as unknown.',
   })
-  status: string
+  status?: string
 
   @ApiProperty({
     type: String,
@@ -1336,6 +1339,8 @@ export class SMSBatchDTO {
 
   @ApiProperty({
     type: String,
+    required: false,
+    nullable: true,
     enum: [
       'pending',
       'processing',
@@ -1343,10 +1348,13 @@ export class SMSBatchDTO {
       'partial_success',
       'failed',
       'unknown',
+      'sent',
+      'delivered',
     ],
-    description: 'Progress of the batch as a whole.',
+    description:
+      'Progress of the batch as a whole, lowercase. Absent on batches stored before status tracking. sent and delivered appear on older batches that mirrored the per-message state.',
   })
-  status: string
+  status?: string
 
   @ApiProperty({
     type: String,

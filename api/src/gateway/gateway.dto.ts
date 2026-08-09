@@ -1,89 +1,217 @@
 import { ApiProperty } from '@nestjs/swagger'
 
 export class SimInfoDTO {
-  @ApiProperty({ type: Number, required: true })
+  @ApiProperty({
+    type: Number,
+    required: true,
+    description:
+      'Android subscription id of the SIM. Pass it as simSubscriptionId when sending to choose this SIM.',
+    example: 1,
+  })
   subscriptionId: number
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'ICCID of the SIM card.',
+  })
   iccId?: string
 
-  @ApiProperty({ type: Number, required: false })
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Android card id of the SIM slot.',
+  })
   cardId?: number
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile network operator, as reported by Android.',
+    example: 'Safaricom',
+  })
   carrierName?: string
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Label the user gave this SIM on the device.',
+  })
   displayName?: string
 
-  @ApiProperty({ type: Number, required: false })
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Physical SIM slot, starting at 0.',
+    example: 0,
+  })
   simSlotIndex?: number
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile country code.',
+    example: '639',
+  })
   mcc?: string
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile network code.',
+    example: '02',
+  })
   mnc?: string
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Two letter country code of the SIM.',
+    example: 'ke',
+  })
   countryIso?: string
 
-  @ApiProperty({ type: String, required: false, enum: ['PHYSICAL_SIM', 'ESIM'] })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Whether the SIM is physical or an eSIM.',
+    enum: ['PHYSICAL_SIM', 'ESIM'],
+  })
   subscriptionType?: string
 }
 
 export class SimInfoCollectionDTO {
-  @ApiProperty({ type: Date, required: true })
+  @ApiProperty({
+    type: Date,
+    required: true,
+    description: 'When the device last reported its SIM list.',
+  })
   lastUpdated: Date
 
-  @ApiProperty({ type: [SimInfoDTO], required: true })
+  @ApiProperty({
+    type: [SimInfoDTO],
+    required: true,
+    description: 'SIMs currently installed in the device.',
+  })
   sims: SimInfoDTO[]
 }
 
 export class RegisterDeviceInputDTO {
-  @ApiProperty({ type: Boolean })
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether the device may send and receive SMS.',
+  })
   enabled?: boolean
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Firebase Cloud Messaging token. textbee pushes send jobs to this token, so a stale value stops delivery.',
+  })
   fcmToken?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Device brand.',
+    example: 'google',
+  })
   brand?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Device manufacturer.',
+    example: 'Google',
+  })
   manufacturer?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Device model.',
+    example: 'Pixel 7',
+  })
   model?: string
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Your own label for the device, shown in the dashboard.',
+    example: 'Office phone',
+  })
   name?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Hardware serial. Stored, but never returned by the API.',
+  })
   serial?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Android build id.',
+    example: 'TQ3A.230805.001',
+  })
   buildId?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Operating system name.',
+    example: 'Android',
+  })
   os?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Android release version.',
+    example: '16',
+  })
   osVersion?: string
 
-  @ApiProperty({ type: Number, required: false })
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Android SDK level.',
+    example: 36,
+  })
   osApiLevel?: number
 
-  @ApiProperty({ type: String, required: false })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Android build fingerprint. Used to fill in the release version when the device does not report one.',
+  })
   osBuildFingerprint?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'textbee app version name.',
+    example: '1.9.0',
+  })
   appVersionName?: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'textbee app version code.',
+    example: 190,
+  })
   appVersionCode?: number
 
-  @ApiProperty({ type: SimInfoCollectionDTO, required: false })
+  @ApiProperty({
+    type: SimInfoCollectionDTO,
+    required: false,
+    description: 'SIMs installed in the device.',
+  })
   simInfo?: SimInfoCollectionDTO
 }
 
@@ -128,14 +256,16 @@ export class SMSData {
   @ApiProperty({
     type: String,
     required: true,
-    description: 'The message to send',
+    description: 'Text of the message. Long messages are split by the carrier.',
+    example: 'Your appointment is confirmed for Tuesday at 10am.',
   })
   message: string
 
   @ApiProperty({
-    type: Array,
+    type: [String],
     required: true,
-    description: 'List of phone numbers to send the SMS to',
+    description:
+      'Phone numbers to send to, in international format. Each recipient is billed as one message.',
     example: ['+2519xxxxxxxx', '+2517xxxxxxxx'],
   })
   recipients: string[]
@@ -143,14 +273,17 @@ export class SMSData {
   @ApiProperty({
     type: Number,
     required: false,
-    description: 'Optional SIM subscription ID to use for sending SMS',
+    description:
+      'SIM to send from, as subscriptionId from the device simInfo. Defaults to the device default SIM.',
+    example: 1,
   })
   simSubscriptionId?: number
 
   @ApiProperty({
     type: String,
     required: false,
-    description: 'Optional ISO 8601 date string to schedule SMS for future delivery (e.g., "2024-01-15T10:30:00Z"). Must be a future date.',
+    description:
+      'ISO 8601 time to send the message. Must be in the future. Omit to send now.',
     example: '2024-01-15T10:30:00Z',
   })
   scheduledAt?: string
@@ -163,21 +296,22 @@ export class SMSData {
   //   recipient: string
   // }
 
-  // Legacy fields to be removed in the future
-  // @ApiProperty({
-  //   type: String,
-  //   required: true,
-  //   description: '(Legacy) Will be Replace with `message` field in the future',
-  // })
+  @ApiProperty({
+    type: String,
+    required: false,
+    deprecated: true,
+    description: 'Legacy alias for message. Used only when message is absent.',
+  })
   smsBody: string
 
-  // @ApiProperty({
-  //   type: Array,
-  //   required: false,
-  //   description:
-  //     '(Legacy) Will be Replace with `recipients` field in the future',
-  //   example: ['+2519xxxxxxxx', '+2517xxxxxxxx'],
-  // })
+  @ApiProperty({
+    type: [String],
+    required: false,
+    deprecated: true,
+    description:
+      'Legacy alias for recipients. Used only when recipients is absent.',
+    example: ['+2519xxxxxxxx', '+2517xxxxxxxx'],
+  })
   receivers: string[]
 }
 export class SendSMSInputDTO extends SMSData {}
@@ -185,15 +319,17 @@ export class SendSMSInputDTO extends SMSData {}
 export class SendBulkSMSInputDTO {
   @ApiProperty({
     type: String,
-    required: true,
-    description: 'The template to send the SMS with',
+    required: false,
+    description:
+      'Optional label for the batch. Each entry in messages carries its own text.',
   })
   messageTemplate: string
 
   @ApiProperty({
     type: [SMSData],
     required: true,
-    description: 'The messages to send',
+    description:
+      'Messages to send. Every message can target different recipients and use a different SIM.',
   })
   messages: SMSData[]
 }
@@ -248,74 +384,542 @@ export class ReceivedSMSDTO {
   receivedAtInMillis?: number
 }
 
-export class DeviceDTO {
-  @ApiProperty({ type: String })
+// The device summary embedded in message responses. Message queries populate
+// only these fields, so it is deliberately smaller than DeviceDTO.
+export class MessageDeviceDTO {
+  @ApiProperty({ type: String, description: 'Device id.' })
   _id: string
 
-  @ApiProperty({ type: Boolean })
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether the device may send and receive SMS.',
+  })
   enabled: boolean
 
-  @ApiProperty({ type: String })
+  @ApiProperty({ type: String, description: 'Device brand.', example: 'google' })
   brand: string
 
-  @ApiProperty({ type: String })
-  manufacturer: string
-
-  @ApiProperty({ type: String })
+  @ApiProperty({
+    type: String,
+    description: 'Device model.',
+    example: 'Pixel 7',
+  })
   model: string
 
-  @ApiProperty({ type: String })
+  @ApiProperty({ type: String, description: 'Android build id.' })
   buildId: string
 }
 
-export class RetrieveSMSDTO {
+export class BatteryInfoDTO {
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Battery level, 0 to 100.',
+  })
+  percentage?: number
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether the device was charging at the last heartbeat.',
+  })
+  isCharging?: boolean
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class NetworkInfoDTO {
   @ApiProperty({
     type: String,
-    required: true,
-    description: 'The id of the received SMS',
+    required: false,
+    enum: ['wifi', 'cellular', 'none'],
+    description: 'Connection the device last reported.',
   })
+  networkType?: string
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class AppVersionInfoDTO {
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'textbee app version name.',
+    example: '1.9.0',
+  })
+  versionName?: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'textbee app version code.',
+    example: 190,
+  })
+  versionCode?: number
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class DeviceUptimeInfoDTO {
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Milliseconds since the device booted.',
+  })
+  uptimeMillis?: number
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class MemoryInfoDTO {
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Free memory in bytes.',
+  })
+  freeBytes?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Total memory in bytes.',
+  })
+  totalBytes?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Maximum memory the app may use, in bytes.',
+  })
+  maxBytes?: number
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class StorageInfoDTO {
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Free storage in bytes.',
+  })
+  availableBytes?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Total storage in bytes.',
+  })
+  totalBytes?: number
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+export class DeviceSystemInfoDTO {
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Device timezone.',
+    example: 'Africa/Addis_Ababa',
+  })
+  timezone?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Device locale.',
+    example: 'en_US',
+  })
+  locale?: string
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When this reading was taken.',
+  })
+  lastUpdated?: Date
+}
+
+// Full device as returned by the device endpoints. The push token and hardware
+// serial are stored but never returned.
+export class DeviceDTO {
+  @ApiProperty({
+    type: String,
+    description: 'Device id. Pass it as deviceId when sending.',
+  })
+  _id: string
+
+  @ApiProperty({ type: String, description: 'Owner account id.' })
+  user: string
+
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Whether the device may send and receive SMS. Sending to a disabled device fails.',
+  })
+  enabled: boolean
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether sends without a deviceId go out from this device.',
+  })
+  isDefault: boolean
+
+  @ApiProperty({ type: String, description: 'Device brand.', example: 'google' })
+  brand: string
+
+  @ApiProperty({
+    type: String,
+    description: 'Device manufacturer.',
+    example: 'Google',
+  })
+  manufacturer: string
+
+  @ApiProperty({
+    type: String,
+    description: 'Device model.',
+    example: 'Pixel 7',
+  })
+  model: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Your own label for the device.',
+    example: 'Office phone',
+  })
+  name?: string
+
+  @ApiProperty({ type: String, description: 'Android build id.' })
+  buildId: string
+
+  @ApiProperty({
+    type: String,
+    description: 'Operating system name.',
+    example: 'Android',
+  })
+  os: string
+
+  @ApiProperty({
+    type: String,
+    description: 'Android release version.',
+    example: '16',
+  })
+  osVersion: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Android SDK level.',
+    example: 36,
+  })
+  osApiLevel?: number
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    enum: ['reported', 'fingerprint', 'buildId'],
+    description: 'How osVersion was determined.',
+  })
+  osVersionSource?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Android build fingerprint.',
+  })
+  osBuildFingerprint?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'textbee app version name.',
+    example: '1.9.0',
+  })
+  appVersionName?: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'textbee app version code.',
+    example: 190,
+  })
+  appVersionCode?: number
+
+  @ApiProperty({
+    type: Number,
+    description: 'Messages this device has sent.',
+  })
+  sentSMSCount: number
+
+  @ApiProperty({
+    type: Number,
+    description: 'Messages this device has received.',
+  })
+  receivedSMSCount: number
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether the device reports heartbeats.',
+  })
+  heartbeatEnabled: boolean
+
+  @ApiProperty({
+    type: Number,
+    description: 'Minutes between heartbeats.',
+    example: 30,
+  })
+  heartbeatIntervalMinutes: number
+
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Whether incoming messages are forwarded to textbee. Required for received message history and webhooks.',
+  })
+  receiveSMSEnabled: boolean
+
+  @ApiProperty({
+    type: Number,
+    description: 'Seconds the device waits between messages in a batch.',
+  })
+  smsSendDelaySeconds: number
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description:
+      'Last heartbeat. A device silent for long is likely offline and sends will queue.',
+  })
+  lastHeartbeat?: Date
+
+  @ApiProperty({
+    type: BatteryInfoDTO,
+    required: false,
+    description: 'Battery level at the last heartbeat.',
+  })
+  batteryInfo?: BatteryInfoDTO
+
+  @ApiProperty({
+    type: NetworkInfoDTO,
+    required: false,
+    description: 'Connection the device was on at the last heartbeat.',
+  })
+  networkInfo?: NetworkInfoDTO
+
+  @ApiProperty({
+    type: AppVersionInfoDTO,
+    required: false,
+    description: 'textbee app version running on the device.',
+  })
+  appVersionInfo?: AppVersionInfoDTO
+
+  @ApiProperty({
+    type: DeviceUptimeInfoDTO,
+    required: false,
+    description: 'How long the device has been up.',
+  })
+  deviceUptimeInfo?: DeviceUptimeInfoDTO
+
+  @ApiProperty({
+    type: MemoryInfoDTO,
+    required: false,
+    description: 'Memory reported at the last heartbeat.',
+  })
+  memoryInfo?: MemoryInfoDTO
+
+  @ApiProperty({
+    type: StorageInfoDTO,
+    required: false,
+    description: 'Storage reported at the last heartbeat.',
+  })
+  storageInfo?: StorageInfoDTO
+
+  @ApiProperty({
+    type: DeviceSystemInfoDTO,
+    required: false,
+    description: 'Timezone and locale of the device.',
+  })
+  systemInfo?: DeviceSystemInfoDTO
+
+  @ApiProperty({
+    type: SimInfoCollectionDTO,
+    required: false,
+    description: 'SIMs installed in the device.',
+  })
+  simInfo?: SimInfoCollectionDTO
+
+  @ApiProperty({ type: Date, description: 'When the device was registered.' })
+  createdAt: Date
+
+  @ApiProperty({ type: Date, description: 'When the device was last updated.' })
+  updatedAt: Date
+}
+
+export class RetrieveSMSDTO {
+  @ApiProperty({ type: String, description: 'Message id.' })
   _id: string
 
   @ApiProperty({
     type: String,
-    required: true,
-    description: 'The message received',
+    required: false,
+    description: 'Message text. Empty when the message is end to end encrypted.',
   })
   message: string
 
   @ApiProperty({
-    type: DeviceDTO,
-    required: true,
-    description: 'The device that received the message',
+    type: MessageDeviceDTO,
+    description: 'Device that sent or received the message.',
   })
-  device: DeviceDTO
+  device: MessageDeviceDTO
 
   @ApiProperty({
     type: String,
-    required: true,
-    description: 'The phone number of the sender',
+    enum: ['sent', 'received'],
+    description: 'Direction of the message.',
   })
-  sender: string
+  type: string
+
+  @ApiProperty({
+    type: String,
+    enum: [
+      'pending',
+      'dispatched',
+      'sent',
+      'delivered',
+      'failed',
+      'unknown',
+      'received',
+    ],
+    description:
+      'Delivery state. Incoming messages are always received. Outgoing messages move from pending to sent, then to delivered when the carrier confirms.',
+  })
+  status: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Sender number. Set on received messages.',
+  })
+  sender?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Destination number. Set on sent messages.',
+  })
+  recipient?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Id of the batch this message was sent in.',
+  })
+  smsBatch?: string
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description:
+      'Whether the body is end to end encrypted. Encrypted bodies can only be read by your own client.',
+  })
+  encrypted?: boolean
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'SIM the message was sent from.',
+  })
+  simSubscriptionId?: number
 
   @ApiProperty({
     type: Date,
-    required: true,
-    description: 'The time the message was received',
+    required: false,
+    description: 'When the message was received. Received messages only.',
   })
-  receivedAt: Date
+  receivedAt?: Date
 
   @ApiProperty({
     type: Date,
-    required: true,
-    description: 'The time the message was created',
+    required: false,
+    description: 'When the send was requested. Sent messages only.',
   })
+  requestedAt?: Date
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When the send job reached the device.',
+  })
+  dispatchedAt?: Date
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When the device reported the message as sent.',
+  })
+  sentAt?: Date
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When the carrier confirmed delivery.',
+  })
+  deliveredAt?: Date
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When the message failed.',
+  })
+  failedAt?: Date
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Failure code reported by the device.',
+  })
+  errorCode?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Failure reason reported by the device.',
+  })
+  errorMessage?: string
+
+  @ApiProperty({ type: Date, description: 'When the record was created.' })
   createdAt: Date
 
-  @ApiProperty({
-    type: Date,
-    required: true,
-    description: 'The time the message was last updated',
-  })
+  @ApiProperty({ type: Date, description: 'When the record was last updated.' })
   updatedAt: Date
 }
 
@@ -552,7 +1156,11 @@ export class HeartbeatInputDTO {
   })
   smsSendDelaySeconds?: number
 
-  @ApiProperty({ type: SimInfoCollectionDTO, required: false })
+  @ApiProperty({
+    type: SimInfoCollectionDTO,
+    required: false,
+    description: 'SIMs installed in the device at the time of the heartbeat.',
+  })
   simInfo?: SimInfoCollectionDTO
 }
 
@@ -584,4 +1192,198 @@ export class HeartbeatResponseDTO {
     description: 'Device name (if updated)',
   })
   name?: string
+}
+
+export class GatewayStatsDTO {
+  @ApiProperty({
+    type: Number,
+    description: 'Messages sent across all your devices.',
+  })
+  totalSentSMSCount: number
+
+  @ApiProperty({
+    type: Number,
+    description: 'Messages received across all your devices.',
+  })
+  totalReceivedSMSCount: number
+
+  @ApiProperty({ type: Number, description: 'Devices on your account.' })
+  totalDeviceCount: number
+
+  @ApiProperty({ type: Number, description: 'API keys on your account.' })
+  totalApiKeyCount: number
+}
+
+export class GatewayStatsResponseDTO {
+  @ApiProperty({ type: GatewayStatsDTO, description: 'Account totals.' })
+  data: GatewayStatsDTO
+}
+
+export class DeviceListResponseDTO {
+  @ApiProperty({ type: [DeviceDTO], description: 'Your devices.' })
+  data: DeviceDTO[]
+}
+
+export class DeviceResponseDTO {
+  @ApiProperty({ type: DeviceDTO, description: 'The device.' })
+  data: DeviceDTO
+}
+
+export class SuccessResultDTO {
+  @ApiProperty({ type: Boolean, description: 'Whether the action succeeded.' })
+  success: boolean
+}
+
+export class SuccessResponseDTO {
+  @ApiProperty({ type: SuccessResultDTO, description: 'Outcome of the action.' })
+  data: SuccessResultDTO
+}
+
+export class SendSMSResultDTO {
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether the batch was accepted. Queued sends only.',
+  })
+  success?: boolean
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Human readable outcome. Queued sends only.',
+    example: 'SMS added to queue for processing',
+  })
+  message?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Batch id. Pass it to GET /gateway/devices/{id}/sms-batch/{smsBatchId} to follow delivery. Queued sends only.',
+  })
+  smsBatchId?: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Number of recipients in the batch. Queued sends only.',
+  })
+  recipientCount?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description:
+      'Messages pushed to the device. Returned instead of the queue fields when the instance dispatches immediately.',
+  })
+  successCount?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Messages that could not be pushed to the device.',
+  })
+  failureCount?: number
+}
+
+export class SendSMSResponseDTO {
+  @ApiProperty({ type: SendSMSResultDTO, description: 'Outcome of the send.' })
+  data: SendSMSResultDTO
+}
+
+export class SMSResponseDTO {
+  @ApiProperty({ type: RetrieveSMSDTO, description: 'The message.' })
+  data: RetrieveSMSDTO
+}
+
+export class SMSBatchDTO {
+  @ApiProperty({ type: String, description: 'Batch id.' })
+  _id: string
+
+  @ApiProperty({ type: String, description: 'Owner account id.' })
+  user: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Message text sent to every recipient in the batch.',
+  })
+  message?: string
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether the body is end to end encrypted.',
+  })
+  encrypted?: boolean
+
+  @ApiProperty({ type: Number, description: 'Recipients in the batch.' })
+  recipientCount: number
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Short preview of the recipient list.',
+    example: '+2519xxxxxxxx and 3 others',
+  })
+  recipientPreview?: string
+
+  @ApiProperty({ type: Number, description: 'Messages sent so far.' })
+  successCount: number
+
+  @ApiProperty({ type: Number, description: 'Messages that failed.' })
+  failureCount: number
+
+  @ApiProperty({
+    type: String,
+    enum: [
+      'pending',
+      'processing',
+      'completed',
+      'partial_success',
+      'failed',
+      'unknown',
+    ],
+    description: 'Progress of the batch as a whole.',
+  })
+  status: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Failure reason when the batch failed.',
+  })
+  error?: string
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description: 'When the batch finished.',
+  })
+  completedAt?: Date
+
+  @ApiProperty({ type: Date, description: 'When the batch was created.' })
+  createdAt: Date
+
+  @ApiProperty({ type: Date, description: 'When the batch was last updated.' })
+  updatedAt: Date
+}
+
+export class SMSBatchResultDTO {
+  @ApiProperty({ type: SMSBatchDTO, description: 'The batch itself.' })
+  batch: SMSBatchDTO
+
+  @ApiProperty({
+    type: [RetrieveSMSDTO],
+    description: 'Every message in the batch, one per recipient.',
+  })
+  messages: RetrieveSMSDTO[]
+}
+
+export class SMSBatchResponseDTO {
+  @ApiProperty({
+    type: SMSBatchResultDTO,
+    description: 'The batch and the messages in it.',
+  })
+  data: SMSBatchResultDTO
 }

@@ -1,15 +1,30 @@
 import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
 import { BillingService } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
-import { ApiTags, ApiBearerAuth, ApiSecurity } from '@nestjs/swagger'
 import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiExcludeEndpoint,
+  ApiOperation,
+  ApiResponse,
+  ApiSecurity,
+} from '@nestjs/swagger'
+import {
+  BillingNotificationDTO,
   ChangePlanInputDTO,
   ChangePlanResponseDTO,
   CheckoutInputDTO,
   CheckoutResponseDTO,
+  CurrentSubscriptionResponseDTO,
+  PlanDTO,
   PlansResponseDTO,
 } from './billing.dto'
 import { BillingNotificationsService } from './billing-notifications.service'
+
+const UNAUTHORIZED_RESPONSE = {
+  status: 401,
+  description: 'Missing, invalid, or revoked API key.',
+} as const
 
 @ApiTags('billing')
 @Controller('billing')
@@ -19,11 +34,31 @@ export class BillingController {
     private billingNotifications: BillingNotificationsService,
   ) {}
 
+  @ApiOperation({
+    summary: 'List the available plans',
+    description: 'Public plan catalogue with prices. No credentials needed.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plans that can be subscribed to.',
+    type: [PlanDTO],
+  })
   @Get('plans')
   async getPlans(): Promise<PlansResponseDTO> {
     return this.billingService.getPlans()
   }
 
+  @ApiOperation({
+    summary: 'Get your plan and usage',
+    description:
+      'The plan in force plus how much of its limits the account has used. Accounts without a paid plan get the free one.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Current plan and usage.',
+    type: CurrentSubscriptionResponseDTO,
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Get('current-subscription')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -32,6 +67,17 @@ export class BillingController {
     return this.billingService.getCurrentSubscription(req.user)
   }
 
+  @ApiOperation({
+    summary: 'List billing notifications',
+    description:
+      'Alerts raised for the account, newest first, such as a limit being reached or an email needing verification.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Up to 50 notifications.',
+    type: [BillingNotificationDTO],
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Get('notifications')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -40,6 +86,21 @@ export class BillingController {
     return this.billingNotifications.listForUser(req.user._id)
   }
 
+  @ApiOperation({
+    summary: 'Start a checkout',
+    description:
+      'Returns a Polar checkout URL for the chosen plan. An account that already pays gets a plan change preview instead, which you confirm through POST /billing/change-plan.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'A checkout URL, or a plan change to confirm.',
+    type: CheckoutResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unknown plan, or the plan cannot be subscribed to.',
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Post('checkout')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -55,6 +116,21 @@ export class BillingController {
     })
   }
 
+  @ApiOperation({
+    summary: 'Switch to another plan',
+    description:
+      'Applies a plan change for an account that already has a paid subscription. Polar handles the proration.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The plan was switched.',
+    type: ChangePlanResponseDTO,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Unknown plan, or there is no subscription to change.',
+  })
+  @ApiResponse(UNAUTHORIZED_RESPONSE)
   @Post('change-plan')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
@@ -69,6 +145,9 @@ export class BillingController {
     })
   }
 
+  // Provider to server callback with a signed raw body, not something a
+  // developer calls, so it stays out of the docs.
+  @ApiExcludeEndpoint()
   @Post('webhook/polar')
   async handlePolarWebhook(@Body() data: any, @Request() req: any) {
     const payload = await this.billingService.validatePolarWebhookPayload(

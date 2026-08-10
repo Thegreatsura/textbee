@@ -42,7 +42,7 @@ services:
   # NestJS API
   textbee-api:
     container_name: textbee-api
-    # image: ghcr.io/vernu/textbee/api:latest
+    # image: ghcr.io/textbee/textbee/api:latest
     build:
       context: ./api
       dockerfile: Dockerfile
@@ -64,7 +64,7 @@ services:
   # Next.js Web
   textbee-web:
     container_name: textbee-web
-    # image: ghcr.io/vernu/textbee/web:latest
+    # image: ghcr.io/textbee/textbee/web:latest
     build:
       context: ./web
       dockerfile: Dockerfile

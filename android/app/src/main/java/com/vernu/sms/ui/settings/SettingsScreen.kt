@@ -415,7 +415,7 @@ fun SettingsScreen(
                         }
                         OutlinedButton(
                             onClick = {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/vernu/textbee")))
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/textbee/textbee")))
                             }
                         ) {
                             Text("GitHub")

@@ -9,7 +9,9 @@ import UpdateAppModal from './(components)/devices/update-app-modal'
 import UpdateAppNotificationBar from './(components)/devices/update-app-notification-bar'
 import VerifyEmailAlert from './(components)/alerts/verify-email-alert'
 import PastDueBillingAlert from './(components)/alerts/past-due-billing-alert'
+import JoinDiscordBanner from './(components)/alerts/join-discord-banner'
 import { SurveyModal } from '@/components/shared/survey-modal'
+import { JoinCommunityModal } from '@/components/shared/join-community-modal'
 import Footer from '@/components/shared/footer'
 import ThemeToggle from '@/components/shared/theme-toggle'
 import CommandMenu from './(components)/search/command-menu'
@@ -93,6 +95,7 @@ export default function DashboardLayout({
           <PastDueBillingAlert />
           <AccountDeletionAlert />
           <UpgradeToProAlert />
+          <JoinDiscordBanner />
         </div>
         <main id='main-content' tabIndex={-1}>
           {children}
@@ -122,6 +125,7 @@ export default function DashboardLayout({
 
       <SurveyModal />
       <UpdateAppModal />
+      <JoinCommunityModal />
     </div>
   )
 }

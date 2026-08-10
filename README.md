@@ -1,7 +1,7 @@
 ![GitHub stars](https://img.shields.io/github/stars/vernu/textbee)
 ![License](https://img.shields.io/github/license/vernu/textbee)
 ![Release](https://img.shields.io/github/v/release/vernu/textbee)
-[![Discord](https://img.shields.io/discord/1236287182940016723?label=Discord&logo=discord)](https://discord.gg/d7vyfBpWbQ)
+[![Discord](https://img.shields.io/discord/1236287182940016723?label=Discord&logo=discord)](https://textbee.dev/discord)
 
 # textbee.dev - android sms gateway
 
@@ -255,4 +255,4 @@ Please feel free to [create an issue](https://github.com/vernu/textbee/issues/ne
 Please note that if you discover any vulnerability or security issue, we kindly request that you refrain from creating a public issue. Instead, send an email detailing the vulnerability to contact@textbee.dev.
 
 ## For support, feedback, and questions
-Feel free to reach out to us at contact@textbee.dev or [Join our Discord server](https://discord.gg/d7vyfBpWbQ)
+Feel free to reach out to us at contact@textbee.dev or [Join our Discord server](https://textbee.dev/discord)

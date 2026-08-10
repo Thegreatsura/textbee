@@ -9,12 +9,15 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  MessageSquare,
   PartyPopper,
   RefreshCw,
   Send,
   Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ExternalLinks } from '@/config/external-links'
+import { markDiscordJoined } from '@/lib/discord-community'
 import GetStartedCardSkeleton from './skeleton'
 import StepActions from './step-actions'
 import { useOnboarding } from './use-onboarding'
@@ -95,12 +98,27 @@ export default function GetStartedCard() {
             <p className='mt-1 text-sm text-muted-foreground'>
               Your SMS gateway is up and running.
             </p>
+            <p className='mt-1 text-sm text-muted-foreground'>
+              Join our Discord to share what you're building and get help fast.
+            </p>
           </div>
           <div className='flex flex-wrap items-center justify-center gap-2'>
             <Button size='sm' asChild>
               <Link href='/dashboard/messaging'>
                 <Send className='h-4 w-4' />
                 Send a message
+              </Link>
+            </Button>
+            <Button variant='outline' size='sm' asChild>
+              <Link
+                href={ExternalLinks.discord}
+                prefetch={false}
+                target='_blank'
+                rel='noopener noreferrer'
+                onClick={markDiscordJoined}
+              >
+                <MessageSquare className='h-4 w-4' />
+                Join the community
               </Link>
             </Button>
             <Button variant='ghost' size='sm' onClick={dismissCelebration}>

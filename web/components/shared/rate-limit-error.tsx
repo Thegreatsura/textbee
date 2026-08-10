@@ -6,6 +6,24 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
 import type { RateLimitErrorData } from '@/lib/utils/errorHandler'
 import { checkoutPath } from '@/lib/plans'
+import { ExternalLinks } from '@/config/external-links'
+
+function DiscordHelpLine() {
+  return (
+    <p className="text-xs text-muted-foreground">
+      Questions about limits? Ask the{' '}
+      <a
+        href={ExternalLinks.discord}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-medium underline underline-offset-2"
+      >
+        community on Discord
+      </a>
+      .
+    </p>
+  )
+}
 
 interface RateLimitErrorProps {
   errorData?: RateLimitErrorData
@@ -35,6 +53,7 @@ export function RateLimitError({
             or wait for your limit to reset
           </p>
         </div>
+        <DiscordHelpLine />
       </div>
     )
   }
@@ -53,6 +72,7 @@ export function RateLimitError({
             or wait for your limit to reset
           </span>
         </div>
+        <DiscordHelpLine />
       </AlertDescription>
     </Alert>
   )

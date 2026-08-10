@@ -8,13 +8,13 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { ExternalLinks } from '@/config/external-links'
-
-// Constants for localStorage keys and timing
-const STORAGE_KEYS = {
-  LAST_SHOWN: 'discord_modal_last_shown',
-  HAS_JOINED: 'discord_modal_has_joined',
-}
+import {
+  DISCORD_STORAGE_KEYS as STORAGE_KEYS,
+  markDiscordJoined,
+  openDiscordInvite,
+  recordDiscordModalShown,
+  safeGetDiscordFlag,
+} from '@/lib/discord-community'
 
 const SHOW_INTERVAL = 1 * 24 * 60 * 60 * 1000 // 1 days in milliseconds
 const RANDOM_CHANCE = 0.2 // 20% chance to show when eligible
@@ -24,16 +24,23 @@ export const JoinCommunityModal = () => {
 
   useEffect(() => {
     const checkAndShowModal = () => {
-      const hasJoined = localStorage.getItem(STORAGE_KEYS.HAS_JOINED) === 'true'
+      const hasJoined =
+        safeGetDiscordFlag(STORAGE_KEYS.HAS_JOINED) === 'true'
       if (hasJoined) return
 
-      const lastShown = localStorage.getItem(STORAGE_KEYS.LAST_SHOWN)
+      // The banner asks first. Only users who dismissed it without joining
+      // are ever eligible for the modal.
+      const bannerDismissed =
+        safeGetDiscordFlag(STORAGE_KEYS.BANNER_DISMISSED) === '1'
+      if (!bannerDismissed) return
+
+      const lastShown = safeGetDiscordFlag(STORAGE_KEYS.LAST_SHOWN)
       const now = Date.now()
       const lastShownTime = lastShown ? parseInt(lastShown) : 0
       if (!lastShown || now - lastShownTime >= SHOW_INTERVAL) {
         if (Math.random() < RANDOM_CHANCE) {
           setIsOpen(true)
-          localStorage.setItem(STORAGE_KEYS.LAST_SHOWN, now.toString())
+          recordDiscordModalShown()
         }
       }
     }
@@ -42,15 +49,18 @@ export const JoinCommunityModal = () => {
     checkAndShowModal()
 
     // Also check when tab becomes visible
-    document.addEventListener('visibilitychange', () => {
+    const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         checkAndShowModal()
       }
-    })
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () =>
+      document.removeEventListener('visibilitychange', onVisibilityChange)
   }, [])
 
   const handleJoined = () => {
-    localStorage.setItem(STORAGE_KEYS.HAS_JOINED, 'true')
+    markDiscordJoined()
     setIsOpen(false)
   }
 
@@ -82,8 +92,8 @@ export const JoinCommunityModal = () => {
           <Button
             variant='default'
             onClick={() => {
-              window.open(ExternalLinks.discord, '_blank', 'noopener,noreferrer')
-              handleJoined()
+              openDiscordInvite()
+              setIsOpen(false)
             }}
             className='gap-2'
           >

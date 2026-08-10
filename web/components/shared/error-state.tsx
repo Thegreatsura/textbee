@@ -4,6 +4,7 @@ import type { ComponentType } from 'react'
 import { AlertCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { formatError } from '@/lib/utils/errorHandler'
+import { ExternalLinks } from '@/config/external-links'
 
 type ErrorStateProps = {
   error: unknown
@@ -45,6 +46,18 @@ export default function ErrorState({
           Try again
         </Button>
       )}
+      <p className='mt-1 text-xs text-muted-foreground'>
+        Still stuck? Ask the{' '}
+        <a
+          href={ExternalLinks.discord}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='font-medium text-primary hover:underline'
+        >
+          community on Discord
+        </a>
+        .
+      </p>
     </div>
   )
 }

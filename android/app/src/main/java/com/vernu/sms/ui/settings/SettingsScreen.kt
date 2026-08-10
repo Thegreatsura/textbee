@@ -241,6 +241,19 @@ fun SettingsScreen(
             )
 
             SettingsRow(
+                icon = Icons.Default.Forum,
+                title = "Join our Discord",
+                subtitle = "Get help from the community",
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://textbee.dev/discord")))
+                },
+                trailing = {
+                    Icon(Icons.Default.OpenInBrowser, contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
+            )
+
+            SettingsRow(
                 icon = Icons.Default.Share,
                 title = "Share textbee",
                 subtitle = "Help spread the word",

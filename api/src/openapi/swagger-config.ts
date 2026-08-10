@@ -40,7 +40,7 @@ export interface SwaggerConfigOptions {
 
 const LICENSE = {
   name: 'MIT',
-  url: 'https://github.com/vernu/textbee/blob/main/LICENSE',
+  url: 'https://github.com/textbee/textbee/blob/main/LICENSE',
 } as const
 
 // The server and the openapi exporter both call this, so the documented paths

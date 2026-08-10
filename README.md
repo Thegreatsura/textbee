@@ -1,6 +1,6 @@
-![GitHub stars](https://img.shields.io/github/stars/vernu/textbee)
-![License](https://img.shields.io/github/license/vernu/textbee)
-![Release](https://img.shields.io/github/v/release/vernu/textbee)
+![GitHub stars](https://img.shields.io/github/stars/textbee/textbee)
+![License](https://img.shields.io/github/license/textbee/textbee)
+![Release](https://img.shields.io/github/v/release/textbee/textbee)
 [![Discord](https://img.shields.io/discord/1236287182940016723?label=Discord&logo=discord)](https://textbee.dev/discord)
 
 # textbee.dev - android sms gateway
@@ -243,14 +243,14 @@ See [textbee.dev](https://textbee.dev) for current plans and limits. You can alw
 
 Contributions are welcome!
 
-1. [Fork](https://github.com/vernu/textbee/fork) the project.
+1. [Fork](https://github.com/textbee/textbee/fork) the project.
 2. Create a feature or bugfix branch from `main` branch.
 3. Make sure your commit messages and PR comment summaries are descriptive.
 4. Create a pull request to the `main` branch.
 
 ## Bug Reporting and Feature Requests
 
-Please feel free to [create an issue](https://github.com/vernu/textbee/issues/new) in the repository for any bug reports or feature requests. Make sure to provide a detailed description of the issue or feature you are requesting and properly label whether it is a bug or a feature request.
+Please feel free to [create an issue](https://github.com/textbee/textbee/issues/new) in the repository for any bug reports or feature requests. Make sure to provide a detailed description of the issue or feature you are requesting and properly label whether it is a bug or a feature request.
 
 Please note that if you discover any vulnerability or security issue, we kindly request that you refrain from creating a public issue. Instead, send an email detailing the vulnerability to contact@textbee.dev.
 

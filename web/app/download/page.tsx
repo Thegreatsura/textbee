@@ -50,7 +50,7 @@ export default function DownloadPage() {
     async function fetchReleases() {
       try {
         const response = await fetch(
-          'https://api.github.com/repos/vernu/textbee/releases'
+          'https://api.github.com/repos/textbee/textbee/releases'
         )
         if (!response.ok) {
           throw new Error('Failed to fetch releases')
@@ -318,7 +318,7 @@ export default function DownloadPage() {
               className='text-muted-foreground'
             >
               <Link
-                href='https://github.com/vernu/textbee/releases'
+                href='https://github.com/textbee/textbee/releases'
                 target='_blank'
                 rel='noopener noreferrer'
               >

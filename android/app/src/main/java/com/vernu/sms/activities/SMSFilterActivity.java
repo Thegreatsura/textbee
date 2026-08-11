@@ -238,8 +238,14 @@ public class SMSFilterActivity extends AppCompatActivity {
             String caseText = rule.isCaseSensitive() ? " (Case Sensitive)" : " (Case Insensitive)";
             holder.filterTargetText.setText(filterTargetText + caseText);
 
-            holder.editButton.setOnClickListener(v -> showAddEditRuleDialog(position));
-            holder.deleteButton.setOnClickListener(v -> deleteRule(position));
+            holder.editButton.setOnClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION) showAddEditRuleDialog(pos);
+            });
+            holder.deleteButton.setOnClickListener(v -> {
+                int pos = holder.getBindingAdapterPosition();
+                if (pos != RecyclerView.NO_POSITION) deleteRule(pos);
+            });
         }
 
         @Override

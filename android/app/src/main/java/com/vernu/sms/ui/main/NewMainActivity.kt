@@ -31,7 +31,7 @@ import com.vernu.sms.ui.messages.MessagesScreen
 import com.vernu.sms.ui.onboarding.OnboardingActivity
 import com.vernu.sms.ui.settings.SMSFilterScreen
 import com.vernu.sms.ui.settings.SettingsScreen
-import com.vernu.sms.ui.theme.TextBeeTheme
+import com.vernu.sms.ui.theme.TextbeeTheme
 
 enum class MainDestination(val label: String, val icon: ImageVector) {
     DASHBOARD("Dashboard", Icons.Default.Dashboard),
@@ -44,7 +44,7 @@ class NewMainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            TextBeeTheme {
+            TextbeeTheme {
                 val navController = rememberNavController()
                 MainScaffold(
                     navController = navController,

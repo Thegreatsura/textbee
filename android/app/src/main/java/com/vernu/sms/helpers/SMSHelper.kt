@@ -8,7 +8,7 @@ import android.os.Build
 import android.telephony.SmsManager
 import android.util.Log
 import com.vernu.sms.AppConstants
-import com.vernu.sms.TextBeeUtils
+import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.dtos.SMSDTO
 import com.vernu.sms.receivers.SMSStatusReceiver
 import com.vernu.sms.workers.SMSStatusUpdateWorker
@@ -24,7 +24,7 @@ object SMSHelper {
         smsBatchId: String,
         context: Context
     ): Boolean {
-        if (!TextBeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS)) {
+        if (!TextbeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS)) {
             Log.e(TAG, "SMS permission not granted. Unable to send SMS.")
             reportPermissionError(context, smsId, smsBatchId)
             return false
@@ -62,8 +62,8 @@ object SMSHelper {
         smsBatchId: String,
         context: Context
     ): Boolean {
-        if (!TextBeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS) ||
-            !TextBeeUtils.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
+        if (!TextbeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS) ||
+            !TextbeeUtils.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
         ) {
             Log.e(TAG, "SMS or Phone State permission not granted. Unable to send SMS from specific SIM.")
             reportPermissionError(context, smsId, smsBatchId)

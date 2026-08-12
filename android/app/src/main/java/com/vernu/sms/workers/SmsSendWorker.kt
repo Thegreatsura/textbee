@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.work.*
 import com.vernu.sms.AppConstants
-import com.vernu.sms.TextBeeUtils
+import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.helpers.SMSHelper
 import com.vernu.sms.helpers.SharedPreferenceHelper
 
@@ -81,7 +81,7 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
     }
 
     private fun resolveSim(context: Context, backendSimId: Int): Int? {
-        if (backendSimId != -1 && TextBeeUtils.isValidSubscriptionId(context, backendSimId)) {
+        if (backendSimId != -1 && TextbeeUtils.isValidSubscriptionId(context, backendSimId)) {
             Log.d(TAG, "Using backend-provided SIM subscription ID: $backendSimId")
             return backendSimId
         }
@@ -89,7 +89,7 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
         val preferredSim = SharedPreferenceHelper.getSharedPreferenceInt(
             context, AppConstants.SHARED_PREFS_PREFERRED_SIM_KEY, -1
         )
-        if (preferredSim != -1 && TextBeeUtils.isValidSubscriptionId(context, preferredSim)) {
+        if (preferredSim != -1 && TextbeeUtils.isValidSubscriptionId(context, preferredSim)) {
             Log.d(TAG, "Using app-preferred SIM subscription ID: $preferredSim")
             return preferredSim
         }

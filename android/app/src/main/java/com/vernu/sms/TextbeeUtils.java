@@ -21,8 +21,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class TextBeeUtils {
-    private static final String TAG = "TextBeeUtils";
+public class TextbeeUtils {
+    private static final String TAG = "TextbeeUtils";
     
     public static boolean isPermissionGranted(Context context, String permission) {
         return ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED;

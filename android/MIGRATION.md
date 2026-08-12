@@ -2,7 +2,7 @@
 
 ## Overview
 
-TextBee Android is mid-migration from a Java/XML legacy codebase to Kotlin + Jetpack Compose. The new UI runs in parallel with the legacy UI — users can switch between them via Settings. The SplashActivity routes to the appropriate UI on launch.
+textbee Android is mid-migration from a Java/XML legacy codebase to Kotlin + Jetpack Compose. The new UI runs in parallel with the legacy UI — users can switch between them via Settings. The SplashActivity routes to the appropriate UI on launch.
 
 ---
 
@@ -12,7 +12,7 @@ TextBee Android is mid-migration from a Java/XML legacy codebase to Kotlin + Jet
 | File | Notes |
 |---|---|
 | `ui/theme/Color.kt` | Brand orange (`#C4620A`), full light/dark palette |
-| `ui/theme/Theme.kt` | `TextBeeTheme` wrapper, `dynamicColor = false` to preserve brand color |
+| `ui/theme/Theme.kt` | `TextbeeTheme` wrapper, `dynamicColor = false` to preserve brand color |
 | `ui/theme/Type.kt` | Material3 typography scale |
 
 ### Infrastructure
@@ -104,7 +104,7 @@ All helpers are Kotlin `object` with `@JvmStatic` on every public method — at 
 |---|---|---|
 | `AppConstants.java` | Low | Constants only — convert when touching other things |
 | `SMSGatewayApplication.java` | Low | Application class, minimal logic |
-| `TextBeeUtils.java` | Medium | Heavily used utility; convert once helpers are stable |
+| `TextbeeUtils.java` | Medium | Heavily used utility; convert once helpers are stable |
 | `ApiManager.java` | Low | Still used by legacy UI; delete after legacy removal |
 
 ### Activities (Legacy UI)
@@ -181,7 +181,7 @@ Once Compose UI is stable and rolled out to all users, remove the legacy UI enti
 
 - **`dynamicColor = false`** in `Theme.kt` — Material You overrides the brand orange on Android 12+; must stay false
 - **`primaryContainer` avoided** in TopAppBar/nav — causes orange-on-orange in dark mode; use `surface` for bars, `surfaceVariant` for nav indicator
-- **Java/Kotlin interop** — Only `ApiManager.java`, `TextBeeUtils.java`, legacy activities, and `GatewayApiService.java` remain Java; all others are Kotlin
+- **Java/Kotlin interop** — Only `ApiManager.java`, `TextbeeUtils.java`, legacy activities, and `GatewayApiService.java` remain Java; all others are Kotlin
 - **WorkManager workers** — kept as `Worker` subclass (not `CoroutineWorker`) to avoid adding `work-runtime-ktx`; straightforward conversion candidate in a future cleanup
 - **Sticky notification on Android 12+** — `ForegroundServiceStartNotAllowedException` is caught broadly; `DashboardViewModel` restarts service on every launch to compensate for OS killing it in the background
 - **Room DB** — all DB logic remains commented out; do not uncomment until the feature is explicitly re-enabled

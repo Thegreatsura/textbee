@@ -23,14 +23,14 @@ import com.vernu.sms.activities.MainActivity
 import com.vernu.sms.helpers.SharedPreferenceHelper
 import com.vernu.sms.ui.main.NewMainActivity
 import com.vernu.sms.ui.onboarding.OnboardingActivity
-import com.vernu.sms.ui.theme.TextBeeTheme
+import com.vernu.sms.ui.theme.TextbeeTheme
 
 class SplashActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            TextBeeTheme {
+            TextbeeTheme {
                 SplashContent()
             }
         }

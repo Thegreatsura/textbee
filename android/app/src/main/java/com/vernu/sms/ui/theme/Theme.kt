@@ -53,7 +53,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun TextBeeTheme(
+fun TextbeeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit

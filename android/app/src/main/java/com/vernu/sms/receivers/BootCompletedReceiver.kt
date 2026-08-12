@@ -9,7 +9,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.vernu.sms.ApiManager
 import com.vernu.sms.AppConstants
 import com.vernu.sms.BuildConfig
-import com.vernu.sms.TextBeeUtils
+import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.dtos.RegisterDeviceInputDTO
 import com.vernu.sms.dtos.RegisterDeviceResponseDTO
 import com.vernu.sms.helpers.HeartbeatManager
@@ -29,9 +29,9 @@ class BootCompletedReceiver : BroadcastReceiver() {
         val stickyNotificationEnabled = SharedPreferenceHelper.getSharedPreferenceBoolean(
             context, AppConstants.SHARED_PREFS_STICKY_NOTIFICATION_ENABLED_KEY, false
         )
-        if (stickyNotificationEnabled && TextBeeUtils.isPermissionGranted(context, Manifest.permission.RECEIVE_SMS)) {
+        if (stickyNotificationEnabled && TextbeeUtils.isPermissionGranted(context, Manifest.permission.RECEIVE_SMS)) {
             Log.i(TAG, "Device booted, starting sticky notification service")
-            TextBeeUtils.startStickyNotificationService(context)
+            TextbeeUtils.startStickyNotificationService(context)
         }
 
         val deviceId = SharedPreferenceHelper.getSharedPreferenceString(

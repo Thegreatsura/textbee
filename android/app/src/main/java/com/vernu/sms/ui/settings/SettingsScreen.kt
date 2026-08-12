@@ -268,7 +268,7 @@ fun SettingsScreen(
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, shareText)
                             },
-                            "Share TextBee"
+                            "Share textbee"
                         )
                     )
                 }

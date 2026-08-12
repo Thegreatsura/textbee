@@ -14,7 +14,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.vernu.sms.ui.main.NewMainActivity
 import com.vernu.sms.ui.onboarding.screens.*
-import com.vernu.sms.ui.theme.TextBeeTheme
+import com.vernu.sms.ui.theme.TextbeeTheme
 
 class OnboardingActivity : ComponentActivity() {
 
@@ -30,7 +30,7 @@ class OnboardingActivity : ComponentActivity() {
         }
 
         setContent {
-            TextBeeTheme {
+            TextbeeTheme {
                 val navController = rememberNavController()
                 OnboardingNavGraph(
                     navController = navController,

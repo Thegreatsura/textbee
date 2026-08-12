@@ -13,7 +13,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.vernu.sms.ApiManager
 import com.vernu.sms.AppConstants
 import com.vernu.sms.BuildConfig
-import com.vernu.sms.TextBeeUtils
+import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.dtos.HeartbeatInputDTO
 import com.vernu.sms.dtos.SimInfoCollectionDTO
 import java.io.IOException
@@ -115,7 +115,7 @@ object HeartbeatHelper {
             // SIM info
             heartbeatInput.simInfo = SimInfoCollectionDTO().apply {
                 lastUpdated = System.currentTimeMillis()
-                sims = TextBeeUtils.collectSimInfo(context)
+                sims = TextbeeUtils.collectSimInfo(context)
             }
 
             // Send heartbeat (blocking)

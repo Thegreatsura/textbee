@@ -230,7 +230,7 @@ See [textbee.dev](https://textbee.dev) for current plans and limits. You can alw
    && cd ../api && cp .env.example .env
    ```
 2. Navigate to root folder and execute docker-compose.yml file.    
-   This will spin up `web` container, `api` container alongside with `MongoDB` and `MongoExpress`. `TextBee` database will be automatically created.
+   This will spin up `web` container, `api` container alongside with `MongoDB` and `MongoExpress`. `textbee` database will be automatically created.
    ```bash
    docker compose up -d
    ```

@@ -47,7 +47,7 @@ export function resolveBatchStatus(batch: {
 }): 'processing' | 'completed' | 'partial_success' | 'failed' {
   const attempted = batch.successCount + batch.failureCount
   if (attempted < batch.recipientCount) {
-    return batch.failureCount > 0 ? 'partial_success' : 'processing'
+    return 'processing'
   }
   if (batch.failureCount === 0) return 'completed'
   if (batch.successCount === 0) return 'failed'
@@ -283,13 +283,8 @@ export class SmsQueueProcessor {
         { returnDocument: 'after' },
       )
 
-      const newStatus =
-        smsBatch.failureCount === smsBatch.recipientCount
-          ? 'failed'
-          : 'partial_success'
-
       await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
-        $set: { status: newStatus },
+        $set: { status: resolveBatchStatus(smsBatch) },
       })
 
       throw error

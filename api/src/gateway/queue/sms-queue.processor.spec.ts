@@ -7,10 +7,10 @@ describe('resolveBatchStatus', () => {
     ).toBe('processing')
   })
 
-  it('reports partial_success while still draining if some pushes failed', () => {
+  it('stays in processing while draining even if some pushes failed', () => {
     expect(
       resolveBatchStatus({ recipientCount: 2000, successCount: 45, failureCount: 5 }),
-    ).toBe('partial_success')
+    ).toBe('processing')
   })
 
   it('completes once every recipient was pushed without failures', () => {

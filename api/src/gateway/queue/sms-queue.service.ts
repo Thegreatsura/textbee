@@ -56,9 +56,33 @@ export class SmsQueueService {
     return this.useSmsQueue
   }
 
+  // If delayMs is provided, use it as the base for all waves (scheduled send)
+  // Otherwise rely on queue limiter/concurrency and optionally fixed jitter.
+  private resolveBaseDelayMs(delayMs?: number): number {
+    return delayMs !== undefined && delayMs >= 0
+      ? delayMs
+      : this.immediateQueueDelayMs
+  }
+
   /**
-   * Enqueue pushes for one batch. Large batches are released in waves paced
-   * to the device's send delay; the returned plan says when each wave is due.
+   * Plan how a batch will be released: large batches go out in waves paced
+   * to the device's send delay. Pure, so callers can persist the plan before
+   * any job exists.
+   */
+  planSendSmsJob(
+    messageCount: number,
+    delayMs?: number,
+    sendDelaySeconds?: number,
+  ): DispatchPlan {
+    return planDispatchWaves(messageCount, {
+      waveSize: Math.min(this.maxSmsBatchSize, this.bulkDispatchWindow),
+      sendDelaySeconds,
+      baseDelayMs: this.resolveBaseDelayMs(delayMs),
+    })
+  }
+
+  /**
+   * Enqueue pushes for one batch, one job per wave of the plan.
    */
   async addSendSmsJob(
     deviceId: string,
@@ -66,21 +90,17 @@ export class SmsQueueService {
     smsBatchId: string,
     delayMs?: number,
     sendDelaySeconds?: number,
-  ): Promise<DispatchPlan> {
-    // If delayMs is provided, use it as the base for all waves (scheduled send)
-    // Otherwise rely on queue limiter/concurrency and optionally fixed jitter.
-    const useScheduledDelay = delayMs !== undefined && delayMs >= 0
-    const baseDelayMs = useScheduledDelay ? delayMs : this.immediateQueueDelayMs
-
-    const plan = planDispatchWaves(fcmMessages.length, {
-      waveSize: Math.min(this.maxSmsBatchSize, this.bulkDispatchWindow),
+    plan: DispatchPlan = this.planSendSmsJob(
+      fcmMessages.length,
+      delayMs,
       sendDelaySeconds,
-      baseDelayMs,
-    })
-
-    if (plan.projectedCompletionMs - baseDelayMs > this.bulkDispatchMaxSpreadMs) {
+    ),
+  ): Promise<DispatchPlan> {
+    const pacedDurationMs =
+      plan.projectedCompletionMs - this.resolveBaseDelayMs(delayMs)
+    if (pacedDurationMs > this.bulkDispatchMaxSpreadMs) {
       this.logger.warn(
-        `Batch ${smsBatchId}: ${fcmMessages.length} messages at ${plan.sendDelaySeconds}s/message are projected to take ${Math.round(plan.projectedCompletionMs / 3600000)}h to dispatch`,
+        `Batch ${smsBatchId}: ${fcmMessages.length} messages at ${plan.sendDelaySeconds}s/message are projected to take ${Math.round(pacedDurationMs / 3600000)}h to dispatch`,
       )
     }
 

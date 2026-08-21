@@ -882,7 +882,7 @@ export class RetrieveSMSDTO {
     type: Date,
     required: false,
     description:
-      'When the queue is due to hand the message to the push service. Set only for large sends, which are released in waves paced to the device send delay so the phone is never asked to hold more than it can send. Absent for small or immediate sends.',
+      'When the queue is due to hand the message to the push service. Set for queued messages that wait server-side before dispatch: scheduled sends, and large sends, which are released in waves paced to the device send delay so the phone is never asked to hold more than it can send. Absent for immediate sends.',
   })
   dispatchDueAt?: Date
 

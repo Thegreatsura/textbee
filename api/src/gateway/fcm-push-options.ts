@@ -5,10 +5,13 @@ import { AndroidConfig } from 'firebase-admin/messaging'
 export const DEFAULT_FCM_SMS_TTL_SECONDS = 72 * 3600
 // 30 minutes. The heartbeat probe is sent hourly, so an older probe is useless.
 export const DEFAULT_FCM_HEARTBEAT_TTL_SECONDS = 30 * 60
+// The longest lifetime FCM accepts (28 days)
+export const FCM_MAX_TTL_SECONDS = 28 * 24 * 3600
 
 function readTtlSeconds(envKey: string, fallback: number): number {
   const value = Number(process.env[envKey])
-  return Number.isFinite(value) && value > 0 ? value : fallback
+  const seconds = Number.isFinite(value) && value > 0 ? value : fallback
+  return Math.min(seconds, FCM_MAX_TTL_SECONDS)
 }
 
 export function fcmSmsTtlSeconds(): number {
@@ -24,7 +27,7 @@ export function fcmHeartbeatTtlSeconds(): number {
 
 // AndroidConfig.ttl is in milliseconds. The push is only handed to FCM at
 // scheduledAt, but if it is built early the expiry still lands at or after
-// scheduledAt plus the base ttl.
+// scheduledAt plus the base ttl, within the FCM maximum.
 export function smsAndroidConfig(
   scheduledAt?: Date | string,
   now: number = Date.now(),
@@ -37,7 +40,7 @@ export function smsAndroidConfig(
       ttl = scheduledTime - now + baseMs
     }
   }
-  return { priority: 'high', ttl }
+  return { priority: 'high', ttl: Math.min(ttl, FCM_MAX_TTL_SECONDS * 1000) }
 }
 
 export function heartbeatAndroidConfig(): AndroidConfig {

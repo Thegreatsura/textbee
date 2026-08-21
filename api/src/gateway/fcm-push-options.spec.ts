@@ -1,6 +1,7 @@
 import {
   DEFAULT_FCM_HEARTBEAT_TTL_SECONDS,
   DEFAULT_FCM_SMS_TTL_SECONDS,
+  FCM_MAX_TTL_SECONDS,
   heartbeatAndroidConfig,
   smsAndroidConfig,
 } from './fcm-push-options'
@@ -61,6 +62,22 @@ describe('fcm-push-options', () => {
     it('does not set a collapse key on sms pushes', () => {
       expect(smsAndroidConfig()).not.toHaveProperty('collapseKey')
     })
+
+    it('clamps a configured ttl to the FCM maximum of 28 days', () => {
+      process.env.FCM_SMS_TTL_SECONDS = String(FCM_MAX_TTL_SECONDS * 2)
+
+      expect(smsAndroidConfig().ttl).toBe(FCM_MAX_TTL_SECONDS * 1000)
+      expect(FCM_MAX_TTL_SECONDS).toBe(2_419_200)
+    })
+
+    it('clamps a far-future scheduled ttl to the FCM maximum', () => {
+      const now = Date.parse('2026-08-22T10:00:00Z')
+      const scheduledAt = new Date(now + 30 * 24 * 3600 * 1000)
+
+      expect(smsAndroidConfig(scheduledAt, now).ttl).toBe(
+        FCM_MAX_TTL_SECONDS * 1000,
+      )
+    })
   })
 
   describe('heartbeatAndroidConfig', () => {
@@ -77,6 +94,12 @@ describe('fcm-push-options', () => {
       process.env.FCM_HEARTBEAT_TTL_SECONDS = '600'
 
       expect(heartbeatAndroidConfig().ttl).toBe(600_000)
+    })
+
+    it('clamps the heartbeat ttl to the FCM maximum', () => {
+      process.env.FCM_HEARTBEAT_TTL_SECONDS = String(FCM_MAX_TTL_SECONDS + 1)
+
+      expect(heartbeatAndroidConfig().ttl).toBe(FCM_MAX_TTL_SECONDS * 1000)
     })
   })
 })

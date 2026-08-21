@@ -87,8 +87,15 @@ describe('GatewayService', () => {
     notifyDeviceLimitReached: jest.fn(),
   }
 
+  const singleWavePlan = (count: number, delayMs?: number) => ({
+    waves: [{ start: 0, end: count, delayMs: delayMs ?? 0 }],
+    sendDelaySeconds: 5,
+    projectedCompletionMs: (delayMs ?? 0) + count * 5000,
+  })
+
   const mockSmsQueueService = {
     isQueueEnabled: jest.fn(),
+    planSendSmsJob: jest.fn(),
     addSendSmsJob: jest.fn(),
   }
 
@@ -880,11 +887,8 @@ describe('GatewayService', () => {
 
     it('should queue SMS if queue is enabled', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue({
-        waves: [{ start: 0, end: 1, delayMs: 0 }],
-        sendDelaySeconds: 5,
-        projectedCompletionMs: 5000,
-      })
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
 
       const result = await service.sendSMS(mockDeviceId, mockSmsInput)
 
@@ -907,14 +911,16 @@ describe('GatewayService', () => {
         .mockResolvedValueOnce({ ...mockSms, _id: 'sms-a' })
         .mockResolvedValueOnce({ ...mockSms, _id: 'sms-b' })
         .mockResolvedValueOnce({ ...mockSms, _id: 'sms-c' })
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue({
+      const plan = {
         waves: [
           { start: 0, end: 2, delayMs: 0 },
           { start: 2, end: 3, delayMs: 14_000 },
         ],
         sendDelaySeconds: 7,
         projectedCompletionMs: 21_000,
-      })
+      }
+      mockSmsQueueService.planSendSmsJob.mockReturnValue(plan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
 
       const before = Date.now()
       const result = await service.sendSMS(mockDeviceId, {
@@ -922,12 +928,14 @@ describe('GatewayService', () => {
         recipients: ['+15550100', '+15550101', '+15550102'],
       })
 
+      expect(mockSmsQueueService.planSendSmsJob).toHaveBeenCalledWith(3, undefined, 7)
       expect(mockSmsQueueService.addSendSmsJob).toHaveBeenCalledWith(
         mockDeviceId,
         expect.any(Array),
         mockSmsBatch._id,
         undefined,
         7,
+        plan,
       )
       expect(mockSmsModel.bulkWrite).toHaveBeenCalledTimes(1)
       const ops = mockSmsModel.bulkWrite.mock.calls[0][0]
@@ -943,13 +951,41 @@ describe('GatewayService', () => {
       expect(eta - due0).toBe(21_000)
     })
 
+    it('persists the plan before any job exists, so a write failure leaves no live jobs', async () => {
+      mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
+      mockSmsQueueService.planSendSmsJob.mockReturnValue({
+        waves: [
+          { start: 0, end: 1, delayMs: 0 },
+          { start: 1, end: 2, delayMs: 5000 },
+        ],
+        sendDelaySeconds: 5,
+        projectedCompletionMs: 10_000,
+      })
+      mockSmsModel.bulkWrite.mockRejectedValue(new Error('write failed'))
+
+      await expect(
+        service.sendSMS(mockDeviceId, {
+          ...mockSmsInput,
+          recipients: ['+15550100', '+15550101'],
+        }),
+      ).rejects.toThrow(HttpException)
+
+      expect(mockSmsQueueService.addSendSmsJob).not.toHaveBeenCalled()
+      expect(mockSmsBatchModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        mockSmsBatch._id,
+        { $set: { status: 'failed', error: 'write failed' } },
+      )
+      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
+        { smsBatch: mockSmsBatch._id },
+        { $set: { status: 'failed', error: 'write failed' } },
+      )
+      mockSmsModel.bulkWrite.mockReset()
+    })
+
     it('builds every push with a bounded ttl and no collapse key', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue({
-        waves: [{ start: 0, end: 1, delayMs: 0 }],
-        sendDelaySeconds: 5,
-        projectedCompletionMs: 5000,
-      })
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
 
       await service.sendSMS(mockDeviceId, mockSmsInput)
 
@@ -962,11 +998,8 @@ describe('GatewayService', () => {
 
     it('extends the ttl so a scheduled push never expires before scheduledAt', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue({
-        waves: [{ start: 0, end: 1, delayMs: 3_600_000 }],
-        sendDelaySeconds: 5,
-        projectedCompletionMs: 3_605_000,
-      })
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
       const scheduledAt = new Date(Date.now() + 3_600_000).toISOString()
 
       await service.sendSMS(mockDeviceId, { ...mockSmsInput, scheduledAt })
@@ -1072,11 +1105,8 @@ describe('GatewayService', () => {
 
     it('should queue bulk SMS if queue is enabled', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue({
-        waves: [{ start: 0, end: 2, delayMs: 0 }],
-        sendDelaySeconds: 5,
-        projectedCompletionMs: 10_000,
-      })
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
 
       const result = await service.sendBulkSMS(mockDeviceId, mockBulkSmsInput)
 
@@ -1104,8 +1134,8 @@ describe('GatewayService', () => {
         ...mockSms,
         _id: `sms-${created++}`,
       }))
-      mockSmsQueueService.addSendSmsJob
-        .mockResolvedValueOnce({
+      mockSmsQueueService.planSendSmsJob
+        .mockReturnValueOnce({
           waves: [
             { start: 0, end: 2, delayMs: 0 },
             { start: 2, end: 3, delayMs: 10_000 },
@@ -1113,11 +1143,12 @@ describe('GatewayService', () => {
           sendDelaySeconds: 5,
           projectedCompletionMs: 15_000,
         })
-        .mockResolvedValueOnce({
+        .mockReturnValueOnce({
           waves: [{ start: 0, end: 1, delayMs: 60_000 }],
           sendDelaySeconds: 5,
           projectedCompletionMs: 65_000,
         })
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
       const scheduledAt = new Date(Date.now() + 60_000).toISOString()
 
       const result = await service.sendBulkSMS(mockDeviceId, {
@@ -1131,6 +1162,7 @@ describe('GatewayService', () => {
       expect(mockSmsQueueService.addSendSmsJob).toHaveBeenCalledTimes(2)
       expect(mockSmsQueueService.addSendSmsJob.mock.calls[0][4]).toBe(5)
       expect(mockSmsQueueService.addSendSmsJob.mock.calls[1][3]).toBeGreaterThan(50_000)
+      expect(mockSmsQueueService.addSendSmsJob.mock.calls[1][3]).toBeLessThanOrEqual(60_000)
 
       expect(mockSmsModel.bulkWrite).toHaveBeenCalledTimes(2)
       const firstOps = mockSmsModel.bulkWrite.mock.calls[0][0]
@@ -1143,6 +1175,35 @@ describe('GatewayService', () => {
       const eta = Date.parse(result.estimatedCompletionAt)
       const due0 = firstOps[0].updateMany.update.$set.dispatchDueAt.getTime()
       expect(eta - due0).toBe(65_000)
+    })
+
+    it('groups entries that share a scheduledAt into one paced plan', async () => {
+      mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      const scheduledAt = new Date(Date.now() + 120_000).toISOString()
+
+      await service.sendBulkSMS(mockDeviceId, {
+        messageTemplate: 'Hi',
+        messages: [
+          { message: 'Hi A', recipients: ['+15550100', '+15550101'], scheduledAt },
+          { message: 'Hi B', recipients: ['+15550102'], scheduledAt },
+          { message: 'Now', recipients: ['+15550103'] },
+        ],
+      } as any)
+
+      // one scheduled group of 3 plus one immediate group of 1
+      expect(mockSmsQueueService.planSendSmsJob).toHaveBeenCalledTimes(2)
+      const counts = mockSmsQueueService.planSendSmsJob.mock.calls
+        .map(([count]) => count)
+        .sort()
+      expect(counts).toEqual([1, 3])
+      expect(mockSmsQueueService.addSendSmsJob).toHaveBeenCalledTimes(2)
+      const scheduledCall = mockSmsQueueService.addSendSmsJob.mock.calls.find(
+        ([, msgs]) => msgs.length === 3,
+      )
+      expect(scheduledCall[3]).toBeGreaterThan(110_000)
+      expect(scheduledCall[3]).toBeLessThanOrEqual(120_000)
     })
   })
 

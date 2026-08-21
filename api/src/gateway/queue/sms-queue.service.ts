@@ -3,6 +3,12 @@ import { InjectQueue } from '@nestjs/bull'
 import { Queue } from 'bull'
 import { ConfigService } from '@nestjs/config'
 import { Message } from 'firebase-admin/messaging'
+import {
+  DEFAULT_BULK_DISPATCH_MAX_SPREAD_HOURS,
+  DEFAULT_BULK_DISPATCH_WINDOW,
+  DispatchPlan,
+  planDispatchWaves,
+} from './dispatch-pacing'
 
 @Injectable()
 export class SmsQueueService {
@@ -10,6 +16,8 @@ export class SmsQueueService {
   private readonly useSmsQueue: boolean
   private readonly maxSmsBatchSize: number
   private readonly immediateQueueDelayMs: number
+  private readonly bulkDispatchWindow: number
+  private readonly bulkDispatchMaxSpreadMs: number
 
   constructor(
     @InjectQueue('sms') private readonly smsQueue: Queue,
@@ -24,6 +32,21 @@ export class SmsQueueService {
       'SMS_QUEUE_IMMEDIATE_DELAY_MS',
       0,
     )
+    this.bulkDispatchWindow = Number(
+      this.configService.get<number>(
+        'BULK_DISPATCH_WINDOW',
+        DEFAULT_BULK_DISPATCH_WINDOW,
+      ),
+    )
+    this.bulkDispatchMaxSpreadMs =
+      Number(
+        this.configService.get<number>(
+          'BULK_DISPATCH_MAX_SPREAD_HOURS',
+          DEFAULT_BULK_DISPATCH_MAX_SPREAD_HOURS,
+        ),
+      ) *
+      3600 *
+      1000
   }
 
   /**
@@ -33,37 +56,46 @@ export class SmsQueueService {
     return this.useSmsQueue
   }
 
+  /**
+   * Enqueue pushes for one batch. Large batches are released in waves paced
+   * to the device's send delay; the returned plan says when each wave is due.
+   */
   async addSendSmsJob(
     deviceId: string,
     fcmMessages: Message[],
     smsBatchId: string,
     delayMs?: number,
-  ) {
-    // this.logger.debug(`Adding send-sms job for batch ${smsBatchId}`)
-
-    // Split messages into batches of max smsBatchSize messages
-    const batches = []
-    for (let i = 0; i < fcmMessages.length; i += this.maxSmsBatchSize) {
-      batches.push(fcmMessages.slice(i, i + this.maxSmsBatchSize))
-    }
-
-    // If delayMs is provided, use it for all batches (scheduled send)
+    sendDelaySeconds?: number,
+  ): Promise<DispatchPlan> {
+    // If delayMs is provided, use it as the base for all waves (scheduled send)
     // Otherwise rely on queue limiter/concurrency and optionally fixed jitter.
     const useScheduledDelay = delayMs !== undefined && delayMs >= 0
+    const baseDelayMs = useScheduledDelay ? delayMs : this.immediateQueueDelayMs
 
-    for (const batch of batches) {
-      const delay = useScheduledDelay ? delayMs : this.immediateQueueDelayMs
+    const plan = planDispatchWaves(fcmMessages.length, {
+      waveSize: Math.min(this.maxSmsBatchSize, this.bulkDispatchWindow),
+      sendDelaySeconds,
+      baseDelayMs,
+    })
+
+    if (plan.projectedCompletionMs - baseDelayMs > this.bulkDispatchMaxSpreadMs) {
+      this.logger.warn(
+        `Batch ${smsBatchId}: ${fcmMessages.length} messages at ${plan.sendDelaySeconds}s/message are projected to take ${Math.round(plan.projectedCompletionMs / 3600000)}h to dispatch`,
+      )
+    }
+
+    for (const wave of plan.waves) {
       await this.smsQueue.add(
         'send-sms',
         {
           deviceId,
-          fcmMessages: batch,
+          fcmMessages: fcmMessages.slice(wave.start, wave.end),
           smsBatchId,
         },
         {
           priority: 1, // TODO: Make this dynamic based on users subscription plan
           attempts: 1,
-          delay: delay,
+          delay: wave.delayMs,
           backoff: {
             type: 'exponential',
             delay: 5000, // 5 seconds
@@ -73,5 +105,7 @@ export class SmsQueueService {
         },
       )
     }
+
+    return plan
   }
 }

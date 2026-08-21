@@ -881,7 +881,16 @@ export class RetrieveSMSDTO {
   @ApiProperty({
     type: Date,
     required: false,
-    description: 'When the send job reached the device.',
+    description:
+      'When the queue is due to hand the message to the push service. Set only for large sends, which are released in waves paced to the device send delay so the phone is never asked to hold more than it can send. Absent for small or immediate sends.',
+  })
+  dispatchDueAt?: Date
+
+  @ApiProperty({
+    type: Date,
+    required: false,
+    description:
+      'When the push service accepted the message for delivery to the device. Does not mean the device has received it; sentAt is the first device-confirmed timestamp.',
   })
   dispatchedAt?: Date
 
@@ -1342,6 +1351,16 @@ export class SendSMSResultDTO {
     description: 'Number of recipients in the batch. Queued sends only.',
   })
   recipientCount?: number
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    format: 'date-time',
+    description:
+      'Projected time the device finishes sending, based on the recipient count and the device send delay setting. Present only when the batch is large enough to be released in waves. The device must stay online for the estimate to hold.',
+    example: '2026-08-22T14:05:00.000Z',
+  })
+  estimatedCompletionAt?: string
 
   @ApiProperty({
     type: Number,

@@ -5,6 +5,7 @@ import { Model, Types } from 'mongoose'
 import { Device, DeviceDocument } from '../schemas/device.schema'
 import * as firebaseAdmin from 'firebase-admin'
 import { Message } from 'firebase-admin/messaging'
+import { heartbeatAndroidConfig } from '../fcm-push-options'
 
 const FCM_BATCH_SIZE = 500
 
@@ -93,9 +94,7 @@ export class HeartbeatCheckTask {
             type: 'heartbeat_check',
           },
           token: device.fcmToken,
-          android: {
-            priority: 'high',
-          },
+          android: heartbeatAndroidConfig(),
         }
 
         fcmMessages.push(fcmMessage)

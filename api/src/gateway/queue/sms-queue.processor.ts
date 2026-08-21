@@ -39,6 +39,21 @@ function getFcmErrorMessage(error: { code?: string; message?: string } | null | 
   return `${rawPart} — ${FCM_ACTIONABLE_MESSAGE}`
 }
 
+// A paced batch is still 'processing' until every wave has been handed to FCM
+export function resolveBatchStatus(batch: {
+  recipientCount: number
+  successCount: number
+  failureCount: number
+}): 'processing' | 'completed' | 'partial_success' | 'failed' {
+  const attempted = batch.successCount + batch.failureCount
+  if (attempted < batch.recipientCount) {
+    return batch.failureCount > 0 ? 'partial_success' : 'processing'
+  }
+  if (batch.failureCount === 0) return 'completed'
+  if (batch.successCount === 0) return 'failed'
+  return 'partial_success'
+}
+
 @Processor('sms')
 export class SmsQueueProcessor {
   private readonly logger = new Logger(SmsQueueProcessor.name)
@@ -197,12 +212,7 @@ export class SmsQueueProcessor {
         { returnDocument: 'after' },
       )
 
-      const batchStatus =
-        smsBatch.failureCount === smsBatch.recipientCount
-          ? 'failed'
-          : smsBatch.successCount === smsBatch.recipientCount
-            ? 'completed'
-            : 'partial_success'
+      const batchStatus = resolveBatchStatus(smsBatch)
       await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
         $set: { status: batchStatus },
       })

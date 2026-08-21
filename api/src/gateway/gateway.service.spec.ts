@@ -97,6 +97,7 @@ describe('GatewayService', () => {
     isQueueEnabled: jest.fn(),
     planSendSmsJob: jest.fn(),
     addSendSmsJob: jest.fn(),
+    removeJobs: jest.fn(),
   }
 
   beforeEach(async () => {
@@ -888,7 +889,7 @@ describe('GatewayService', () => {
     it('should queue SMS if queue is enabled', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
       mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
 
       const result = await service.sendSMS(mockDeviceId, mockSmsInput)
 
@@ -920,7 +921,7 @@ describe('GatewayService', () => {
         projectedCompletionMs: 21_000,
       }
       mockSmsQueueService.planSendSmsJob.mockReturnValue(plan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
 
       const before = Date.now()
       const result = await service.sendSMS(mockDeviceId, {
@@ -985,7 +986,7 @@ describe('GatewayService', () => {
     it('builds every push with a bounded ttl and no collapse key', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
       mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
 
       await service.sendSMS(mockDeviceId, mockSmsInput)
 
@@ -999,7 +1000,7 @@ describe('GatewayService', () => {
     it('extends the ttl so a scheduled push never expires before scheduledAt', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
       mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
       const scheduledAt = new Date(Date.now() + 3_600_000).toISOString()
 
       await service.sendSMS(mockDeviceId, { ...mockSmsInput, scheduledAt })
@@ -1106,7 +1107,7 @@ describe('GatewayService', () => {
     it('should queue bulk SMS if queue is enabled', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
       mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
 
       const result = await service.sendBulkSMS(mockDeviceId, mockBulkSmsInput)
 
@@ -1148,7 +1149,7 @@ describe('GatewayService', () => {
           sendDelaySeconds: 5,
           projectedCompletionMs: 65_000,
         })
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
       const scheduledAt = new Date(Date.now() + 60_000).toISOString()
 
       const result = await service.sendBulkSMS(mockDeviceId, {
@@ -1177,10 +1178,37 @@ describe('GatewayService', () => {
       expect(eta - due0).toBe(65_000)
     })
 
+    it('rolls back jobs already queued when a later group fails to enqueue', async () => {
+      mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
+      mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
+      const firstGroupJobs = [{ id: 'job-1' }, { id: 'job-2' }]
+      mockSmsQueueService.addSendSmsJob
+        .mockResolvedValueOnce(firstGroupJobs)
+        .mockRejectedValueOnce(new Error('redis down'))
+      mockSmsQueueService.removeJobs.mockResolvedValue(undefined)
+      const scheduledAt = new Date(Date.now() + 120_000).toISOString()
+
+      await expect(
+        service.sendBulkSMS(mockDeviceId, {
+          messageTemplate: 'Hi',
+          messages: [
+            { message: 'Now', recipients: ['+15550100', '+15550101'] },
+            { message: 'Later', recipients: ['+15550102'], scheduledAt },
+          ],
+        } as any),
+      ).rejects.toThrow(HttpException)
+
+      expect(mockSmsQueueService.removeJobs).toHaveBeenCalledWith(firstGroupJobs)
+      expect(mockSmsBatchModel.findByIdAndUpdate).toHaveBeenCalledWith(
+        mockSmsBatch._id,
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'failed' }) }),
+      )
+    })
+
     it('groups entries that share a scheduledAt into one paced plan', async () => {
       mockSmsQueueService.isQueueEnabled.mockReturnValue(true)
       mockSmsQueueService.planSendSmsJob.mockImplementation(singleWavePlan)
-      mockSmsQueueService.addSendSmsJob.mockResolvedValue(undefined)
+      mockSmsQueueService.addSendSmsJob.mockResolvedValue([])
       const scheduledAt = new Date(Date.now() + 120_000).toISOString()
 
       await service.sendBulkSMS(mockDeviceId, {
@@ -1196,7 +1224,7 @@ describe('GatewayService', () => {
       expect(mockSmsQueueService.planSendSmsJob).toHaveBeenCalledTimes(2)
       const counts = mockSmsQueueService.planSendSmsJob.mock.calls
         .map(([count]) => count)
-        .sort()
+        .sort((a, b) => a - b)
       expect(counts).toEqual([1, 3])
       expect(mockSmsQueueService.addSendSmsJob).toHaveBeenCalledTimes(2)
       const scheduledCall = mockSmsQueueService.addSendSmsJob.mock.calls.find(

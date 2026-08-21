@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { InjectQueue } from '@nestjs/bull'
-import { Queue } from 'bull'
+import { Job, Queue } from 'bull'
 import { ConfigService } from '@nestjs/config'
 import { Message } from 'firebase-admin/messaging'
 import {
@@ -82,7 +82,17 @@ export class SmsQueueService {
   }
 
   /**
-   * Enqueue pushes for one batch, one job per wave of the plan.
+   * Remove jobs that were added but must not run. Jobs already picked up by
+   * a worker cannot be removed; those are left alone.
+   */
+  async removeJobs(jobs: Job[]): Promise<void> {
+    await Promise.allSettled(jobs.map((job) => job.remove()))
+  }
+
+  /**
+   * Enqueue pushes for one batch, one job per wave of the plan. Returns the
+   * added jobs so a caller can roll them back if a later step fails. If a
+   * wave fails to enqueue, the waves already added are removed first.
    */
   async addSendSmsJob(
     deviceId: string,
@@ -95,7 +105,7 @@ export class SmsQueueService {
       delayMs,
       sendDelaySeconds,
     ),
-  ): Promise<DispatchPlan> {
+  ): Promise<Job[]> {
     const pacedDurationMs =
       plan.projectedCompletionMs - this.resolveBaseDelayMs(delayMs)
     if (pacedDurationMs > this.bulkDispatchMaxSpreadMs) {
@@ -104,28 +114,35 @@ export class SmsQueueService {
       )
     }
 
-    for (const wave of plan.waves) {
-      await this.smsQueue.add(
-        'send-sms',
-        {
-          deviceId,
-          fcmMessages: fcmMessages.slice(wave.start, wave.end),
-          smsBatchId,
-        },
-        {
-          priority: 1, // TODO: Make this dynamic based on users subscription plan
-          attempts: 1,
-          delay: wave.delayMs,
-          backoff: {
-            type: 'exponential',
-            delay: 5000, // 5 seconds
+    const added: Job[] = []
+    try {
+      for (const wave of plan.waves) {
+        const job = await this.smsQueue.add(
+          'send-sms',
+          {
+            deviceId,
+            fcmMessages: fcmMessages.slice(wave.start, wave.end),
+            smsBatchId,
           },
-          removeOnComplete: { age: 24 * 3600 }, // 24 hours
-          removeOnFail: { age: 72 * 3600 }, // 72 hours
-        },
-      )
+          {
+            priority: 1, // TODO: Make this dynamic based on users subscription plan
+            attempts: 1,
+            delay: wave.delayMs,
+            backoff: {
+              type: 'exponential',
+              delay: 5000, // 5 seconds
+            },
+            removeOnComplete: { age: 24 * 3600 }, // 24 hours
+            removeOnFail: { age: 72 * 3600 }, // 72 hours
+          },
+        )
+        added.push(job)
+      }
+    } catch (error) {
+      await this.removeJobs(added)
+      throw error
     }
 
-    return plan
+    return added
   }
 }

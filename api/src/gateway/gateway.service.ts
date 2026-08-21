@@ -31,6 +31,7 @@ import { toDirection, toStoredType } from './message-direction'
 import { ParsedMessageQuery } from './message-query'
 import { smsAndroidConfig } from './fcm-push-options'
 import { DispatchPlan } from './queue/dispatch-pacing'
+import { Job } from 'bull'
 
 @Injectable()
 export class GatewayService {
@@ -858,6 +859,7 @@ export class GatewayService {
 
     // Check if we should use the queue
     if (this.smsQueueService.isQueueEnabled()) {
+      const addedJobs: Job[] = []
       try {
         await this.smsBatchModel.findByIdAndUpdate(smsBatch._id, {
           $set: { status: 'processing' },
@@ -877,11 +879,17 @@ export class GatewayService {
           group.smsIds.push(smsId)
         }
 
-        // Queue each group with its own delay, paced per group. The plan is
-        // persisted before the jobs exist so a write failure leaves none live.
+        // Plan and persist every group first, then enqueue, so a failure
+        // before the queue step leaves no live jobs and one during it can
+        // roll back the jobs already added.
         const queuedAt = Date.now()
         let multiWave = false
         let projectedCompletionMs = 0
+        const plannedGroups: Array<{
+          messages: Message[]
+          delayMs?: number
+          plan: DispatchPlan
+        }> = []
         for (const [scheduledTime, group] of messagesBySchedule.entries()) {
           const delayMs =
             scheduledTime === undefined
@@ -893,19 +901,30 @@ export class GatewayService {
             device.smsSendDelaySeconds,
           )
           await this.stampDispatchDueAt(group.smsIds, plan, queuedAt)
-          await this.smsQueueService.addSendSmsJob(
-            deviceId,
-            group.messages,
-            smsBatch._id.toString(),
-            delayMs,
-            device.smsSendDelaySeconds,
-            plan,
-          )
+          plannedGroups.push({ messages: group.messages, delayMs, plan })
           multiWave = multiWave || plan.waves.length > 1
           projectedCompletionMs = Math.max(
             projectedCompletionMs,
             plan.projectedCompletionMs,
           )
+        }
+
+        for (const { messages: groupMessages, delayMs, plan } of plannedGroups) {
+          try {
+            addedJobs.push(
+              ...(await this.smsQueueService.addSendSmsJob(
+                deviceId,
+                groupMessages,
+                smsBatch._id.toString(),
+                delayMs,
+                device.smsSendDelaySeconds,
+                plan,
+              )),
+            )
+          } catch (e) {
+            await this.smsQueueService.removeJobs(addedJobs)
+            throw e
+          }
         }
 
         return {

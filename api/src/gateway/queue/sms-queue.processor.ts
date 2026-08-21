@@ -212,10 +212,12 @@ export class SmsQueueProcessor {
         { returnDocument: 'after' },
       )
 
-      const batchStatus = resolveBatchStatus(smsBatch)
-      await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
-        $set: { status: batchStatus },
-      })
+      // The batch may have been deleted mid-flight
+      if (smsBatch) {
+        await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
+          $set: { status: resolveBatchStatus(smsBatch) },
+        })
+      }
 
       return response
     } catch (error) {
@@ -283,9 +285,11 @@ export class SmsQueueProcessor {
         { returnDocument: 'after' },
       )
 
-      await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
-        $set: { status: resolveBatchStatus(smsBatch) },
-      })
+      if (smsBatch) {
+        await this.smsBatchModel.findByIdAndUpdate(smsBatchId, {
+          $set: { status: resolveBatchStatus(smsBatch) },
+        })
+      }
 
       throw error
     }

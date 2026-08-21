@@ -14,7 +14,12 @@ function buildMessages(count: number): Message[] {
 
 describe('SmsQueueService', () => {
   let service: SmsQueueService
-  const queueAdd = jest.fn().mockResolvedValue(undefined)
+  let jobSeq = 0
+  const removedJobIds: number[] = []
+  const queueAdd = jest.fn().mockImplementation(async () => {
+    const id = ++jobSeq
+    return { id, remove: jest.fn(async () => { removedJobIds.push(id) }) }
+  })
   const config: Record<string, unknown> = {}
 
   const mockConfigService = {
@@ -27,6 +32,7 @@ describe('SmsQueueService', () => {
     for (const key of Object.keys(config)) delete config[key]
     Object.assign(config, { USE_SMS_QUEUE: true }, overrides)
     queueAdd.mockClear()
+    removedJobIds.length = 0
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -50,8 +56,9 @@ describe('SmsQueueService', () => {
   it('enqueues a small batch as one immediate job, unchanged from before', async () => {
     const messages = buildMessages(10)
 
-    const plan = await service.addSendSmsJob('device-1', messages, 'batch-1')
+    const jobs = await service.addSendSmsJob('device-1', messages, 'batch-1')
 
+    expect(jobs).toHaveLength(1)
     expect(queueAdd).toHaveBeenCalledTimes(1)
     const [name, data, opts] = queueAdd.mock.calls[0]
     expect(name).toBe('send-sms')
@@ -61,13 +68,15 @@ describe('SmsQueueService', () => {
       smsBatchId: 'batch-1',
     })
     expect(opts).toMatchObject({ attempts: 1, delay: 0, priority: 1 })
-    expect(plan.waves).toEqual([{ start: 0, end: 10, delayMs: 0 }])
+    expect(service.planSendSmsJob(10).waves).toEqual([
+      { start: 0, end: 10, delayMs: 0 },
+    ])
   })
 
   it('paces a large batch into waves spaced by the device send delay', async () => {
     const messages = buildMessages(120)
 
-    const plan = await service.addSendSmsJob(
+    const jobs = await service.addSendSmsJob(
       'device-1',
       messages,
       'batch-1',
@@ -75,6 +84,7 @@ describe('SmsQueueService', () => {
       5,
     )
 
+    expect(jobs).toHaveLength(3)
     expect(queueAdd).toHaveBeenCalledTimes(3)
     expect(queueAdd.mock.calls.map(([, , opts]) => opts.delay)).toEqual([
       0, 250_000, 500_000,
@@ -83,8 +93,42 @@ describe('SmsQueueService', () => {
       [50, 50, 20],
     )
     expect(queueAdd.mock.calls[2][1].fcmMessages[0]).toBe(messages[100])
+    const plan = service.planSendSmsJob(120, undefined, 5)
     expect(plan.waves).toHaveLength(3)
     expect(plan.projectedCompletionMs).toBe(500_000 + 20 * 5000)
+  })
+
+  it('uses a precomputed plan when one is passed', async () => {
+    const plan = service.planSendSmsJob(100, undefined, 5)
+
+    await service.addSendSmsJob('device-1', buildMessages(100), 'batch-1', undefined, 5, plan)
+
+    expect(queueAdd.mock.calls.map(([, , opts]) => opts.delay)).toEqual(
+      plan.waves.map((w) => w.delayMs),
+    )
+  })
+
+  it('removes the waves already added when a later wave fails to enqueue', async () => {
+    queueAdd
+      .mockImplementationOnce(async () => ({ id: 'a', remove: jest.fn(async () => { removedJobIds.push(1) }) }))
+      .mockImplementationOnce(async () => ({ id: 'b', remove: jest.fn(async () => { removedJobIds.push(2) }) }))
+      .mockRejectedValueOnce(new Error('redis down'))
+
+    await expect(
+      service.addSendSmsJob('device-1', buildMessages(150), 'batch-1', undefined, 5),
+    ).rejects.toThrow('redis down')
+
+    expect(queueAdd).toHaveBeenCalledTimes(3)
+    expect(removedJobIds).toEqual([1, 2])
+  })
+
+  it('removeJobs tolerates jobs that can no longer be removed', async () => {
+    const ok = { remove: jest.fn().mockResolvedValue(undefined) }
+    const gone = { remove: jest.fn().mockRejectedValue(new Error('already active')) }
+
+    await expect(service.removeJobs([ok, gone] as any)).resolves.toBeUndefined()
+    expect(ok.remove).toHaveBeenCalled()
+    expect(gone.remove).toHaveBeenCalled()
   })
 
   it('adds the scheduled delay as a base under the wave spacing', async () => {

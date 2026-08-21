@@ -31,6 +31,11 @@ export class SmsStatusUpdateTask {
         {
           status: 'pending',
           requestedAt: { $lt: twentyMinutesAgo },
+          // Paced messages are not stale until their own wave was due
+          $or: [
+            { dispatchDueAt: { $exists: false } },
+            { dispatchDueAt: { $lt: twentyMinutesAgo } },
+          ],
         },
         {
           $set: {

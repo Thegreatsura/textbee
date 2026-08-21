@@ -29,6 +29,9 @@ import { normalizeOsFields } from './os-version'
 import { encodeCursor } from './cursor'
 import { toDirection, toStoredType } from './message-direction'
 import { ParsedMessageQuery } from './message-query'
+import { smsAndroidConfig } from './fcm-push-options'
+import { DispatchPlan } from './queue/dispatch-pacing'
+import { Job } from 'bull'
 
 @Injectable()
 export class GatewayService {
@@ -411,6 +414,28 @@ export class GatewayService {
     }
   }
 
+  // Records when each paced wave is due so the stale-status cron leaves
+  // messages alone while they legitimately wait in the queue.
+  private async stampDispatchDueAt(
+    smsIds: Types.ObjectId[],
+    plan: DispatchPlan,
+    now: number,
+  ): Promise<void> {
+    const paced = plan.waves.length > 1 || plan.waves[0]?.delayMs > 0
+    if (!paced || smsIds.length === 0) {
+      return
+    }
+    await this.smsModel.bulkWrite(
+      plan.waves.map((wave) => ({
+        updateMany: {
+          filter: { _id: { $in: smsIds.slice(wave.start, wave.end) } },
+          update: { $set: { dispatchDueAt: new Date(now + wave.delayMs) } },
+        },
+      })),
+      { ordered: false },
+    )
+  }
+
   async sendSMS(deviceId: string, smsData: SendSMSInputDTO): Promise<any> {
     const device = await this.deviceModel.findById(deviceId)
 
@@ -492,6 +517,7 @@ export class GatewayService {
     }
 
     const fcmMessages: Message[] = []
+    const smsIds: Types.ObjectId[] = []
 
     for (let recipient of recipients) {
       recipient = recipient.replace(/\s+/g, "")
@@ -528,11 +554,10 @@ export class GatewayService {
           smsData: stringifiedSMSData,
         },
         token: device.fcmToken,
-        android: {
-          priority: 'high',
-        },
+        android: smsAndroidConfig(smsData.scheduledAt),
       }
       fcmMessages.push(fcmMessage)
+      smsIds.push(sms._id)
     }
 
     // Check if we should use the queue
@@ -543,12 +568,21 @@ export class GatewayService {
           $set: { status: 'processing' },
         })
 
-        // Add to queue
+        // Persist the wave plan first so a write failure leaves no live jobs
+        const queuedAt = Date.now()
+        const plan = this.smsQueueService.planSendSmsJob(
+          fcmMessages.length,
+          delayMs,
+          device.smsSendDelaySeconds,
+        )
+        await this.stampDispatchDueAt(smsIds, plan, queuedAt)
         await this.smsQueueService.addSendSmsJob(
           deviceId,
           fcmMessages,
           smsBatch._id.toString(),
           delayMs,
+          device.smsSendDelaySeconds,
+          plan,
         )
 
         return {
@@ -556,6 +590,11 @@ export class GatewayService {
           message: 'SMS added to queue for processing',
           smsBatchId: smsBatch._id,
           recipientCount: recipients.length,
+          ...(plan.waves.length > 1 && {
+            estimatedCompletionAt: new Date(
+              queuedAt + plan.projectedCompletionMs,
+            ).toISOString(),
+          }),
         }
       } catch (e) {
         // Update batch status to failed
@@ -697,13 +736,18 @@ export class GatewayService {
     })
 
     // Track FCM messages with their calculated delays for grouping
-    const fcmMessagesWithDelays: Array<{ message: Message; delayMs?: number }> = []
+    const fcmMessagesWithDelays: Array<{
+      message: Message
+      scheduledTime?: number
+      smsId: Types.ObjectId
+    }> = []
     const smsDocumentsToInsert: Array<Record<string, any>> = []
     const smsToFcmMetadata: Array<{
       recipient: string
       message: string
       simSubscriptionId?: number
-      delayMs?: number
+      scheduledTime?: number
+      scheduledAt?: string
     }> = []
 
     for (const smsData of messages) {
@@ -718,8 +762,13 @@ export class GatewayService {
         continue
       }
 
-      // Calculate delay for this message's scheduledAt
+      // Validates scheduledAt; the queue delay itself is computed per group
+      // right before enqueueing so equal times share one wave plan
       const delayMs = this.calculateDelayFromScheduledAt(smsData.scheduledAt)
+      const scheduledTime =
+        delayMs === undefined
+          ? undefined
+          : new Date(smsData.scheduledAt).getTime()
 
       for (let recipient of recipients) {
         recipient = recipient.replace(/\s+/g, "")
@@ -742,7 +791,8 @@ export class GatewayService {
           ...(smsData.simSubscriptionId !== undefined && {
             simSubscriptionId: smsData.simSubscriptionId,
           }),
-          delayMs,
+          scheduledTime,
+          scheduledAt: smsData.scheduledAt,
         })
       }
     }
@@ -798,34 +848,83 @@ export class GatewayService {
           smsData: stringifiedSMSData,
         },
         token: device.fcmToken,
-        android: {
-          priority: 'high',
-        },
+        android: smsAndroidConfig(metadata.scheduledAt),
       }
-      fcmMessagesWithDelays.push({ message: fcmMessage, delayMs: metadata.delayMs })
+      fcmMessagesWithDelays.push({
+        message: fcmMessage,
+        scheduledTime: metadata.scheduledTime,
+        smsId: sms._id,
+      })
     }
 
     // Check if we should use the queue
     if (this.smsQueueService.isQueueEnabled()) {
+      const addedJobs: Job[] = []
       try {
-        // Group messages by delay (undefined delay means immediate, group together)
-        const messagesByDelay = new Map<number | undefined, Message[]>()
-        for (const { message, delayMs } of fcmMessagesWithDelays) {
-          const delayKey = delayMs !== undefined ? delayMs : undefined
-          if (!messagesByDelay.has(delayKey)) {
-            messagesByDelay.set(delayKey, [])
+        await this.smsBatchModel.findByIdAndUpdate(smsBatch._id, {
+          $set: { status: 'processing' },
+        })
+
+        // Group messages by scheduled time (undefined means immediate, group together)
+        const messagesBySchedule = new Map<
+          number | undefined,
+          { messages: Message[]; smsIds: Types.ObjectId[] }
+        >()
+        for (const { message, scheduledTime, smsId } of fcmMessagesWithDelays) {
+          if (!messagesBySchedule.has(scheduledTime)) {
+            messagesBySchedule.set(scheduledTime, { messages: [], smsIds: [] })
           }
-          messagesByDelay.get(delayKey)!.push(message)
+          const group = messagesBySchedule.get(scheduledTime)!
+          group.messages.push(message)
+          group.smsIds.push(smsId)
         }
 
-        // Queue each group with its respective delay
-        for (const [delayMs, messages] of messagesByDelay.entries()) {
-          await this.smsQueueService.addSendSmsJob(
-            deviceId,
-            messages,
-            smsBatch._id.toString(),
+        // Plan and persist every group first, then enqueue, so a failure
+        // before the queue step leaves no live jobs and one during it can
+        // roll back the jobs already added.
+        const queuedAt = Date.now()
+        let multiWave = false
+        let projectedCompletionMs = 0
+        const plannedGroups: Array<{
+          messages: Message[]
+          delayMs?: number
+          plan: DispatchPlan
+        }> = []
+        for (const [scheduledTime, group] of messagesBySchedule.entries()) {
+          const delayMs =
+            scheduledTime === undefined
+              ? undefined
+              : Math.max(0, scheduledTime - queuedAt)
+          const plan = this.smsQueueService.planSendSmsJob(
+            group.messages.length,
             delayMs,
+            device.smsSendDelaySeconds,
           )
+          await this.stampDispatchDueAt(group.smsIds, plan, queuedAt)
+          plannedGroups.push({ messages: group.messages, delayMs, plan })
+          multiWave = multiWave || plan.waves.length > 1
+          projectedCompletionMs = Math.max(
+            projectedCompletionMs,
+            plan.projectedCompletionMs,
+          )
+        }
+
+        for (const { messages: groupMessages, delayMs, plan } of plannedGroups) {
+          try {
+            addedJobs.push(
+              ...(await this.smsQueueService.addSendSmsJob(
+                deviceId,
+                groupMessages,
+                smsBatch._id.toString(),
+                delayMs,
+                device.smsSendDelaySeconds,
+                plan,
+              )),
+            )
+          } catch (e) {
+            await this.smsQueueService.removeJobs(addedJobs)
+            throw e
+          }
         }
 
         return {
@@ -833,6 +932,11 @@ export class GatewayService {
           message: 'Bulk SMS added to queue for processing',
           smsBatchId: smsBatch._id,
           recipientCount: messages.map((m) => m.recipients).flat().length,
+          ...(multiWave && {
+            estimatedCompletionAt: new Date(
+              queuedAt + projectedCompletionMs,
+            ).toISOString(),
+          }),
         }
       } catch (e) {
         // Update batch status to failed

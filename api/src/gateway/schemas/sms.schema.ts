@@ -46,6 +46,11 @@ export class SMS {
   @Prop({ type: Date })
   requestedAt: Date
 
+  // When the queue is due to hand this message to the push service; set for
+  // queued messages that wait server-side first (paced waves, scheduled sends)
+  @Prop({ type: Date })
+  dispatchDueAt?: Date
+
   @Prop({ type: Date })
   dispatchedAt: Date
 

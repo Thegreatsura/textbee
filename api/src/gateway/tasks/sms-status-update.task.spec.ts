@@ -59,6 +59,30 @@ describe('SmsStatusUpdateTask', () => {
         },
       );
 
+      // Paced messages whose wave is not yet due must be left alone; legacy
+      // rows without dispatchDueAt keep today's behavior
+      const pendingFilter = (smsModel.updateMany as jest.Mock).mock.calls[0][0];
+      const cutoff = pendingFilter.requestedAt.$lt as Date;
+      expect(pendingFilter.$or).toEqual([
+        { dispatchDueAt: { $exists: false } },
+        { dispatchDueAt: { $lt: cutoff } },
+      ]);
+      expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(20 * 60 * 1000 - 1000);
+
+      // The dispatched sweep keys off dispatchedAt and is unchanged
+      expect(smsModel.updateMany).toHaveBeenCalledWith(
+        {
+          status: 'dispatched',
+          dispatchedAt: expect.any(Object),
+        },
+        {
+          $set: {
+            status: 'unknown',
+            errorMessage: 'Status update timeout - no response from device after dispatch',
+          },
+        },
+      );
+
       // Check that SMSBatch model was updated with correct query
       expect(smsBatchModel.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({

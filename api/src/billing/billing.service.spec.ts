@@ -339,6 +339,120 @@ describe('BillingService - syncCheckoutSessionStatus', () => {
   })
 })
 
+describe('BillingService - canPerformAction account checks', () => {
+  let service: BillingService
+
+  const userId = '507f1f77bcf86cd799439011'
+  const freePlan = { _id: 'plan_free', name: 'free', dailyLimit: 50, monthlyLimit: 300, bulkSendLimit: 50 }
+
+  const select = jest.fn()
+  const mockUserModel = { findById: jest.fn(() => ({ select })) }
+  const mockSubscriptionModel = { findOne: jest.fn() }
+  const mockPlanModel = { findOne: jest.fn(), findById: jest.fn() }
+  const mockSmsModel = { countDocuments: jest.fn() }
+  const mockBillingNotifications = { notifyOnce: jest.fn() }
+  const emptyModel = {}
+
+  const givenUser = (fields: Record<string, unknown> | null) =>
+    select.mockResolvedValue(
+      fields && { _id: userId, email: 'ada@example.com', isBanned: false, ...fields },
+    )
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BillingService,
+        { provide: getModelToken(Plan.name), useValue: mockPlanModel },
+        { provide: getModelToken(Subscription.name), useValue: mockSubscriptionModel },
+        { provide: getModelToken(User.name), useValue: mockUserModel },
+        { provide: getModelToken(SMS.name), useValue: mockSmsModel },
+        { provide: getModelToken(PolarWebhookPayload.name), useValue: emptyModel },
+        { provide: getModelToken(CheckoutSession.name), useValue: emptyModel },
+        { provide: BillingNotificationsService, useValue: mockBillingNotifications },
+        { provide: UsersService, useValue: { markMilestone: jest.fn() } },
+        { provide: AnalyticsService, useValue: { purchase: jest.fn(), checkoutStarted: jest.fn() } },
+      ],
+    }).compile()
+
+    service = module.get<BillingService>(BillingService)
+
+    jest.clearAllMocks()
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    mockSubscriptionModel.findOne.mockResolvedValue(null)
+    mockPlanModel.findOne.mockResolvedValue(freePlan)
+    mockSmsModel.countDocuments.mockResolvedValue(0)
+  })
+
+  afterEach(() => jest.restoreAllMocks())
+
+  it('loads the waiver field that is hidden by default', async () => {
+    givenUser({ emailVerifiedAt: new Date() })
+
+    await service.canPerformAction(userId, 'send_sms', 1)
+
+    expect(select).toHaveBeenCalledWith('+emailVerificationWaivedAt')
+  })
+
+  it('blocks an account whose emailVerifiedAt was never written', async () => {
+    givenUser({})
+
+    await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+      response: { message: 'Please verify your email to continue' },
+      status: 400,
+    })
+    expect(mockSmsModel.countDocuments).not.toHaveBeenCalled()
+  })
+
+  it('blocks an account whose emailVerifiedAt is null', async () => {
+    givenUser({ emailVerifiedAt: null })
+
+    await expect(service.canPerformAction(userId, 'receive_sms', 1)).rejects.toMatchObject({
+      status: 400,
+    })
+  })
+
+  it.each(['send_sms', 'bulk_send_sms', 'receive_sms'] as const)(
+    'allows a verified account to %s',
+    async (action) => {
+      givenUser({ emailVerifiedAt: new Date() })
+
+      await expect(service.canPerformAction(userId, action, 1)).resolves.toBe(true)
+    },
+  )
+
+  it('allows an unverified account with a waiver', async () => {
+    givenUser({ emailVerificationWaivedAt: new Date() })
+
+    await expect(service.canPerformAction(userId, 'send_sms', 1)).resolves.toBe(true)
+  })
+
+  it('still applies plan limits to a waived account', async () => {
+    givenUser({ emailVerificationWaivedAt: new Date() })
+    mockSmsModel.countDocuments.mockResolvedValue(freePlan.dailyLimit)
+
+    await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+      status: 429,
+    })
+  })
+
+  it('still blocks a banned account', async () => {
+    givenUser({ emailVerifiedAt: new Date(), isBanned: true })
+
+    await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+      status: 500,
+    })
+  })
+
+  it('rejects an unknown user instead of allowing the action', async () => {
+    givenUser(null)
+
+    await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+      status: 404,
+    })
+  })
+})
+
 /*
  * Reporting a sale to an ad platform more than once teaches it to bid on the
  * wrong thing, so the first-payment event has to survive the shapes Polar

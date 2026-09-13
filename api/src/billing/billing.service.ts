@@ -1017,7 +1017,16 @@ export class BillingService {
     value: number,
   ) {
     try {
-      const user = await this.userModel.findById(userId)
+      const user = await this.userModel
+        .findById(userId)
+        .select('+emailVerificationWaivedAt')
+      if (!user) {
+        throw new HttpException(
+          { message: 'User not found' },
+          HttpStatus.NOT_FOUND,
+        )
+      }
+
       if (user.isBanned) {
         throw new HttpException(
           {
@@ -1027,7 +1036,7 @@ export class BillingService {
         )
       }
 
-      if (user.emailVerifiedAt === null) {
+      if (!user.emailVerifiedAt && !user.emailVerificationWaivedAt) {
         console.warn('canPerformAction: User email not verified')
         throw new HttpException(
           {
@@ -1197,8 +1206,11 @@ export class BillingService {
       if (error instanceof HttpException) {
         throw error
       }
-      console.error('canPerformAction: Exception in canPerformAction')
-      console.error(JSON.stringify(error))
+      console.error('canPerformAction: Exception in canPerformAction', {
+        userId,
+        action,
+        error: error?.stack ?? error,
+      })
       return true
     }
   }

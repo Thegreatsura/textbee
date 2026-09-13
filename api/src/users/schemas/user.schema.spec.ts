@@ -11,4 +11,11 @@ describe('User schema', () => {
       expect(UserSchema.path(field).options.select).toBeUndefined()
     }
   )
+
+  it.each(['emailVerificationWaivedAt', 'emailVerificationWaivedReason'])(
+    'never selects %s by default',
+    (field) => {
+      expect(UserSchema.path(field).options.select).toBe(false)
+    }
+  )
 })

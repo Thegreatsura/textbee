@@ -1,5 +1,4 @@
 import {
-  classifyDevice,
   normalizeReferrer,
   normalizeSignupSource,
   sanitizeAttribution,
@@ -164,31 +163,6 @@ describe('normalizeReferrer', () => {
 
   it('is case and www insensitive', () => {
     expect(normalizeReferrer('WWW.Reddit.com')).toBe('reddit')
-  })
-})
-
-describe('classifyDevice', () => {
-  it('reads the device class from the user agent', () => {
-    expect(
-      classifyDevice(
-        'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
-      ),
-    ).toBe('android')
-    expect(
-      classifyDevice('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)'),
-    ).toBe('ios')
-    expect(
-      classifyDevice('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'),
-    ).toBe('desktop')
-    expect(classifyDevice('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')).toBe(
-      'desktop',
-    )
-  })
-
-  it('tells a missing user agent apart from one it cannot place', () => {
-    expect(classifyDevice(undefined)).toBe('unknown')
-    expect(classifyDevice('')).toBe('unknown')
-    expect(classifyDevice('curl/8.4.0')).toBe('other')
   })
 })
 

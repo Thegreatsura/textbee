@@ -59,6 +59,9 @@ importers:
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      bowser:
+        specifier: 2.11.0
+        version: 2.11.0
       bull:
         specifier: ^4.16.5
         version: 4.16.5

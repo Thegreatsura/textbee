@@ -1,7 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { getModelToken } from '@nestjs/mongoose'
 import { UsersService } from './users.service'
-import { User } from './schemas/user.schema'
+import * as mongoose from 'mongoose'
+import { User, UserSchema } from './schemas/user.schema'
+import { describeClient } from '../common/user-agent'
+
+const WINDOWS_CHROME =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+const MAC_CHROME =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
 
 describe('UsersService - signup attribution', () => {
   let service: UsersService
@@ -79,6 +86,35 @@ describe('UsersService - signup attribution', () => {
     })
     expect(saved[1].marketingOptIn).toBe(true)
   })
+
+  it('records the browser and platform at signup in both client slots', async () => {
+    await service.create({
+      name: 'Ada',
+      email: 'ada@example.com',
+      userAgent: WINDOWS_CHROME,
+    })
+
+    expect(saved[0].signupDevice).toBe('desktop')
+    expect(saved[0].client.signup).toMatchObject({
+      device: 'desktop',
+      os: 'windows',
+      browser: 'chrome',
+      userAgent: WINDOWS_CHROME,
+      at: expect.any(Date),
+    })
+    expect(saved[0].client.last).toEqual(saved[0].client.signup)
+  })
+
+  it('records the device class but no client for a caller that is not a browser', async () => {
+    await service.create({
+      name: 'Ada',
+      email: 'ada@example.com',
+      userAgent: 'curl/8.4.0',
+    })
+
+    expect(saved[0].signupDevice).toBe('other')
+    expect(saved[0].client).toBeUndefined()
+  })
 })
 
 describe('UsersService - markMilestone', () => {
@@ -114,5 +150,86 @@ describe('UsersService - markMilestone', () => {
 
     userModel.updateOne.mockResolvedValueOnce({ modifiedCount: 0 })
     expect(await service.markMilestone('user-1', 'firstPaidAt')).toBe(false)
+  })
+})
+
+describe('UsersService - touchClient', () => {
+  let service: UsersService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getModelToken(User.name), useValue: {} },
+      ],
+    }).compile()
+
+    service = module.get<UsersService>(UsersService)
+  })
+
+  it('records the browser on the last slot only', () => {
+    const user: any = { set: jest.fn() }
+
+    service.touchClient(user, MAC_CHROME)
+
+    expect(user.set).toHaveBeenCalledTimes(1)
+    expect(user.set).toHaveBeenCalledWith(
+      'client.last',
+      expect.objectContaining({
+        os: 'macos',
+        browser: 'chrome',
+        userAgent: MAC_CHROME,
+      }),
+    )
+  })
+
+  it('leaves the account alone for a caller that is not a browser', () => {
+    const user: any = { set: jest.fn() }
+
+    service.touchClient(user, 'curl/8.4.0')
+    service.touchClient(user, undefined)
+
+    expect(user.set).not.toHaveBeenCalled()
+  })
+})
+
+describe('UsersService - client on a real document', () => {
+  const UserModel = mongoose.model('UsersServiceClientSpec', UserSchema)
+  const service = new UsersService(UserModel as any)
+
+  it('casts the signup client into both slots', () => {
+    const client = describeClient(MAC_CHROME)
+    const doc = new UserModel({
+      email: 'ada@example.com',
+      client: { signup: client, last: client },
+    })
+
+    expect(doc.validateSync()).toBeFalsy()
+    const stored = doc.toObject().client
+    expect(stored.signup).toMatchObject({
+      os: 'macos',
+      browser: 'chrome',
+      at: client.at,
+    })
+    expect(stored.last).toMatchObject({
+      os: 'macos',
+      browser: 'chrome',
+      at: client.at,
+    })
+  })
+
+  it('adds the last client to an account created without one', () => {
+    const doc = new UserModel({ email: 'old@example.com' })
+    expect(doc.toObject().client).toBeUndefined()
+
+    service.touchClient(doc as any, WINDOWS_CHROME)
+
+    const stored = doc.toObject().client
+    expect(stored.last).toMatchObject({
+      os: 'windows',
+      browser: 'chrome',
+      userAgent: WINDOWS_CHROME,
+    })
+    expect(stored.signup).toBeUndefined()
   })
 })

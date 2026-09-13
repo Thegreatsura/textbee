@@ -241,17 +241,3 @@ export function normalizeSignupSource(
 
   return 'direct'
 }
-
-// The device an advert was seen on, which is not proof of what hardware the
-// person owns. Reported against milestones.firstDeviceAt rather than used to
-// exclude anyone. "unknown" means no user agent reached us at all, which is
-// a different fact from "other", a user agent we could not place.
-export function classifyDevice(userAgent?: string): string {
-  if (!userAgent) return 'unknown'
-  const ua = userAgent.toLowerCase()
-  if (ua.includes('android')) return 'android'
-  if (/iphone|ipad|ipod/.test(ua)) return 'ios'
-  if (ua.includes('mobile')) return 'other'
-  if (/windows|macintosh|mac os x|linux|cros/.test(ua)) return 'desktop'
-  return 'other'
-}

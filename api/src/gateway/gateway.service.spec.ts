@@ -1331,10 +1331,60 @@ describe('GatewayService', () => {
       ).rejects.toThrow(HttpException)
     })
 
-    it('should throw error if SMS data is invalid', async () => {
+    it('should throw error if SMS data is malformed', async () => {
       await expect(
-        service.receiveSMS(mockDeviceId, { ...mockReceivedSmsData, message: '' }),
+        service.receiveSMS(mockDeviceId, {
+          ...mockReceivedSmsData,
+          message: undefined,
+        }),
       ).rejects.toThrow(HttpException)
+      expect(mockSmsModel.create).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['an empty message', { message: '' }, 'empty_message'],
+      ['no sender', { sender: undefined }, 'missing_sender'],
+    ])(
+      'acknowledges %s without storing it',
+      async (_label, overrides, reason) => {
+        const result = await service.receiveSMS(mockDeviceId, {
+          ...mockReceivedSmsData,
+          ...overrides,
+        })
+
+        expect(result).toEqual({ ignored: true, reason })
+        expect(mockBillingService.canPerformAction).not.toHaveBeenCalled()
+        expect(mockSmsModel.create).not.toHaveBeenCalled()
+        expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      },
+    )
+
+    it('stores receivedAt sent as a JSON string', async () => {
+      await service.receiveSMS(mockDeviceId, {
+        message: 'Hello from test',
+        sender: '+15555550123',
+        receivedAt: '2026-09-13T10:30:00.000Z' as unknown as Date,
+      })
+
+      expect(mockSmsModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          receivedAt: new Date('2026-09-13T10:30:00.000Z'),
+        }),
+      )
+    })
+
+    it('stores a message whose timestamp is 0 with the server time', async () => {
+      const before = Date.now()
+
+      await service.receiveSMS(mockDeviceId, {
+        message: 'Hello from test',
+        sender: '+15555550123',
+        receivedAtInMillis: 0,
+      })
+
+      const [{ receivedAt }] = mockSmsModel.create.mock.calls[0]
+      expect(receivedAt).toBeInstanceOf(Date)
+      expect(receivedAt.getTime()).toBeGreaterThanOrEqual(before)
     })
   })
 

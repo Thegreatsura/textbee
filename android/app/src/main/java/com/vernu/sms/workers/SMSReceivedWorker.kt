@@ -6,26 +6,22 @@ import androidx.work.*
 import com.google.gson.Gson
 import com.vernu.sms.ApiManager
 import com.vernu.sms.dtos.SMSDTO
-import com.vernu.sms.dtos.SMSForwardResponseDTO
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 class SMSReceivedWorker(context: Context, workerParams: WorkerParameters) : Worker(context, workerParams) {
     companion object {
         private const val TAG = "SMSReceivedWorker"
-        private const val MAX_RETRIES = 5
 
         const val KEY_DEVICE_ID = "device_id"
         const val KEY_API_KEY = "api_key"
         const val KEY_SMS_DTO = "sms_dto"
-        const val KEY_RETRY_COUNT = "retry_count"
 
         fun enqueueWork(context: Context, deviceId: String, apiKey: String, smsDTO: SMSDTO) {
             val inputData = Data.Builder()
                 .putString(KEY_DEVICE_ID, deviceId)
                 .putString(KEY_API_KEY, apiKey)
                 .putString(KEY_SMS_DTO, Gson().toJson(smsDTO))
-                .putInt(KEY_RETRY_COUNT, 0)
                 .build()
 
             val constraints = Constraints.Builder()
@@ -59,15 +55,9 @@ class SMSReceivedWorker(context: Context, workerParams: WorkerParameters) : Work
         val deviceId = inputData.getString(KEY_DEVICE_ID)
         val apiKey = inputData.getString(KEY_API_KEY)
         val smsDtoJson = inputData.getString(KEY_SMS_DTO)
-        val retryCount = inputData.getInt(KEY_RETRY_COUNT, 0)
 
         if (deviceId == null || apiKey == null || smsDtoJson == null) {
             Log.e(TAG, "Missing required parameters")
-            return Result.failure()
-        }
-
-        if (retryCount >= MAX_RETRIES) {
-            Log.e(TAG, "Maximum retry count reached for received SMS")
             return Result.failure()
         }
 
@@ -80,11 +70,17 @@ class SMSReceivedWorker(context: Context, workerParams: WorkerParameters) : Work
                 Result.success()
             } else {
                 Log.e(TAG, "Failed to send received SMS to server. Response code: ${response.code()}")
-                Result.retry()
+                retryOrFail(response.code())
             }
         } catch (e: IOException) {
             Log.e(TAG, "API call failed: ${e.message}")
-            Result.retry()
+            retryOrFail(null)
         }
+    }
+
+    private fun retryOrFail(responseCode: Int?): Result {
+        if (WorkerRetryPolicy.shouldRetry(responseCode, runAttemptCount)) return Result.retry()
+        Log.e(TAG, "Giving up on received SMS after ${runAttemptCount + 1} attempts")
+        return Result.failure()
     }
 }

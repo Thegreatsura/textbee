@@ -389,10 +389,15 @@ export class GatewayController {
   @ApiOperation({
     summary: 'Report an incoming SMS',
     description:
-      'Called by the textbee app when the phone receives a message. This is how received message history and MESSAGE_RECEIVED webhooks get their data.',
+      'Called by the textbee app when the phone receives a message. This is how received message history and MESSAGE_RECEIVED webhooks get their data. ' +
+      'A message with no text or no sender returns 200 with data.ignored set to true and is not stored. A missing or non-string message returns 400.',
   })
   @ApiParam(DEVICE_ID_PARAM)
-  @ApiResponse({ status: 200, description: 'The message was stored.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'The message was stored, or acknowledged and ignored when it has no text or no sender.',
+  })
   @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
   @ApiResponse(UNAUTHORIZED_RESPONSE)
   @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
@@ -411,7 +416,11 @@ export class GatewayController {
     deprecated: true,
   })
   @ApiParam(DEVICE_ID_PARAM)
-  @ApiResponse({ status: 200, description: 'The message was stored.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'The message was stored, or acknowledged and ignored when it has no text or no sender.',
+  })
   @HttpCode(HttpStatus.OK)
   // legacy alias kept for older app versions and integrations
   @Post('/devices/:id/receiveSMS')

@@ -359,28 +359,36 @@ export class ReceivedSMSDTO {
   @ApiProperty({
     type: String,
     required: true,
-    description: 'The message received',
+    description:
+      'Text of the message. An empty string is acknowledged but not stored.',
+    example: 'Your code is 482913',
   })
   message: string
 
   @ApiProperty({
     type: String,
-    required: true,
-    description: 'The phone number of the sender',
+    required: false,
+    description:
+      'Phone number or name of the sender. A message without a sender is acknowledged but not stored.',
+    example: '+15555550123',
   })
-  sender: string
+  sender?: string
 
   @ApiProperty({
     type: Date,
-    required: true,
-    description: 'The time the message was received',
+    required: false,
+    description:
+      'When the phone received the message, as an ISO 8601 date. Used when receivedAtInMillis is missing or 0.',
+    example: '2026-09-13T10:30:00.000Z',
   })
   receivedAt?: Date
 
   @ApiProperty({
     type: Number,
-    required: true,
-    description: 'The time the message was created',
+    required: false,
+    description:
+      'When the phone received the message, in milliseconds since the Unix epoch. Takes precedence over receivedAt. When neither is a valid time, the server time is used.',
+    example: 1789295400000,
   })
   receivedAtInMillis?: number
 }

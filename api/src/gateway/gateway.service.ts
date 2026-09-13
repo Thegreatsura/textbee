@@ -28,6 +28,11 @@ import { SmsQueueService } from './queue/sms-queue.service'
 import { escapeRegExp } from '../common/escape-regexp'
 import { normalizeOsFields } from './os-version'
 import { encodeCursor } from './cursor'
+import {
+  isMalformedReceivedSms,
+  receivedSmsIgnoreReason,
+  resolveReceivedAt,
+} from './received-sms-input'
 import { toDirection, toStoredType } from './message-direction'
 import { ParsedMessageQuery } from './message-query'
 import { smsAndroidConfig } from './fcm-push-options'
@@ -1102,13 +1107,7 @@ export class GatewayService {
 
     // Type checks matter: without a global ValidationPipe the body is not
     // coerced, and these fields flow into query filters.
-    if (
-      (!dto.receivedAt && !dto.receivedAtInMillis) ||
-      typeof dto.sender !== 'string' ||
-      !dto.sender ||
-      typeof dto.message !== 'string' ||
-      !dto.message
-    ) {
+    if (isMalformedReceivedSms(dto.sender, dto.message)) {
       console.error(`receiveSMS: Invalid received SMS data (sender: ${dto.sender}, message: ${dto.message}) (receivedAt: ${dto.receivedAt}, receivedAtInMillis: ${dto.receivedAtInMillis})`)
       throw new HttpException(
         {
@@ -1119,15 +1118,25 @@ export class GatewayService {
       )
     }
 
+    // A success response stops the app from retrying a message it cannot fix.
+    const ignoredReason = receivedSmsIgnoreReason(dto.sender, dto.message)
+    if (ignoredReason) {
+      console.warn(
+        `receiveSMS: ignored received SMS for device ${deviceId} (${ignoredReason})`,
+      )
+      return { ignored: true, reason: ignoredReason }
+    }
+
     await this.billingService.canPerformAction(
       device.user.toString(),
       'receive_sms',
       1,
     )
 
-    const receivedAt = dto.receivedAtInMillis
-      ? new Date(dto.receivedAtInMillis)
-      : dto.receivedAt
+    const receivedAt = resolveReceivedAt(
+      dto.receivedAtInMillis,
+      dto.receivedAt,
+    )
 
     // Deduplication: Check for existing SMS with same device, sender, message, and receivedAt (within ±5 seconds tolerance)
     const toleranceMs = 5000 // 5 seconds

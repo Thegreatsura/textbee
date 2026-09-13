@@ -186,6 +186,13 @@ export class User {
   @Prop({ type: Date })
   emailVerifiedAt: Date
 
+  // Lets an unverified account send and receive. Set by an operator only.
+  @Prop({ type: Date, select: false })
+  emailVerificationWaivedAt?: Date
+
+  @Prop({ type: String, select: false })
+  emailVerificationWaivedReason?: string
+
   @Prop({ type: Boolean, default: false })
   isBanned: boolean
 

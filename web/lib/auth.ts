@@ -66,7 +66,7 @@ export const authOptions: NextAuthOptions = {
         password: { label: 'Password', type: 'password' },
         turnstileToken: { label: 'Turnstile Token', type: 'text' },
       },
-      async authorize(credentials) {
+      async authorize(credentials, req) {
         // NextAuth can invoke authorize with no credentials at all. There is
         // nothing to authenticate in that case, so refuse rather than posting
         // undefined fields to the login endpoint.
@@ -77,6 +77,7 @@ export const authOptions: NextAuthOptions = {
             email,
             password,
             turnstileToken,
+            client: clientContextFromHeaders(req?.headers),
           })
 
           const user = res.data.data.user

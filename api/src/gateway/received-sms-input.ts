@@ -39,6 +39,6 @@ export function receivedSmsIgnoreReason(
   message: string,
 ): IgnoredReceivedSmsReason | null {
   if (message === '') return 'empty_message'
-  if (!sender) return 'missing_sender'
+  if (!sender?.trim()) return 'missing_sender'
   return null
 }

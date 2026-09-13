@@ -68,7 +68,7 @@ describe('receivedSmsIgnoreReason', () => {
     expect(receivedSmsIgnoreReason('+15555550123', '')).toBe('empty_message')
   })
 
-  it.each([undefined, null, ''])('ignores a sender of %p', (sender) => {
+  it.each([undefined, null, '', '   '])('ignores a sender of %p', (sender) => {
     expect(receivedSmsIgnoreReason(sender, 'hello')).toBe('missing_sender')
   })
 

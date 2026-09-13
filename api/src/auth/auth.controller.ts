@@ -82,8 +82,11 @@ export class AuthController {
   })
   @HttpCode(HttpStatus.OK)
   @Post('/login')
-  async login(@Body() input: LoginInputDTO) {
-    const data = await this.authService.login(input)
+  async login(@Body() input: LoginInputDTO, @Request() req) {
+    const data = await this.authService.login(
+      input,
+      resolveRequestContext(input.client, req),
+    )
     return { data }
   }
 

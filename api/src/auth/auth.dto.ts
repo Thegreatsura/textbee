@@ -238,6 +238,13 @@ export class LoginInputDTO {
     description: 'Cloudflare Turnstile token from the login form.',
   })
   turnstileToken: string
+
+  @ApiProperty({
+    type: ClientContextDTO,
+    required: false,
+    description: "The visitor's browser details, when the caller is a proxy.",
+  })
+  client?: ClientContextDTO
 }
 
 export class GoogleLoginInputDTO {

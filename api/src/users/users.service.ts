@@ -7,11 +7,8 @@ import {
   ONBOARDING_OPTIONAL_STEP_IDS,
   ONBOARDING_STEP_ORDER,
 } from './onboarding.constants'
-import {
-  AttributionInput,
-  classifyDevice,
-  normalizeSignupSource,
-} from './attribution'
+import { AttributionInput, normalizeSignupSource } from './attribution'
+import { classifyDevice, describeClient } from '../common/user-agent'
 
 export type UserMilestoneField =
   | 'firstDeviceAt'
@@ -66,6 +63,7 @@ export class UsersService {
       )
     }
 
+    const client = describeClient(userAgent)
     const newUser = new this.userModel({
       name,
       email,
@@ -76,6 +74,7 @@ export class UsersService {
       signupSource: normalizeSignupSource(attribution),
       signupDevice: classifyDevice(userAgent),
       signupCountry: country,
+      ...(client && { client: { signup: client, last: client } }),
     })
     return await newUser.save()
   }
@@ -96,6 +95,11 @@ export class UsersService {
       { $set: { [path]: new Date() } },
     )
     return result.modifiedCount === 1
+  }
+
+  touchClient(user: UserDocument, userAgent?: string): void {
+    const client = describeClient(userAgent)
+    if (client) user.set('client.last', client)
   }
 
   async updateProfile(

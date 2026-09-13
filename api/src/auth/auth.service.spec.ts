@@ -7,6 +7,9 @@ import { AuthService } from './auth.service'
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex')
 
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+
 // AuthService takes eight constructor deps. Only the ones a given flow
 // touches are given real behaviour; the rest are inert stubs.
 const build = () => {
@@ -27,6 +30,7 @@ const build = () => {
     findOneWithPassword: jest.fn(),
     create: jest.fn(),
     markMilestone: jest.fn().mockResolvedValue(false),
+    touchClient: jest.fn(),
   }
   const passwordResetModel = { findOne: jest.fn(), findOneAndUpdate: jest.fn() }
   const mailService = { sendEmailFromTemplate: jest.fn().mockResolvedValue(undefined) }
@@ -636,6 +640,60 @@ describe('AuthService', () => {
     })
   })
 
+  describe('login', () => {
+    const credentials = {
+      email: 'ada@example.com',
+      password: 'correct-password',
+      turnstileToken: 'token',
+    }
+
+    const setup = () => {
+      const ctx = build()
+      const stored = {
+        _id: 'user_1',
+        email: 'ada@example.com',
+        password: bcrypt.hashSync('correct-password', 4),
+        save: jest.fn().mockResolvedValue(undefined),
+        toObject: () => ({ _id: 'user_1', email: 'ada@example.com' }),
+      }
+      ctx.usersService.findOneWithPassword.mockResolvedValue(stored)
+      return { ...ctx, stored }
+    }
+
+    it('records the browser in the same write as the login time', async () => {
+      const { service, usersService, stored } = setup()
+
+      await service.login(credentials, { userAgent: BROWSER_UA })
+
+      expect(usersService.touchClient).toHaveBeenCalledWith(stored, BROWSER_UA)
+      expect(stored.save).toHaveBeenCalledTimes(1)
+      expect(usersService.touchClient.mock.invocationCallOrder[0]).toBeLessThan(
+        stored.save.mock.invocationCallOrder[0],
+      )
+    })
+
+    it('still logs in when no browser details were forwarded', async () => {
+      const { service, stored } = setup()
+
+      const result = await service.login(credentials)
+
+      expect(result.accessToken).toBe('signed-jwt')
+      expect(stored.save).toHaveBeenCalledTimes(1)
+    })
+
+    it('records nothing for a wrong password', async () => {
+      const { service, usersService } = setup()
+
+      await expect(
+        service.login(
+          { ...credentials, password: 'wrong-password' },
+          { userAgent: BROWSER_UA },
+        ),
+      ).rejects.toThrow(HttpException)
+      expect(usersService.touchClient).not.toHaveBeenCalled()
+    })
+  })
+
   // tokeninfo only proves Google signed the token. Without these checks a token
   // minted for any other Google OAuth client would be accepted.
   describe('loginWithGoogle', () => {
@@ -704,6 +762,57 @@ describe('AuthService', () => {
       const result = await ctx.service.loginWithGoogle('tok')
 
       expect(result.accessToken).toBe('signed-jwt')
+    })
+
+    it('records the browser for a returning account', async () => {
+      const ctx = build()
+      stageTokenInfo({
+        aud: OURS,
+        email: 'ada@example.com',
+        email_verified: 'true',
+        sub: 'g1',
+        name: 'Ada',
+      })
+      const existing = {
+        _id: 'user_1',
+        email: 'ada@example.com',
+        save: jest.fn().mockResolvedValue(undefined),
+        toObject: () => ({ _id: 'user_1', email: 'ada@example.com' }),
+      }
+      ctx.usersService.findOne.mockResolvedValue(existing)
+
+      await ctx.service.loginWithGoogle('tok', { userAgent: BROWSER_UA })
+
+      expect(ctx.usersService.touchClient).toHaveBeenCalledWith(
+        existing,
+        BROWSER_UA,
+      )
+      expect(existing.save).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves a new account to the client recorded at signup', async () => {
+      const ctx = build()
+      stageTokenInfo({
+        aud: OURS,
+        email: 'ada@example.com',
+        email_verified: 'true',
+        sub: 'g1',
+        name: 'Ada',
+      })
+      ctx.usersService.findOne.mockResolvedValue(null)
+      ctx.usersService.create.mockResolvedValue({
+        _id: 'user_1',
+        email: 'ada@example.com',
+        save: jest.fn().mockResolvedValue(undefined),
+        toObject: () => ({ _id: 'user_1', email: 'ada@example.com' }),
+      })
+
+      await ctx.service.loginWithGoogle('tok', { userAgent: BROWSER_UA })
+
+      expect(ctx.usersService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userAgent: BROWSER_UA }),
+      )
+      expect(ctx.usersService.touchClient).not.toHaveBeenCalled()
     })
   })
 })

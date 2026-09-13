@@ -55,7 +55,10 @@ export class AuthService {
     private readonly analyticsService: AnalyticsService,
   ) {}
 
-  async login(userData: any) {
+  async login(
+    userData: any,
+    requestContext?: { ip?: string; userAgent?: string; country?: string },
+  ) {
     await this.turnstileService.verify(userData.turnstileToken)
 
     const user = await this.usersService.findOneWithPassword({
@@ -76,6 +79,7 @@ export class AuthService {
     }
 
     user.lastLoginAt = new Date()
+    this.usersService.touchClient(user, requestContext?.userAgent)
     await user.save()
 
     const payload = { email: user.email, sub: user._id }
@@ -171,6 +175,9 @@ export class AuthService {
     }
 
     user.lastLoginAt = new Date()
+    if (!isNewUser) {
+      this.usersService.touchClient(user, signupContext?.userAgent)
+    }
     await user.save()
 
     if (isNewUser) {

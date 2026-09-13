@@ -123,6 +123,37 @@ export class UserAccess {
 
 const UserAccessSchema = SchemaFactory.createForClass(UserAccess)
 
+@Schema({ _id: false })
+export class ClientInfo {
+  @Prop({ type: String })
+  device?: string
+
+  @Prop({ type: String })
+  os?: string
+
+  @Prop({ type: String })
+  browser?: string
+
+  @Prop({ type: String })
+  userAgent?: string
+
+  @Prop({ type: Date })
+  at?: Date
+}
+
+const ClientInfoSchema = SchemaFactory.createForClass(ClientInfo)
+
+@Schema({ _id: false })
+export class UserClient {
+  @Prop({ type: ClientInfoSchema })
+  signup?: ClientInfo
+
+  @Prop({ type: ClientInfoSchema })
+  last?: ClientInfo
+}
+
+const UserClientSchema = SchemaFactory.createForClass(UserClient)
+
 @Schema({ timestamps: true })
 export class User {
   _id?: Types.ObjectId
@@ -177,6 +208,9 @@ export class User {
   @Prop({ type: String })
   signupDevice?: string
 
+  @Prop({ type: UserClientSchema })
+  client?: UserClient
+
   // Two-letter region code of the request that created the account, when the
   // edge network reported one.
   @Prop({ type: String })
@@ -218,3 +252,5 @@ UserSchema.index({ signupSource: 1, createdAt: -1 })
 // account has been used from.
 UserSchema.index({ signupCountry: 1, createdAt: -1 })
 UserSchema.index({ 'access.countries': 1 })
+
+UserSchema.index({ signupDevice: 1, createdAt: -1 })

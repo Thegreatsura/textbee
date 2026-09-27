@@ -7,7 +7,9 @@ import {
   Subscription,
   SubscriptionDocument,
 } from '../billing/schemas/subscription.schema'
+import { Device, DeviceDocument } from '../gateway/schemas/device.schema'
 import { SMS, SMSDocument } from '../gateway/schemas/sms.schema'
+import { loadSmsPermissionStatus } from '../gateway/sms-permission-status'
 import { User, UserDocument } from '../users/schemas/user.schema'
 import { EvaluationContext } from './rules/types'
 import {
@@ -21,7 +23,7 @@ import { NotificationSettings } from './schemas/notification-settings.schema'
 // attributes from the same stored data, so its preview cannot disagree with what
 // this feed serves.
 //
-// Three groups cost a query, and each is loaded only when some active audience
+// Four groups cost a query, and each is loaded only when some active audience
 // actually asks for it. Most campaigns target plan and tenure, which are already
 // on the user document the auth guard loaded, so the common feed adds no reads
 // at all.
@@ -57,6 +59,8 @@ export class NotificationContextLoader {
     @InjectModel(Plan.name) private readonly planModel: Model<PlanDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(SMS.name) private readonly smsModel: Model<SMSDocument>,
+    @InjectModel(Device.name)
+    private readonly deviceModel: Model<DeviceDocument>,
   ) {}
 
   async build(input: BuildContextInput): Promise<EvaluationContext> {
@@ -67,6 +71,7 @@ export class NotificationContextLoader {
     const needsSubscription = groups.has('subscription') || groups.has('usage')
     const needsUsage = groups.has('usage')
     const needsWaiver = referenced.has('user.verificationWaived')
+    const needsSending = groups.has('sending')
 
     let context: EvaluationContext = {
       ...this.userContext(user, now),
@@ -80,6 +85,10 @@ export class NotificationContextLoader {
       context['user.verificationWaived'] = await this.verificationWaived(
         user._id,
       )
+    }
+
+    if (needsSending) {
+      context = { ...context, ...(await this.sendingContext(user._id, now)) }
     }
 
     if (needsSubscription) {
@@ -268,6 +277,23 @@ export class NotificationContextLoader {
         monthlyCount,
         limits.monthlyAllowance,
       ),
+    }
+  }
+
+  private async sendingContext(
+    userId: Types.ObjectId,
+    now: Date,
+  ): Promise<EvaluationContext> {
+    const status = await loadSmsPermissionStatus(
+      this.smsModel,
+      this.deviceModel,
+      userId,
+      now,
+    )
+    return {
+      'sending.needsSmsPermission': status.needsSmsPermission ?? undefined,
+      'sending.hoursSinceLastPermissionFailure':
+        status.hoursSinceFailure ?? undefined,
     }
   }
 

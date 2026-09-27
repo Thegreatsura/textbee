@@ -1,0 +1,96 @@
+{
+  "now": "2026-09-27T12:00:00.000Z",
+  "cases": [
+    {
+      "name": "never sent",
+      "last": null,
+      "appState": null,
+      "needs": null,
+      "hours": null
+    },
+    {
+      "name": "last send delivered",
+      "last": { "status": "delivered", "createdAt": "2026-09-27T10:00:00.000Z" },
+      "appState": null,
+      "needs": false,
+      "hours": null
+    },
+    {
+      "name": "last send still pending",
+      "last": { "status": "pending", "createdAt": "2026-09-27T10:00:00.000Z" },
+      "appState": null,
+      "needs": false,
+      "hours": null
+    },
+    {
+      "name": "last send failed for another reason",
+      "last": { "status": "failed", "errorCode": "1", "failedAt": "2026-09-27T10:00:00.000Z" },
+      "appState": null,
+      "needs": false,
+      "hours": null
+    },
+    {
+      "name": "permission failure, old app with no report",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z" },
+      "appState": null,
+      "needs": true,
+      "hours": 2
+    },
+    {
+      "name": "permission failure, phone reports it missing",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z" },
+      "appState": { "hasSendSmsPermission": false, "lastUpdated": "2026-09-27T11:00:00.000Z" },
+      "needs": true,
+      "hours": 2
+    },
+    {
+      "name": "permission granted after the failure",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z" },
+      "appState": { "hasSendSmsPermission": true, "lastUpdated": "2026-09-27T11:00:00.000Z" },
+      "needs": false,
+      "hours": null
+    },
+    {
+      "name": "granted report older than the failure",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z" },
+      "appState": { "hasSendSmsPermission": true, "lastUpdated": "2026-09-27T09:00:00.000Z" },
+      "needs": true,
+      "hours": 2
+    },
+    {
+      "name": "granted report at the same instant as the failure",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z" },
+      "appState": { "hasSendSmsPermission": true, "lastUpdated": "2026-09-27T09:30:00.000Z" },
+      "needs": true,
+      "hours": 2
+    },
+    {
+      "name": "SIM send, SMS granted but Phone still missing",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z", "simSubscriptionId": 2 },
+      "appState": { "hasSendSmsPermission": true, "hasReadPhoneStatePermission": false, "lastUpdated": "2026-09-27T11:00:00.000Z" },
+      "needs": true,
+      "hours": 2
+    },
+    {
+      "name": "SIM send, both permissions granted after the failure",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T09:30:00.000Z", "simSubscriptionId": 2 },
+      "appState": { "hasSendSmsPermission": true, "hasReadPhoneStatePermission": true, "lastUpdated": "2026-09-27T11:00:00.000Z" },
+      "needs": false,
+      "hours": null
+    },
+    {
+      "name": "no failedAt falls back to createdAt",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "createdAt": "2026-09-27T06:59:00.000Z" },
+      "appState": null,
+      "needs": true,
+      "hours": 5
+    },
+    {
+      "name": "just failed reads zero hours",
+      "last": { "status": "failed", "errorCode": "PERMISSION_DENIED", "failedAt": "2026-09-27T11:59:00.000Z" },
+      "appState": null,
+      "needs": true,
+      "hours": 0
+    }
+  ]
+}

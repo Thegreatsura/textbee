@@ -308,6 +308,24 @@ export const ATTRIBUTES: ReadonlyArray<AttributeDescriptor> = [
     operators: FLAG,
   },
 
+  // ---------- sending ----------
+  {
+    key: 'sending.needsSmsPermission',
+    label: 'Sending blocked by a missing SMS permission',
+    type: 'boolean',
+    group: 'sending',
+    operators: FLAG,
+    hint: 'True while the latest outgoing message failed with PERMISSION_DENIED and the phone has not reported the permission granted since. Unknown for accounts that never sent.',
+  },
+  {
+    key: 'sending.hoursSinceLastPermissionFailure',
+    label: 'Hours since sending was blocked by a missing SMS permission',
+    type: 'number',
+    group: 'sending',
+    operators: NUMERIC,
+    hint: 'Only set while sending is blocked.',
+  },
+
   // ---------- state ----------
   // Self-referential: these describe this account's history with the
   // notification being evaluated, which is what makes "stop after three views"

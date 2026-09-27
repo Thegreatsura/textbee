@@ -7,6 +7,7 @@ import {
   Subscription,
   SubscriptionSchema,
 } from '../billing/schemas/subscription.schema'
+import { Device, DeviceSchema } from '../gateway/schemas/device.schema'
 import { SMS, SMSSchema } from '../gateway/schemas/sms.schema'
 import { UsersModule } from '../users/users.module'
 import { NotificationContextLoader } from './context-loader'
@@ -31,10 +32,11 @@ import {
       { name: DashboardNotification.name, schema: DashboardNotificationSchema },
       { name: NotificationState.name, schema: NotificationStateSchema },
       { name: NotificationSettings.name, schema: NotificationSettingsSchema },
-      // Read to resolve plan and usage attributes.
+      // Read to resolve plan, usage and sending attributes.
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Plan.name, schema: PlanSchema },
       { name: SMS.name, schema: SMSSchema },
+      { name: Device.name, schema: DeviceSchema },
     ]),
     UsersModule,
     AuthModule,

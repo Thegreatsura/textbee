@@ -10,12 +10,19 @@ import {
   EmailTemplateSchema,
 } from './schemas/email-template.schema'
 import { EmailTemplatesService } from './email-templates.service'
+import {
+  EmailSuppression,
+  EmailSuppressionSchema,
+} from './schemas/email-suppression.schema'
+import { User, UserSchema } from '../users/schemas/user.schema'
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: SentEmail.name, schema: SentEmailSchema },
       { name: EmailTemplate.name, schema: EmailTemplateSchema },
+      { name: EmailSuppression.name, schema: EmailSuppressionSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     MailerModule.forRoot({
       transport: mailTransportConfig,

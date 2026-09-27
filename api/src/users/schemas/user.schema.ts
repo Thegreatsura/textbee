@@ -194,6 +194,17 @@ export class UserRollup {
 
 const UserRollupSchema = SchemaFactory.createForClass(UserRollup)
 
+@Schema({ _id: false })
+export class EmailPreferences {
+  @Prop({ type: Boolean })
+  productEmails?: boolean
+
+  @Prop({ type: Date })
+  changedAt?: Date
+}
+
+const EmailPreferencesSchema = SchemaFactory.createForClass(EmailPreferences)
+
 @Schema({ timestamps: true })
 export class User {
   _id?: Types.ObjectId
@@ -271,6 +282,10 @@ export class User {
 
   @Prop({ type: Boolean, default: false })
   marketingOptIn?: boolean
+
+  // Absent means product emails are on. Account notices ignore it.
+  @Prop({ type: EmailPreferencesSchema })
+  emailPreferences?: EmailPreferences
 
   @Prop({ type: UserMilestonesSchema, default: () => ({}) })
   milestones?: UserMilestones

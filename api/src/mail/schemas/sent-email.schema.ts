@@ -38,8 +38,8 @@ export class SentEmail {
   @Prop({ type: String, default: null })
   html?: string | null
 
-  @Prop({ type: String, enum: ['sent', 'failed'], required: true })
-  status: 'sent' | 'failed'
+  @Prop({ type: String, enum: ['sent', 'failed', 'skipped'], required: true })
+  status: 'sent' | 'failed' | 'skipped'
 
   @Prop({ type: String })
   error?: string

@@ -63,6 +63,26 @@
       }
     },
     {
+      "name": "literal ampersand in an inline link",
+      "template": {
+        "subject": "s",
+        "preheader": "",
+        "body": "See [both params](https://a.test/?a=1&b=2) and [value]({{url}}).",
+        "shell": false
+      },
+      "footer": "",
+      "vars": {
+        "url": "https://b.test/?x=1&y=<2>"
+      },
+      "expected": {
+        "subject": "s",
+        "preheader": "",
+        "bodyHtml": "<p style=\"margin:0 0 16px 0;\">See <a href=\"https://a.test/?a=1&amp;b=2\" style=\"color:#1d4ed8;text-decoration:underline;\">both params</a> and <a href=\"https://b.test/?x=1&amp;y=&lt;2&gt;\" style=\"color:#1d4ed8;text-decoration:underline;\">value</a>.</p>",
+        "footerHtml": "",
+        "text": "See both params (https://a.test/?a=1&b=2) and value (https://b.test/?x=1&y=<2>).\n\n\n"
+      }
+    },
+    {
       "name": "usage bar rounds half up",
       "template": {
         "subject": "s",

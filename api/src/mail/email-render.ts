@@ -152,10 +152,11 @@ const BOLD = /\*\*([^*]+)\*\*/g
 
 const inlineHtml = (s: string, store: string[]): string => {
   let out = escapeHtml(s)
+  // out is already escaped here, so only placeholder values still need escaping.
   out = out.replace(
     LINK,
     (_m, text: string, url: string) =>
-      `<a href="${escapeHtml(unseal(url, store, false))}" style="${STYLE_A}">${text}</a>`,
+      `<a href="${unseal(url, store, true)}" style="${STYLE_A}">${text}</a>`,
   )
   out = out.replace(BOLD, '<strong>$1</strong>')
   return out.replace(/ {2}\n/g, '<br>').replace(/\n/g, ' ')

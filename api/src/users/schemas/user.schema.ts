@@ -324,3 +324,12 @@ UserSchema.index({ signupCountry: 1, createdAt: -1 })
 UserSchema.index({ 'access.countries': 1 })
 
 UserSchema.index({ signupDevice: 1, createdAt: -1 })
+
+// Scheduled emails find accounts verified in a recent window.
+UserSchema.index({ emailVerifiedAt: 1 })
+
+// Scheduled emails find accounts that connected their first phone recently.
+UserSchema.index({ 'milestones.firstDeviceAt': 1 })
+
+// Scheduled emails find accounts that sent their first message recently.
+UserSchema.index({ 'milestones.firstSmsAt': 1 })

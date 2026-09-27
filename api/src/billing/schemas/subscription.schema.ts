@@ -85,3 +85,6 @@ export const SubscriptionSchema = SchemaFactory.createForClass(Subscription)
 
 // a user can only have one active subscription at a time
 SubscriptionSchema.index({ user: 1, isActive: 1 }, { unique: true })
+
+// Scheduled email rules read ended plans by end date.
+SubscriptionSchema.index({ subscriptionEndDate: 1 })

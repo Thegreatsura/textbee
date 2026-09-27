@@ -72,6 +72,13 @@ export class Subscription {
   // no default on purpose: absent means "no override", fall back to plan.deviceLimit
   @Prop({ type: Number })
   customDeviceLimit?: number
+
+  // Start of the current payment retry period; cleared once payment succeeds.
+  @Prop({ type: Date })
+  pastDueAt?: Date
+
+  @Prop({ type: String, enum: ['customer', 'payment_failed'] })
+  churnCause?: 'customer' | 'payment_failed'
 }
 
 export const SubscriptionSchema = SchemaFactory.createForClass(Subscription)

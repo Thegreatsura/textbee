@@ -291,13 +291,19 @@ export class BillingService {
             user: user._id,
           },
           {
-            user: user._id,
-            checkoutSessionId: checkout.id,
-            checkoutUrl: checkout.url,
-            planName: payload.planName,
-            billingInterval,
-            expiresAt: new Date(checkout.expiresAt),
-            payload: checkout,
+            $set: {
+              user: user._id,
+              checkoutSessionId: checkout.id,
+              checkoutUrl: checkout.url,
+              planName: payload.planName,
+              billingInterval,
+              expiresAt: new Date(checkout.expiresAt),
+              payload: checkout,
+              sessionStartedAt: new Date(),
+              isCompleted: false,
+              isAbandoned: false,
+            },
+            $unset: { completedAt: 1 },
           },
           { upsert: true },
         )
@@ -922,18 +928,95 @@ export class BillingService {
     }
   }
 
+  /** Stores when the current payment retry period started, and clears it once paid. */
+  async syncPastDue({
+    polarSubscriptionId,
+    status,
+    pastDueAt,
+    eventAt,
+  }: {
+    polarSubscriptionId?: string
+    status?: string
+    pastDueAt?: Date | string
+    eventAt: Date
+  }) {
+    if (!polarSubscriptionId) return
+    if (status === 'past_due') {
+      await this.subscriptionModel.updateMany(
+        pastDueAt
+          ? { polarSubscriptionId, isActive: true }
+          : { polarSubscriptionId, isActive: true, pastDueAt: null },
+        { $set: { pastDueAt: pastDueAt ? new Date(pastDueAt) : eventAt } },
+      )
+    } else if (status === 'active') {
+      await this.subscriptionModel.updateMany(
+        { polarSubscriptionId, pastDueAt: { $ne: null } },
+        { $unset: { pastDueAt: 1 } },
+      )
+    }
+  }
+
+  /** payment_failed when the provider ended the plan right after a failed renewal. */
+  async churnCause({
+    polarSubscriptionId,
+    status,
+    cancelAtPeriodEnd,
+    endsAt,
+    eventAt,
+  }: {
+    polarSubscriptionId?: string
+    status?: string
+    cancelAtPeriodEnd?: boolean
+    endsAt?: Date | string | null
+    eventAt: Date
+  }): Promise<'customer' | 'payment_failed'> {
+    const ends = endsAt ? new Date(endsAt).getTime() : NaN
+    const endsNow =
+      status === 'canceled' &&
+      cancelAtPeriodEnd === false &&
+      Math.abs(ends - eventAt.getTime()) <= 3 * 60 * 60 * 1000
+    if (!endsNow || !polarSubscriptionId) return 'customer'
+
+    const pastDue = await this.subscriptionModel.exists({
+      polarSubscriptionId,
+      pastDueAt: { $ne: null },
+    })
+    if (pastDue) return 'payment_failed'
+
+    const recentPastDue = await this.polarWebhookPayloadModel.exists({
+      'payload.data.id': polarSubscriptionId,
+      'payload.data.status': 'past_due',
+      createdAt: { $gte: new Date(eventAt.getTime() - 35 * 24 * 60 * 60 * 1000) },
+    })
+    return recentPastDue ? 'payment_failed' : 'customer'
+  }
+
+  async uncancelSubscription({
+    polarSubscriptionId,
+  }: {
+    polarSubscriptionId?: string
+  }) {
+    if (!polarSubscriptionId) return
+    await this.subscriptionModel.updateMany(
+      { polarSubscriptionId, isActive: true },
+      { $set: { cancelAtPeriodEnd: false }, $unset: { churnCause: 1 } },
+    )
+  }
+
   async cancelSubscription({
     userId,
     polarProductId,
     cancelAtPeriodEnd,
     currentPeriodEnd,
     status,
+    churnCause,
   }: {
     userId: string
     polarProductId?: string
     cancelAtPeriodEnd?: boolean
     currentPeriodEnd?: Date
     status?: string
+    churnCause?: 'customer' | 'payment_failed'
   }) {
     const userObjectId = new Types.ObjectId(userId)
 
@@ -960,6 +1043,7 @@ export class BillingService {
           subscriptionEndDate: currentPeriodEnd,
         }),
         ...(status && { status }),
+        ...(churnCause && { churnCause }),
       },
     )
 

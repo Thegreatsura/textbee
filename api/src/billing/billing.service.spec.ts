@@ -1048,3 +1048,166 @@ describe('BillingService - reads raise no usage notices', () => {
     expect(notifyOnce).not.toHaveBeenCalled()
   })
 })
+
+describe('BillingService - payment retry state and churn cause', () => {
+  const eventAt = new Date('2026-09-20T12:00:00Z')
+  const build = ({ pastDue = null as any, storedPastDue = null as any } = {}) => {
+    const subscriptionModel = {
+      updateMany: jest.fn().mockResolvedValue({}),
+      exists: jest.fn().mockResolvedValue(pastDue),
+    }
+    const payloadModel = { exists: jest.fn().mockResolvedValue(storedPastDue) }
+    const service = new BillingService(
+      {} as any,
+      subscriptionModel as any,
+      {} as any,
+      {} as any,
+      payloadModel as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    )
+    return { service, subscriptionModel, payloadModel }
+  }
+  const failedCancel = {
+    polarSubscriptionId: 'sub_1',
+    status: 'canceled',
+    cancelAtPeriodEnd: false,
+    endsAt: new Date('2026-09-20T13:00:00Z'),
+    eventAt,
+  }
+
+  it('keeps the first retry period start when the provider gives none', async () => {
+    const { service, subscriptionModel } = build()
+
+    await service.syncPastDue({ polarSubscriptionId: 'sub_1', status: 'past_due', eventAt })
+
+    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
+      { polarSubscriptionId: 'sub_1', isActive: true, pastDueAt: null },
+      { $set: { pastDueAt: eventAt } },
+    )
+  })
+
+  it('uses the provider time when present', async () => {
+    const { service, subscriptionModel } = build()
+
+    await service.syncPastDue({
+      polarSubscriptionId: 'sub_1',
+      status: 'past_due',
+      pastDueAt: '2026-09-18T00:00:00Z',
+      eventAt,
+    })
+
+    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
+      { polarSubscriptionId: 'sub_1', isActive: true },
+      { $set: { pastDueAt: new Date('2026-09-18T00:00:00Z') } },
+    )
+  })
+
+  it('clears the retry period once the subscription is active again', async () => {
+    const { service, subscriptionModel } = build()
+
+    await service.syncPastDue({ polarSubscriptionId: 'sub_1', status: 'active', eventAt })
+
+    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
+      { polarSubscriptionId: 'sub_1', pastDueAt: { $ne: null } },
+      { $unset: { pastDueAt: 1 } },
+    )
+  })
+
+  it('reads an immediate end after a retry period as payment_failed', async () => {
+    const { service } = build({ pastDue: { _id: 's' } })
+
+    await expect(service.churnCause(failedCancel)).resolves.toBe('payment_failed')
+  })
+
+  it('falls back to a stored past_due payload from the last 35 days', async () => {
+    const { service, payloadModel } = build({ storedPastDue: { _id: 'p' } })
+
+    await expect(service.churnCause(failedCancel)).resolves.toBe('payment_failed')
+    const filter = payloadModel.exists.mock.calls[0][0]
+    expect(filter).toMatchObject({
+      'payload.data.id': 'sub_1',
+      'payload.data.status': 'past_due',
+    })
+    expect(eventAt.getTime() - filter.createdAt.$gte.getTime()).toBe(35 * 86400000)
+  })
+
+  it.each([
+    ['a scheduled cancellation', { cancelAtPeriodEnd: true }],
+    ['a status that is still active', { status: 'active' }],
+    ['an end more than 3 hours away', { endsAt: new Date('2026-09-20T15:30:00Z') }],
+    ['no end date', { endsAt: null }],
+  ])('reads %s as customer', async (_label, change) => {
+    const { service } = build({ pastDue: { _id: 's' } })
+
+    await expect(service.churnCause({ ...failedCancel, ...change })).resolves.toBe('customer')
+  })
+
+  it('reads an immediate end without a retry period as customer', async () => {
+    const { service } = build()
+
+    await expect(service.churnCause(failedCancel)).resolves.toBe('customer')
+  })
+
+  it('clears the cancellation and cause on uncancel', async () => {
+    const { service, subscriptionModel } = build()
+
+    await service.uncancelSubscription({ polarSubscriptionId: 'sub_1' })
+
+    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
+      { polarSubscriptionId: 'sub_1', isActive: true },
+      { $set: { cancelAtPeriodEnd: false }, $unset: { churnCause: 1 } },
+    )
+  })
+})
+
+describe('BillingService - new checkout session', () => {
+  it('restarts the stored session on every new checkout', async () => {
+    const plan = { name: 'pro', polarMonthlyProductId: 'prod_m', polarYearlyProductId: 'prod_y' }
+    const checkoutSessionModel = {
+      findOne: jest.fn().mockResolvedValue(null),
+      updateOne: jest.fn().mockReturnValue({ catch: jest.fn() }),
+    }
+    const service = new BillingService(
+      { findOne: jest.fn().mockResolvedValue(plan) } as any,
+      { findOne: jest.fn(() => ({ populate: jest.fn().mockResolvedValue(null) })) } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      checkoutSessionModel as any,
+      {} as any,
+      {} as any,
+      { checkoutStarted: jest.fn() } as any,
+    )
+    ;(service as any).polarApi = {
+      checkouts: {
+        create: jest.fn().mockResolvedValue({
+          id: 'co_2',
+          url: 'https://pay.test/co_2',
+          expiresAt: '2026-09-28T00:00:00Z',
+        }),
+      },
+      discounts: { get: jest.fn() },
+    }
+    delete process.env.POLAR_DEFAULT_DISCOUNT_ID
+
+    await service.getCheckoutUrl({
+      user: { _id: new Types.ObjectId('507f1f77bcf86cd799439011'), email: 'a@example.com' },
+      payload: { planName: 'pro', billingInterval: 'monthly' },
+      req: { ip: '127.0.0.1', headers: {} },
+    })
+
+    const [filter, update, options] = checkoutSessionModel.updateOne.mock.calls[0]
+    expect(filter).toEqual({ user: expect.any(Types.ObjectId) })
+    expect(update.$set).toMatchObject({
+      checkoutSessionId: 'co_2',
+      isCompleted: false,
+      isAbandoned: false,
+    })
+    expect(update.$set.sessionStartedAt).toBeInstanceOf(Date)
+    expect(update.$unset).toEqual({ completedAt: 1 })
+    expect(options).toEqual({ upsert: true })
+  })
+})

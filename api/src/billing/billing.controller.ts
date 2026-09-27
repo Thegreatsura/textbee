@@ -158,6 +158,16 @@ export class BillingController {
     // store the payload in the database
     await this.billingService.storePolarWebhookPayload(payload)
 
+    const eventAt = new Date((payload as any).timestamp ?? Date.now())
+    const event: any = payload.data
+    const pastDue = () =>
+      this.billingService.syncPastDue({
+        polarSubscriptionId: event?.id,
+        status: event?.status,
+        pastDueAt: event?.pastDueAt ?? event?.past_due_at,
+        eventAt,
+      })
+
     // Handle Polar.sh webhook events
     switch (payload.type) {
       case 'subscription.created':
@@ -181,6 +191,17 @@ export class BillingController {
           polarCustomerId: payload.data?.customerId,
           cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
         })
+        await pastDue()
+        break
+
+      case 'subscription.past_due':
+        await pastDue()
+        break
+
+      case 'subscription.uncanceled':
+        await this.billingService.uncancelSubscription({
+          polarSubscriptionId: event?.id,
+        })
         break
 
       // @ts-ignore
@@ -199,6 +220,13 @@ export class BillingController {
           cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
           currentPeriodEnd: payload.data?.currentPeriodEnd,
           status: payload.data?.status,
+          churnCause: await this.billingService.churnCause({
+            polarSubscriptionId: event?.id,
+            status: event?.status,
+            cancelAtPeriodEnd: event?.cancelAtPeriodEnd,
+            endsAt: event?.endsAt ?? event?.endedAt,
+            eventAt,
+          }),
         })
         break
 

@@ -601,6 +601,18 @@ describe('BillingService - canPerformAction account checks', () => {
       })
     })
 
+    it('still refuses an over-limit send when the notice fails', async () => {
+      mockBillingNotifications.notifyOnce.mockRejectedValue(new Error('db down'))
+
+      await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+        status: 429,
+      })
+      expect(console.error).toHaveBeenCalledWith(
+        'canPerformAction: failed to record a limit notice',
+        expect.objectContaining({ error: 'db down' }),
+      )
+    })
+
     it('rejects the receive when RECEIVE_SMS_OVER_LIMIT is reject', async () => {
       process.env.RECEIVE_SMS_OVER_LIMIT = 'reject'
 

@@ -1243,6 +1243,7 @@ export class BillingService {
             monthly: "You've reached your monthly message limit",
             daily: "You've reached today's message limit",
           }[tripped]
+          // A failed notice must never let an over-limit action through.
           const notification = this.billingNotifications.notifyOnce({
             userId: user._id,
             type,
@@ -1261,11 +1262,13 @@ export class BillingService {
             emailKey: usageEmailKey(type, plan.name),
             recordHit: tripped !== 'bulk',
           })
-          if (storeReceive) {
-            notification.catch(() => {})
-          } else {
-            await notification
-          }
+          const logged = notification.catch((error) => {
+            console.error('canPerformAction: failed to record a limit notice', {
+              userId,
+              error: error?.message ?? error,
+            })
+          })
+          if (!storeReceive) await logged
         }
 
         if (storeReceive) {

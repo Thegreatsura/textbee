@@ -24,6 +24,7 @@ import { WebhookEvent } from '../webhook/webhook-event.enum'
 import { WebhookService } from '../webhook/webhook.service'
 import { BillingService } from '../billing/billing.service'
 import { UsersService } from '../users/users.service'
+import { UserRollupService } from '../users/user-rollup.service'
 import { SmsQueueService } from './queue/sms-queue.service'
 import { escapeRegExp } from '../common/escape-regexp'
 import { normalizeOsFields } from './os-version'
@@ -77,6 +78,7 @@ export class GatewayService {
     private billingService: BillingService,
     private smsQueueService: SmsQueueService,
     private usersService: UsersService,
+    private readonly userRollup: UserRollupService,
   ) {}
 
   // Blocks creating or re-enabling a device when the user's plan device limit
@@ -203,6 +205,11 @@ export class GatewayService {
       this.usersService
         .markMilestone(user._id, 'firstDeviceAt')
         .catch(() => undefined)
+
+      // Keeps device-based notification targeting current without waiting for
+      // the nightly sweep. Not awaited, like the milestone above, and it never
+      // rejects, so it can neither slow nor fail a registration.
+      this.userRollup.refreshQuietly(user._id)
 
       return createdDevice
     }
@@ -430,6 +437,8 @@ export class GatewayService {
       }
       throw error
     }
+
+    this.userRollup.refreshQuietly(device.user as any)
 
     return { success: true }
   }

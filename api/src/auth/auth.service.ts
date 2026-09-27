@@ -1,5 +1,6 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common'
 import { UsersService } from '../users/users.service'
+import { UserRollupService } from '../users/user-rollup.service'
 import { sanitizeAttribution } from '../users/attribution'
 import { AnalyticsService } from '../analytics/analytics.service'
 import { JwtService } from '@nestjs/jwt'
@@ -48,6 +49,7 @@ export const withoutPassword = (user: UserDocument) => {
 export class AuthService {
   constructor(
     private usersService: UsersService,
+    private readonly userRollup: UserRollupService,
     private jwtService: JwtService,
     @InjectModel(ApiKey.name) private apiKeyModel: Model<ApiKeyDocument>,
     @InjectModel(ApiKeyTombstone.name)
@@ -527,6 +529,8 @@ export class AuthService {
       .markMilestone(currentUser._id, 'firstApiKeyAt')
       .catch(() => undefined)
 
+    this.userRollup.refreshQuietly(currentUser._id)
+
     return { apiKey, message: 'Save this key, it wont be shown again ;)' }
   }
 
@@ -688,6 +692,10 @@ export class AuthService {
     }
     apiKey.revokedAt = new Date()
     await apiKey.save()
+
+    // Only revoking changes the live key count. Deleting one requires it to be
+    // revoked already, so that path cannot move the number.
+    this.userRollup.refreshQuietly(apiKey.user as any)
   }
 
   async renameApiKey(apiKeyId: string, name: string) {

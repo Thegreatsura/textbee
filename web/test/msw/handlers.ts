@@ -6,6 +6,7 @@ import {
   mockBillingPlans,
   mockDevices,
   mockMessages,
+  mockNotificationFeed,
   mockStats,
   mockSubscription,
   mockUser,
@@ -69,4 +70,12 @@ export const handlers = [
 
   // Account-level message history; device scoping travels as a query param.
   http.get(`${API_BASE_URL}/gateway/messages`, () => raw(mockMessages)),
+
+  // --- dashboard notifications ---
+  http.get(url(ApiEndpoints.notifications.feed()), () =>
+    raw(mockNotificationFeed)
+  ),
+  http.post(url(ApiEndpoints.notifications.events()), () =>
+    raw({ recorded: 1 })
+  ),
 ]

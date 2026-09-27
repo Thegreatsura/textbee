@@ -142,3 +142,52 @@ export interface WebhookSubscription {
   isActive?: boolean
   createdAt?: string
 }
+
+// ---------- dashboard notifications ----------
+
+export type NotificationTone =
+  | 'info'
+  | 'success'
+  | 'warning'
+  | 'critical'
+  | 'promo'
+
+export interface NotificationAction {
+  label: string
+  href: string
+  style?: string
+  target?: string
+  trackAs?: string
+}
+
+export interface ServedNotification {
+  id: string
+  key: string
+  kind: 'system' | 'campaign'
+  placement: 'tile' | 'modal'
+  tone: NotificationTone
+  renderer: string
+  rank: number
+  variantId: string
+  title: string
+  body?: string
+  actions: NotificationAction[]
+  dismissible: boolean
+  dismissAfterSeconds?: number
+}
+
+export interface NotificationFeed {
+  // False means this account should render the dashboard's own built-in
+  // messages instead. The engine is then off for it and the list is empty.
+  engineEnabled: boolean
+  settings: { maxTilesAtOnce: number; maxModalsPerLoad: number } | null
+  notifications: ServedNotification[]
+}
+
+export type NotificationEventType = 'impression' | 'click' | 'dismiss'
+
+export interface NotificationEvent {
+  notificationId: string
+  type: NotificationEventType
+  variantId?: string
+}

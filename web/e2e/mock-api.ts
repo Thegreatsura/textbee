@@ -71,6 +71,18 @@ export async function mockApi(page: Page, overrides: MockApiOverrides = {}) {
       return json(route, { data: { ...device, isDefault: true } })
     }
 
+    // The dashboard asks which messaging implementation to render. Answering
+    // "engine off" keeps these tests on the built-in messages, which is what the
+    // localStorage suppression in session.ts silences. Stated explicitly rather
+    // than relying on the unmapped fallback below, so a change there cannot
+    // quietly move every test onto the engine path.
+    if (path === '/notifications/feed')
+      return json(route, {
+        engineEnabled: false,
+        settings: null,
+        notifications: [],
+      })
+
     // Any unmapped backend call still gets a benign mocked response so the test
     // cannot fall through to a real backend.
     return json(route, { data: [] })

@@ -147,7 +147,7 @@ describe('SesEventsService', () => {
 
   it('keeps at most 20 signing certificates', async () => {
     for (let i = 0; i < 25; i++) {
-      const url = `https://sns.us-east-1.amazonaws.com/cert-${i}.pem`
+      const url = `https://sns.us-east-1.amazonaws.com/SimpleNotificationService-c${i}.pem`
       const msg = signed({
         Type: 'Notification',
         MessageId: `m${i}`,
@@ -192,5 +192,20 @@ describe('SesEventsService', () => {
     expect(isSnsUrl('http://sns.eu-west-1.amazonaws.com/x.pem')).toBe(false)
     expect(isSnsUrl('https://sns.eu-west-1.amazonaws.com.evil.com/x.pem')).toBe(false)
     expect(isSnsUrl('https://evil.com/sns.us-east-1.amazonaws.com')).toBe(false)
+  })
+
+  it('accepts signing certificates only from the SNS certificate path', () => {
+    const ok = 'https://sns.us-east-1.amazonaws.com/SimpleNotificationService-0a1b2c.pem'
+    expect(SesEventsService.isSnsCertUrl(ok)).toBe(true)
+    for (const bad of [
+      'https://sns.us-east-1.amazonaws.com/other.pem',
+      'https://sns.us-east-1.amazonaws.com/SimpleNotificationService-0a1b.pem?x=1',
+      'https://sns.us-east-1.amazonaws.com:8443/SimpleNotificationService-0a1b.pem',
+      'https://user@sns.us-east-1.amazonaws.com/SimpleNotificationService-0a1b.pem',
+      'http://sns.us-east-1.amazonaws.com/SimpleNotificationService-0a1b.pem',
+      'https://sns.us-east-1.amazonaws.com.evil.example/SimpleNotificationService-0a1b.pem',
+    ]) {
+      expect(SesEventsService.isSnsCertUrl(bad)).toBe(false)
+    }
   })
 })

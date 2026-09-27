@@ -9,6 +9,7 @@ import {
 } from './schemas/email-suppression.schema'
 
 const SNS_HOST = /^sns\.[a-z0-9-]+\.amazonaws\.com$/
+const SNS_CERT_PATH = /^\/SimpleNotificationService-[A-Za-z0-9]+\.pem$/
 const MAX_AGE_MS = 60 * 60 * 1000
 const MAX_CERTS = 20
 
@@ -97,20 +98,29 @@ export class SesEventsService {
     return 'ok'
   }
 
+  /** Signing certificates only come from the SNS certificate path on an SNS host. */
+  static isSnsCertUrl(value: unknown): boolean {
+    if (!isSnsUrl(value)) return false
+    const url = new URL(value as string)
+    return SNS_CERT_PATH.test(url.pathname) && url.search === '' && url.username === '' && url.password === '' && url.port === ''
+  }
+
   private async verify(msg: Record<string, any>): Promise<boolean> {
     const algorithm =
       msg.SignatureVersion === '1' ? 'RSA-SHA1' : msg.SignatureVersion === '2' ? 'RSA-SHA256' : null
     const toSign = snsStringToSign(msg)
     if (!algorithm || !toSign || typeof msg.Signature !== 'string') return false
-    if (!isSnsUrl(msg.SigningCertURL)) return false
+    if (!SesEventsService.isSnsCertUrl(msg.SigningCertURL)) return false
+    const certUrl = new URL(msg.SigningCertURL)
+    const safeCertUrl = `https://${certUrl.hostname}${certUrl.pathname}`
     try {
-      let cert = this.certs.get(msg.SigningCertURL)
+      let cert = this.certs.get(safeCertUrl)
       if (!cert) {
-        cert = await this.fetchText(msg.SigningCertURL)
+        cert = await this.fetchText(safeCertUrl)
         if (this.certs.size >= MAX_CERTS) {
           this.certs.delete(this.certs.keys().next().value)
         }
-        this.certs.set(msg.SigningCertURL, cert)
+        this.certs.set(safeCertUrl, cert)
       }
       return createVerify(algorithm).update(toSign, 'utf8').verify(cert, msg.Signature, 'base64')
     } catch (e) {

@@ -24,6 +24,7 @@ import { WebhookEvent } from '../webhook/webhook-event.enum'
 import { WebhookService } from '../webhook/webhook.service'
 import { BillingService } from '../billing/billing.service'
 import { UsersService } from '../users/users.service'
+import { UserRollupService } from '../users/user-rollup.service'
 import { SmsQueueService } from './queue/sms-queue.service'
 import { escapeRegExp } from '../common/escape-regexp'
 import { normalizeOsFields } from './os-version'
@@ -77,6 +78,7 @@ export class GatewayService {
     private billingService: BillingService,
     private smsQueueService: SmsQueueService,
     private usersService: UsersService,
+    private readonly userRollup: UserRollupService,
   ) {}
 
   // Blocks creating or re-enabling a device when the user's plan device limit
@@ -203,6 +205,11 @@ export class GatewayService {
       this.usersService
         .markMilestone(user._id, 'firstDeviceAt')
         .catch(() => undefined)
+
+      // Keeps device-based notification targeting current without waiting for
+      // the nightly sweep. Not awaited, like the milestone above, and it never
+      // rejects, so it can neither slow nor fail a registration.
+      this.userRollup.refreshQuietly(user._id)
 
       return createdDevice
     }
@@ -370,11 +377,24 @@ export class GatewayService {
       updateData.fcmTokenUpdatedAt = now
     }
 
-    return await this.deviceModel.findByIdAndUpdate(
+    // Re-registration is the other path that can move the reported build, and
+    // the rollup carries the oldest build on the account, which decides whether
+    // an update prompt is shown.
+    const appVersionChanged =
+      updateData.appVersionCode !== undefined &&
+      updateData.appVersionCode !== device.appVersionCode
+
+    const updated = await this.deviceModel.findByIdAndUpdate(
       deviceId,
       this.tokenUpdate(device, input.fcmToken, updateData),
       { new: true },
     )
+
+    if (appVersionChanged) {
+      this.userRollup.refreshQuietly(device.user as any)
+    }
+
+    return updated
   }
 
   // Mongoose drops undefined keys from $set, so clearing an invalidation
@@ -430,6 +450,8 @@ export class GatewayService {
       }
       throw error
     }
+
+    this.userRollup.refreshQuietly(device.user as any)
 
     return { success: true }
   }
@@ -1951,6 +1973,19 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
       updateData.appVersionCode = input.appVersionCode
     }
 
+    // The app reports an upgrade here and nowhere else, and the rollup carries
+    // the oldest build on the account, which decides whether an update prompt is
+    // shown. Without refreshing on a change, someone who has just updated keeps
+    // being told to update until the nightly sweep. Compared against the same
+    // effective version the rollup stores, so an unchanged heartbeat costs
+    // nothing.
+    const reportedVersion =
+      input.appVersionCode ?? device.appVersionInfo?.versionCode
+    const appVersionChanged =
+      typeof reportedVersion === 'number' &&
+      reportedVersion !==
+        (device.appVersionInfo?.versionCode ?? device.appVersionCode)
+
     // Update OS info if provided. These change at most once per OS upgrade,
     // so skip keys already matching the stored value to keep the write a no-op.
     for (const [key, value] of Object.entries(
@@ -2058,6 +2093,10 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
       deviceId,
       this.tokenUpdate(device, input.fcmToken, updateData),
     )
+
+    if (appVersionChanged) {
+      this.userRollup.refreshQuietly(device.user as any)
+    }
 
     // Fetch updated device to get current name
     const updatedDevice = await this.deviceModel.findById(deviceId)

@@ -154,6 +154,46 @@ export class UserClient {
 
 const UserClientSchema = SchemaFactory.createForClass(UserClient)
 
+// Slow-to-derive counts about the account, kept here rather than computed on
+// read.
+//
+// Two apps have to resolve the same targeting attributes and they never call
+// each other, so anything either would compute by aggregation is a candidate to
+// be stored once here instead. Reading these also removes a per-request scan of
+// every device document from the dashboard's critical path.
+//
+// Deliberately NOT here: the monthly and daily message counts. The quota the
+// account is actually measured against is a sliding window (see
+// billing.service canPerformAction), which no counter can track by increment,
+// and a stored number that disagreed with the real wall would make the quota
+// warnings wrong. Those are counted on demand instead, against the shared
+// window boundaries in notifications/rules/usage-window.ts.
+@Schema({ _id: false })
+export class UserRollup {
+  // No defaults on the counts. A zero here would be indistinguishable from
+  // "never computed", and zero devices is a targetable fact. Readers gate on
+  // computedAt, and this keeps the stored document from asserting a zero nobody
+  // measured.
+  @Prop({ type: Number })
+  deviceCount?: number
+
+  @Prop({ type: Number })
+  apiKeyCount?: number
+
+  /** Summed from the device counters, matching the dashboard's own totals. */
+  @Prop({ type: Number })
+  totalSentSms?: number
+
+  /** Oldest app build across the account's devices, for the update prompt. */
+  @Prop({ type: Number })
+  minAppVersionCode?: number
+
+  @Prop({ type: Date })
+  computedAt?: Date
+}
+
+const UserRollupSchema = SchemaFactory.createForClass(UserRollup)
+
 @Schema({ timestamps: true })
 export class User {
   _id?: Types.ObjectId
@@ -234,6 +274,14 @@ export class User {
 
   @Prop({ type: UserMilestonesSchema, default: () => ({}) })
   milestones?: UserMilestones
+
+  // Read on every authenticated request, because the auth guard loads the whole
+  // user document. That is accepted: it is a handful of numbers on a document
+  // that already carries attribution, access, client, milestones and
+  // onboarding, and marking it select:false would break every req.user.rollup
+  // read for no meaningful saving.
+  @Prop({ type: UserRollupSchema, default: () => ({}) })
+  rollup?: UserRollup
 
   @Prop({
     type: {

@@ -11,6 +11,17 @@ const alertVariants = cva(
         default: "bg-card text-foreground",
         destructive:
           "border-destructive/30 bg-destructive/[0.07] text-destructive [&>svg]:text-destructive",
+        // Tones for the notification engine. These are the tinted-surface
+        // patterns the alert components already used inline; naming them here
+        // stops each one hand-writing its own and lets an authored record pick
+        // one by name. Semantic utilities only, so the same markup renders
+        // identically in the admin app's preview despite its older Tailwind.
+        info: "bg-card text-foreground",
+        success: "border-success/30 bg-success/[0.07] text-foreground",
+        warning: "border-warning/30 bg-warning/[0.08] text-foreground",
+        critical:
+          "border-destructive/30 bg-destructive/[0.07] text-foreground",
+        promo: "border-primary/25 bg-primary/[0.06] text-foreground",
       },
     },
     defaultVariants: {

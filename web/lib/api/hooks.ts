@@ -14,6 +14,8 @@ import type {
   ApiKeyStatusFilter,
   Device,
   GatewayStats,
+  NotificationEvent,
+  NotificationFeed,
   Plan,
   Subscription,
   User,
@@ -490,5 +492,61 @@ export function useDeviceMessages(
     // 60s client-wide default. Before ...options so callers can override.
     staleTime: 15_000,
     ...options,
+  })
+}
+
+// ---------- dashboard notifications ----------
+
+export function useNotificationFeed(options?: QueryOpts<NotificationFeed>) {
+  return useQuery({
+    queryKey: queryKeys.notificationFeed,
+    queryFn: () =>
+      httpBrowserClient
+        .get(ApiEndpoints.notifications.feed())
+        .then(unwrapBody<NotificationFeed>),
+    // The feed is cheap and the flag on it decides which implementation the
+    // dashboard renders, so it should not be served from a long-stale cache.
+    staleTime: 30_000,
+    // One retry is enough. On failure the caller keeps showing the built-in
+    // messages, so failing fast is better than sitting on an empty slot.
+    retry: 1,
+    ...options,
+  })
+}
+
+/**
+ * Impressions, clicks and dismissals, sent as a batch. Deliberately separate
+ * from the feed: a refetch or a prefetch would otherwise count as another view.
+ */
+export function useTrackNotificationEvents(
+  options?: MutationOpts<{ recorded: number }, NotificationEvent[]>,
+) {
+  return useMutation({
+    mutationFn: (events: NotificationEvent[]) =>
+      httpBrowserClient
+        .post(ApiEndpoints.notifications.events(), { events })
+        .then(unwrapBody<{ recorded: number }>),
+    ...options,
+  })
+}
+
+export function useDismissNotification(
+  options?: MutationOpts<
+    { success: boolean },
+    { id: string; snoozeHours?: number }
+  >,
+) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, snoozeHours }) =>
+      httpBrowserClient
+        .post(ApiEndpoints.notifications.dismiss(id), { snoozeHours })
+        .then(unwrapBody<{ success: boolean }>),
+    ...options,
+    onSuccess: (...args) => {
+      // Refetch so whatever was held back by the cap can take the freed slot.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationFeed })
+      options?.onSuccess?.(...args)
+    },
   })
 }

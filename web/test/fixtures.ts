@@ -215,3 +215,34 @@ export const mockBillingPlans = [
     isActive: true,
   },
 ]
+
+// A feed with the engine on and one promo tile. Kept minimal on purpose: the
+// ordering and capping are decided server side and tested there, so the client
+// fixtures only need to exercise rendering and the flag.
+export const mockNotificationFeed = {
+  engineEnabled: true,
+  settings: { maxTilesAtOnce: 2, maxModalsPerLoad: 1 },
+  notifications: [
+    {
+      id: '6700000000000000000000a1',
+      key: 'upgrade-to-pro',
+      kind: 'campaign',
+      placement: 'tile',
+      tone: 'promo',
+      renderer: 'standard',
+      rank: 1,
+      variantId: 'v1',
+      title: 'Upgrade to Pro',
+      body: 'More messages every month.',
+      actions: [{ label: 'See Pro', href: '/checkout/pro' }],
+      dismissible: true,
+    },
+  ],
+}
+
+/** The shape returned while the engine is switched off for an account. */
+export const mockNotificationFeedDisabled = {
+  engineEnabled: false,
+  settings: null,
+  notifications: [],
+}

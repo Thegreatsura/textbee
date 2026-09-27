@@ -3,15 +3,9 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import AccountDeletionAlert from './(components)/alerts/account-deletion-alert'
-import UpgradeToProAlert from './(components)/alerts/upgrade-to-pro-alert'
-import UpdateAppModal from './(components)/devices/update-app-modal'
-import UpdateAppNotificationBar from './(components)/devices/update-app-notification-bar'
-import VerifyEmailAlert from './(components)/alerts/verify-email-alert'
-import PastDueBillingAlert from './(components)/alerts/past-due-billing-alert'
-import JoinDiscordBanner from './(components)/alerts/join-discord-banner'
-import { SurveyModal } from '@/components/shared/survey-modal'
-import { JoinCommunityModal } from '@/components/shared/join-community-modal'
+import { NotificationProvider } from '@/components/notifications/notification-provider'
+import { NotificationTileStack } from '@/components/notifications/notification-tile-stack'
+import { NotificationModalHost } from '@/components/notifications/notification-modal-host'
 import Footer from '@/components/shared/footer'
 import ThemeToggle from '@/components/shared/theme-toggle'
 import BreadcrumbNav from './(components)/breadcrumb-nav'
@@ -36,6 +30,9 @@ export default function DashboardLayout({
   const [searchOpen, setSearchOpen] = useState(false)
 
   return (
+    // One feed query, shared by the tile slot and the modal host, so they cannot
+    // disagree about which implementation is live.
+    <NotificationProvider>
     <div className='min-h-[calc(100vh-3.5rem)]'>
       {/* Visible only on focus. Without it, keyboard users tab through the
           whole sidebar on every page before reaching the content. */}
@@ -92,12 +89,7 @@ export default function DashboardLayout({
 
         <BreadcrumbNav />
         <div className='space-y-2 p-4 pb-0'>
-          <UpdateAppNotificationBar />
-          <VerifyEmailAlert />
-          <PastDueBillingAlert />
-          <AccountDeletionAlert />
-          <UpgradeToProAlert />
-          <JoinDiscordBanner />
+          <NotificationTileStack />
         </div>
         <main id='main-content' tabIndex={-1}>
           {children}
@@ -125,10 +117,9 @@ export default function DashboardLayout({
         </div>
       </nav>
 
-      <SurveyModal />
-      <UpdateAppModal />
-      <JoinCommunityModal />
+      <NotificationModalHost />
     </div>
+    </NotificationProvider>
   )
 }
 

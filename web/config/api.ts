@@ -53,4 +53,9 @@ export const ApiEndpoints = {
     customerSupport: () => '/support/customer-support',
     requestAccountDeletion: () => '/support/request-account-deletion',
   },
+  notifications: {
+    feed: () => '/notifications/feed',
+    events: () => '/notifications/events',
+    dismiss: (id: string) => `/notifications/${id}/dismiss`,
+  },
 }

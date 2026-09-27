@@ -51,6 +51,7 @@ const build = () => {
 
   const service = new AuthService(
     usersService as any,
+    { refreshQuietly: jest.fn().mockResolvedValue(undefined) } as any,
     jwtService as any,
     apiKeyModel,
     apiKeyTombstoneModel as any,

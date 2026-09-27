@@ -33,7 +33,10 @@ import {
 } from './billing-notifications.service'
 import { resolveClientAddress } from '../common/client-address'
 
-const PAID_MONTHLY_LIMIT_MULTIPLIER = 1.1
+// Paid plans are allowed a little past their nominal monthly limit before sends
+// are refused. Exported because notification targeting measures usage against
+// the same effective allowance, and two copies of this number would drift.
+export const PAID_MONTHLY_LIMIT_MULTIPLIER = 1.1
 
 @Injectable()
 export class BillingService {

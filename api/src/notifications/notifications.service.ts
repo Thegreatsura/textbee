@@ -207,6 +207,13 @@ export class NotificationsService {
       // Stable per account per day, so the chosen copy does not change under
       // the reader between refetches.
       seed: `${user._id}:${now.toISOString().slice(0, 10)}`,
+      // Lets an authored link carry who is clicking, which is how the feedback
+      // form prefills its name and email fields.
+      tokens: {
+        'user.id': String(user._id),
+        'user.name': (user as any).name,
+        'user.email': (user as any).email,
+      },
     })
 
     return {

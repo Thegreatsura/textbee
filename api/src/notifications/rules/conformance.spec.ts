@@ -1,9 +1,15 @@
 import { evaluateCondition, referencedAttributes } from './condition-evaluator'
 import { selectNotifications, Candidate } from './notification-ranker'
 import { validateCondition } from './condition-validator'
+import {
+  interpolateHref,
+  referencedTokens,
+  unknownTokens,
+} from './interpolate-href'
 import { ATTRIBUTES, ATTRIBUTES_BY_KEY } from './attributes'
 import {
   CONDITION_CASES,
+  HREF_CASES,
   SELECTION_CASES,
   SELECTION_DEFAULT_NOW,
 } from './conformance-cases'
@@ -40,6 +46,7 @@ describe('selection conformance', () => {
         baseContext: testCase.baseContext ?? {},
         now: new Date(testCase.nowIso ?? SELECTION_DEFAULT_NOW),
         seed: testCase.seed ?? 'seed:2026-09-27',
+        tokens: testCase.tokens,
       })
 
       expect(result.served.map((s) => s.key)).toEqual(testCase.expectedServed)
@@ -55,8 +62,31 @@ describe('selection conformance', () => {
         const entry = result.filtered.find((f) => f.key === key)
         expect(entry?.reason).toBe(reason)
       }
+
+      for (const [key, href] of Object.entries(testCase.expectedHrefs ?? {})) {
+        const entry = result.served.find((s) => s.key === key)
+        expect(entry?.actions?.[0]?.href).toBe(href)
+      }
     },
   )
+})
+
+describe('link token conformance', () => {
+  it.each(HREF_CASES.map((c) => [c.name, c] as const))(
+    '%s',
+    (_name, testCase) => {
+      expect(interpolateHref(testCase.href, testCase.values)).toBe(
+        testCase.expected,
+      )
+    },
+  )
+
+  it('reports the tokens an author got wrong', () => {
+    const href = 'https://x.example/?a={{user.email}}&b={{user.secret}}'
+    expect(referencedTokens(href)).toEqual(['user.email', 'user.secret'])
+    expect(unknownTokens(href)).toEqual(['user.secret'])
+    expect(unknownTokens('https://x.example/?a={{user.name}}')).toEqual([])
+  })
 })
 
 describe('attribute registry', () => {

@@ -5,11 +5,17 @@ import { join } from 'path'
 import { mailTransportConfig } from './mail.config'
 import { MailService } from './mail.service'
 import { SentEmail, SentEmailSchema } from './schemas/sent-email.schema'
+import {
+  EmailTemplate,
+  EmailTemplateSchema,
+} from './schemas/email-template.schema'
+import { EmailTemplatesService } from './email-templates.service'
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: SentEmail.name, schema: SentEmailSchema },
+      { name: EmailTemplate.name, schema: EmailTemplateSchema },
     ]),
     MailerModule.forRoot({
       transport: mailTransportConfig,
@@ -34,7 +40,7 @@ import { SentEmail, SentEmailSchema } from './schemas/sent-email.schema'
       },
     } as any),
   ],
-  providers: [MailService],
-  exports: [MailService],
+  providers: [MailService, EmailTemplatesService],
+  exports: [MailService, EmailTemplatesService],
 })
 export class MailModule {}

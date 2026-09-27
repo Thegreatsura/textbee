@@ -3,6 +3,10 @@ import { MongooseModule } from '@nestjs/mongoose'
 import { ApiKey, ApiKeySchema } from '../auth/schemas/api-key.schema'
 import { Device, DeviceSchema } from '../gateway/schemas/device.schema'
 import { SMS, SMSSchema } from '../gateway/schemas/sms.schema'
+import {
+  Subscription,
+  SubscriptionSchema,
+} from '../billing/schemas/subscription.schema'
 import { User, UserSchema } from './schemas/user.schema'
 import { UsersController } from './users.controller'
 import { UsersService } from './users.service'
@@ -22,6 +26,7 @@ import { UserRollupTask } from './tasks/user-rollup.task'
       { name: Device.name, schema: DeviceSchema },
       { name: ApiKey.name, schema: ApiKeySchema },
       { name: SMS.name, schema: SMSSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
     ]),
   ],
   controllers: [UsersController],

@@ -30,14 +30,25 @@ const build = (devices: any[] = [], apiKeyCount = 0) => {
   const smsModel: any = {
     findOne: jest.fn().mockImplementation(() => chain(null)),
   }
+  const subscriptionModel: any = {
+    findOne: jest.fn().mockImplementation(() => chain(null)),
+  }
 
   const service = new UserRollupService(
     userModel,
     deviceModel,
     apiKeyModel,
     smsModel,
+    subscriptionModel,
   )
-  return { service, userModel, deviceModel, apiKeyModel, smsModel }
+  return {
+    service,
+    userModel,
+    deviceModel,
+    apiKeyModel,
+    smsModel,
+    subscriptionModel,
+  }
 }
 
 const setOf = (t: ReturnType<typeof build>) =>
@@ -178,6 +189,28 @@ describe('UserRollupService.backfillMilestones', () => {
     t.userModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 })
 
     expect(await t.service.backfillMilestones({ batchSize: 1 })).toBe(0)
+  })
+
+  it('derives the first payment date, which predates the milestone', async () => {
+    const t = build()
+    const startedPaying = new Date('2026-03-01T00:00:00.000Z')
+    t.userModel.find
+      .mockImplementationOnce(() => chain([{ _id: USER_ID, milestones: {} }]))
+      .mockImplementationOnce(() => chain([]))
+    t.subscriptionModel.findOne.mockImplementation(() =>
+      chain({ subscriptionStartDate: startedPaying, createdAt: new Date() }),
+    )
+
+    await t.service.backfillMilestones({ batchSize: 1 })
+
+    const update = t.userModel.bulkWrite.mock.calls[0][0][0].updateOne.update
+    // Otherwise every account that paid before the milestone existed reads as
+    // never having paid.
+    expect(update.$min['milestones.firstPaidAt']).toEqual(startedPaying)
+    expect(t.subscriptionModel.findOne).toHaveBeenCalledWith({
+      user: USER_ID,
+      amount: { $gt: 0 },
+    })
   })
 
   it('skips an account with nothing to derive', async () => {

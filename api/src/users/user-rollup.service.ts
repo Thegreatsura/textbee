@@ -4,6 +4,7 @@ import { AnyBulkWriteOperation, Model, Types } from 'mongoose'
 import { ApiKey } from '../auth/schemas/api-key.schema'
 import { Device } from '../gateway/schemas/device.schema'
 import { SMS } from '../gateway/schemas/sms.schema'
+import { Subscription } from '../billing/schemas/subscription.schema'
 import { User, UserDocument } from './schemas/user.schema'
 
 // Owns user.rollup. This is the only place the counts behind it are derived, so
@@ -30,6 +31,8 @@ export class UserRollupService {
     @InjectModel(Device.name) private readonly deviceModel: Model<any>,
     @InjectModel(ApiKey.name) private readonly apiKeyModel: Model<any>,
     @InjectModel(SMS.name) private readonly smsModel: Model<any>,
+    @InjectModel(Subscription.name)
+    private readonly subscriptionModel: Model<any>,
   ) {}
 
   /** Recompute one account from source and store it. */
@@ -234,7 +237,7 @@ export class UserRollupService {
   private async derivedMilestones(
     userId: Types.ObjectId,
   ): Promise<Record<string, Date | undefined>> {
-    const [device, apiKey, sms] = await Promise.all([
+    const [device, apiKey, sms, paid] = await Promise.all([
       this.deviceModel
         .findOne({ user: userId })
         .select('createdAt')
@@ -252,12 +255,24 @@ export class UserRollupService {
         .select('createdAt')
         .sort({ createdAt: 1 })
         .lean(),
+      // Earliest subscription that cost something. Without this every account
+      // that paid before the milestone existed reads as never having paid, so
+      // milestones.hasPaid would be false for exactly the long-standing
+      // customers a campaign would want to treat differently.
+      this.subscriptionModel
+        .findOne({ user: userId, amount: { $gt: 0 } })
+        .select('createdAt subscriptionStartDate')
+        .sort({ createdAt: 1 })
+        .lean(),
     ])
 
     return {
       firstDeviceAt: (device as any)?.createdAt,
       firstApiKeyAt: (apiKey as any)?.createdAt,
       firstSmsAt: (sms as any)?.createdAt,
+      // The start date when the provider reported one, else when we recorded it.
+      firstPaidAt:
+        (paid as any)?.subscriptionStartDate ?? (paid as any)?.createdAt,
     }
   }
 

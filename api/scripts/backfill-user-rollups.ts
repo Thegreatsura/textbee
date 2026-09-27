@@ -19,14 +19,22 @@
  * Deliberately does not boot AppModule. That would pull in Bull, so the script
  * would need Redis to count devices, and ScheduleModule, which registers the
  * cron jobs: a one-off script must not be able to fire the nightly sweep. Only
- * Mongoose and the four collections the rollup reads are wired up here.
+ * Mongoose and the collections the rollup reads are wired up here.
  */
+// First, as in main.ts. This script deliberately avoids AppModule, which is also
+// what loads the environment, so without this MONGO_URI is unset wherever it lives
+// in api/.env and the script refuses to run before it can do anything.
+import 'dotenv/config'
 import { Module } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { MongooseModule } from '@nestjs/mongoose'
 import { ApiKey, ApiKeySchema } from '../src/auth/schemas/api-key.schema'
 import { Device, DeviceSchema } from '../src/gateway/schemas/device.schema'
 import { SMS, SMSSchema } from '../src/gateway/schemas/sms.schema'
+import {
+  Subscription,
+  SubscriptionSchema,
+} from '../src/billing/schemas/subscription.schema'
 import { User, UserSchema } from '../src/users/schemas/user.schema'
 import { UserRollupService } from '../src/users/user-rollup.service'
 
@@ -38,6 +46,7 @@ import { UserRollupService } from '../src/users/user-rollup.service'
       { name: Device.name, schema: DeviceSchema },
       { name: ApiKey.name, schema: ApiKeySchema },
       { name: SMS.name, schema: SMSSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
     ]),
   ],
   providers: [UserRollupService],

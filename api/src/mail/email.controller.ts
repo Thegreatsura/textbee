@@ -82,7 +82,7 @@ export class EmailController {
   @Post('ses-events')
   async sesEvents(@Body() body: unknown, @Res() res: Response) {
     const result = await this.sesEventsService.handle(body)
-    const status = result === 'ok' ? 200 : result === 'invalid' ? 400 : 403
+    const status = { ok: 200, invalid: 400, rejected: 403, error: 500 }[result]
     return res.status(status).send()
   }
 }

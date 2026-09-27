@@ -95,6 +95,7 @@ describe('EmailController', () => {
     ['ok', 200],
     ['invalid', 400],
     ['rejected', 403],
+    ['error', 500],
   ])('answers an SES event that is %s with %i', async (result, status) => {
     sesEvents.handle.mockResolvedValue(result)
     const res = response()

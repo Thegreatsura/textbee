@@ -181,6 +181,13 @@ describe('SesEventsService', () => {
     expect(fetchText).toHaveBeenLastCalledWith(confirm.SubscribeURL)
   })
 
+  it('reports a failed suppression write so the message is retried', async () => {
+    jest.spyOn((service as any).logger, 'error').mockImplementation(() => undefined)
+    model.updateOne.mockRejectedValue(new Error('db down'))
+
+    await expect(service.handle(JSON.stringify(notification(bounce)))).resolves.toBe('error')
+  })
+
   it('answers invalid input without throwing', async () => {
     await expect(service.handle('not json')).resolves.toBe('invalid')
     await expect(service.handle('{}')).resolves.toBe('invalid')

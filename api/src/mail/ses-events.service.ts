@@ -45,7 +45,7 @@ const bareAddress = (value: unknown): string | null => {
   return /^[^\s@]+@[^\s@]+$/.test(address) ? address : null
 }
 
-export type SesEventResult = 'ok' | 'invalid' | 'rejected'
+export type SesEventResult = 'ok' | 'invalid' | 'rejected' | 'error'
 
 @Injectable()
 export class SesEventsService {
@@ -94,6 +94,8 @@ export class SesEventsService {
       }
     } catch (e) {
       this.logger.error(`Failed to handle an SES event: ${e?.message}`)
+      // A failed write asks SNS to retry; the writes are idempotent.
+      if (msg.Type === 'Notification') return 'error'
     }
     return 'ok'
   }

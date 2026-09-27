@@ -62,9 +62,11 @@ export class BillingNotificationsService {
     const now = new Date()
     const existing = await this.notificationModel.findOne({ user, type })
 
-    // The in-app notice is refreshed at most hourly; hits write at most once a minute.
+    // Changed text refreshes the in-app notice at once, the same text at most hourly.
     const refresh =
       !existing?.updatedAt ||
+      existing.title !== title ||
+      existing.message !== message ||
       now.getTime() - new Date(existing.updatedAt).getTime() >= NOTICE_REFRESH_MS
     const day = now.toISOString().slice(0, 10)
     const hit =

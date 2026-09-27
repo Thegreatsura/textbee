@@ -70,6 +70,20 @@ describe('BillingNotificationsService - notifyOnce', () => {
     expect(model.findOneAndUpdate).not.toHaveBeenCalled()
   })
 
+  it('refreshes the in-app notice at once when its text changed', async () => {
+    model.findOne.mockResolvedValue(
+      storedDoc({ updatedAt: hoursAgo(0.1), title: 'Your batch did not fit' }),
+    )
+    model.findOneAndUpdate.mockResolvedValue(storedDoc())
+
+    await notify({ emailKey: null })
+
+    expect(model.findOneAndUpdate.mock.calls[0][1].$set).toMatchObject({
+      title: 'title',
+      message: 'message',
+    })
+  })
+
   it('keeps an in-app notice without queueing an email when there is no template', async () => {
     model.findOne.mockResolvedValue(null)
     model.findOneAndUpdate.mockResolvedValue(storedDoc())

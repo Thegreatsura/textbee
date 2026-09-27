@@ -9,6 +9,8 @@ import {
 } from './schemas/email-suppression.schema'
 
 const SNS_HOST = /^sns\.[a-z0-9-]+\.amazonaws\.com$/
+const MAX_AGE_MS = 60 * 60 * 1000
+const MAX_CERTS = 20
 
 export const isSnsUrl = (value: unknown): boolean => {
   if (typeof value !== 'string') return false
@@ -73,8 +75,13 @@ export class SesEventsService {
     if (!msg || typeof msg !== 'object' || typeof msg.Type !== 'string') {
       return 'invalid'
     }
+    // Closed until a topic is configured.
     const topic = process.env.SES_EVENTS_TOPIC_ARN
-    if (topic && msg.TopicArn !== topic) return 'rejected'
+    if (!topic || msg.TopicArn !== topic) return 'rejected'
+    const sentAt = Date.parse(msg.Timestamp)
+    if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > MAX_AGE_MS) {
+      return 'rejected'
+    }
     if (!(await this.verify(msg))) return 'rejected'
 
     try {
@@ -100,6 +107,9 @@ export class SesEventsService {
       let cert = this.certs.get(msg.SigningCertURL)
       if (!cert) {
         cert = await this.fetchText(msg.SigningCertURL)
+        if (this.certs.size >= MAX_CERTS) {
+          this.certs.delete(this.certs.keys().next().value)
+        }
         this.certs.set(msg.SigningCertURL, cert)
       }
       return createVerify(algorithm).update(toSign, 'utf8').verify(cert, msg.Signature, 'base64')

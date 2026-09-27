@@ -21,7 +21,7 @@ describe('SesEventsService', () => {
         Type: 'Notification',
         MessageId: 'm1',
         Message: JSON.stringify(event),
-        Timestamp: '2026-09-27T10:00:00.000Z',
+        Timestamp: new Date().toISOString(),
       },
       version,
     )
@@ -31,8 +31,7 @@ describe('SesEventsService', () => {
   let fetchText: jest.SpyInstance
 
   beforeEach(() => {
-    process.env = { ...env }
-    delete process.env.SES_EVENTS_TOPIC_ARN
+    process.env = { ...env, SES_EVENTS_TOPIC_ARN: TOPIC }
     model = { updateOne: jest.fn().mockResolvedValue({}) }
     service = new SesEventsService(model as any)
     fetchText = jest.spyOn(service, 'fetchText').mockResolvedValue(certPem)
@@ -108,6 +107,60 @@ describe('SesEventsService', () => {
     await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
   })
 
+  const confirmation = () =>
+    signed({
+      Type: 'SubscriptionConfirmation',
+      MessageId: 'm2',
+      Token: 'tok',
+      Message: 'confirm',
+      SubscribeURL: 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=tok',
+      Timestamp: new Date().toISOString(),
+    })
+
+  it('refuses everything while no topic is configured', async () => {
+    delete process.env.SES_EVENTS_TOPIC_ARN
+
+    await expect(service.handle(JSON.stringify(confirmation()))).resolves.toBe('rejected')
+    await expect(service.handle(JSON.stringify(notification(bounce)))).resolves.toBe('rejected')
+    expect(fetchText).not.toHaveBeenCalled()
+    expect(model.updateOne).not.toHaveBeenCalled()
+  })
+
+  it('refuses a subscription confirmation for another topic', async () => {
+    const msg = signed({ ...confirmation(), TopicArn: `${TOPIC}-other` })
+
+    await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
+    expect(fetchText).not.toHaveBeenCalled()
+  })
+
+  it('refuses a message older than one hour', async () => {
+    const msg = signed({
+      Type: 'Notification',
+      MessageId: 'm3',
+      Message: JSON.stringify(bounce),
+      Timestamp: new Date(Date.now() - 61 * 60 * 1000).toISOString(),
+    })
+
+    await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
+    expect(model.updateOne).not.toHaveBeenCalled()
+  })
+
+  it('keeps at most 20 signing certificates', async () => {
+    for (let i = 0; i < 25; i++) {
+      const url = `https://sns.us-east-1.amazonaws.com/cert-${i}.pem`
+      const msg = signed({
+        Type: 'Notification',
+        MessageId: `m${i}`,
+        Message: JSON.stringify(bounce),
+        Timestamp: new Date().toISOString(),
+        SigningCertURL: url,
+      })
+      await service.handle(JSON.stringify(msg))
+    }
+
+    expect((service as any).certs.size).toBe(20)
+  })
+
   it('rejects another topic when one is configured', async () => {
     process.env.SES_EVENTS_TOPIC_ARN = 'arn:aws:sns:us-east-1:123456789012:other'
 
@@ -121,15 +174,8 @@ describe('SesEventsService', () => {
     expect(fetchText).toHaveBeenCalledTimes(1)
   })
 
-  it('confirms a subscription through the SNS host only', async () => {
-    const confirm = signed({
-      Type: 'SubscriptionConfirmation',
-      MessageId: 'm2',
-      Token: 'tok',
-      Message: 'confirm',
-      SubscribeURL: 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=tok',
-      Timestamp: '2026-09-27T10:00:00.000Z',
-    })
+  it('confirms a subscription for the configured topic through the SNS host', async () => {
+    const confirm = confirmation()
 
     await expect(service.handle(JSON.stringify(confirm))).resolves.toBe('ok')
     expect(fetchText).toHaveBeenLastCalledWith(confirm.SubscribeURL)

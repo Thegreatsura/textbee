@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common'
+import { randomUUID } from 'crypto'
+import { Redis } from 'ioredis'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
@@ -13,11 +15,17 @@ import { AuthService } from '../auth.service'
 const HOUR_MS = 60 * 60 * 1000
 const BATCH = 500
 const MAX_FAILED = 3
+const LOCK_KEY = 'lock:verification-reminder'
+const LOCK_TTL_MS = 55 * 60 * 1000
+// Deletes the lock only while it still holds this run's token.
+const RELEASE =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 
 // Sends one reminder with a fresh link to password accounts still unverified a day after signup.
 @Injectable()
-export class VerificationReminderTask {
+export class VerificationReminderTask implements OnModuleDestroy {
   private readonly logger = new Logger(VerificationReminderTask.name)
+  private redis?: Redis
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
@@ -27,13 +35,42 @@ export class VerificationReminderTask {
     private readonly mailService: MailService,
   ) {}
 
+  /** Same Redis the queues use, connected on first use. */
+  protected redisClient(): Redis | null {
+    if (!process.env.REDIS_URL) return null
+    this.redis ??= new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1 })
+    return this.redis
+  }
+
+  async onModuleDestroy() {
+    await this.redis?.quit().catch(() => undefined)
+  }
+
+  // One run at a time across processes.
   @Cron(CronExpression.EVERY_HOUR)
   async run() {
+    const redis = this.redisClient()
+    const token = randomUUID()
+    try {
+      const acquired = redis
+        ? await redis.set(LOCK_KEY, token, 'PX', LOCK_TTL_MS, 'NX')
+        : null
+      if (acquired !== 'OK') {
+        this.logger.log('Verification reminder run skipped: lock not acquired')
+        return
+      }
+    } catch (e) {
+      this.logger.error(`Verification reminder lock failed: ${e?.message ?? e}`)
+      return
+    }
+
     try {
       const sent = await this.sendDue(new Date())
       if (sent) this.logger.log(`Sent ${sent} verification reminders`)
     } catch (e) {
       this.logger.error(`Verification reminder run failed: ${e?.message ?? e}`)
+    } finally {
+      await redis.eval(RELEASE, 1, LOCK_KEY, token).catch(() => undefined)
     }
   }
 

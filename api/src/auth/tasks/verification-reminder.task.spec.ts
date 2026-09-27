@@ -92,4 +92,58 @@ describe('VerificationReminderTask', () => {
     expect(mailService.sendTemplated).toHaveBeenCalledTimes(1)
     expect(mailService.sendTemplated.mock.calls[0][0].userId).toBe(fresh._id)
   })
+
+  describe('run lock', () => {
+    const withRedis = (setResult: string | null | Error) => {
+      const ctx = setup([[account()]])
+      const redis = {
+        set:
+          setResult instanceof Error
+            ? jest.fn().mockRejectedValue(setResult)
+            : jest.fn().mockResolvedValue(setResult),
+        eval: jest.fn().mockResolvedValue(1),
+      }
+      jest.spyOn(ctx.task as any, 'redisClient').mockReturnValue(redis)
+      jest.spyOn((ctx.task as any).logger, 'log').mockImplementation(() => undefined)
+      jest.spyOn((ctx.task as any).logger, 'error').mockImplementation(() => undefined)
+      return { ...ctx, redis }
+    }
+
+    it('takes the lock for 55 minutes, runs, and releases it', async () => {
+      const { task, redis, mailService } = withRedis('OK')
+
+      await task.run()
+
+      const [key, token, px, ttl, nx] = redis.set.mock.calls[0]
+      expect([key, px, ttl, nx]).toEqual(['lock:verification-reminder', 'PX', 55 * 60 * 1000, 'NX'])
+      expect(mailService.sendTemplated).toHaveBeenCalledTimes(1)
+      expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, key, token)
+    })
+
+    it('skips the run when another process holds the lock', async () => {
+      const { task, redis, mailService } = withRedis(null)
+
+      await task.run()
+
+      expect(mailService.sendTemplated).not.toHaveBeenCalled()
+      expect(redis.eval).not.toHaveBeenCalled()
+    })
+
+    it('skips the run when Redis is unreachable', async () => {
+      const { task, mailService } = withRedis(new Error('down'))
+
+      await task.run()
+
+      expect(mailService.sendTemplated).not.toHaveBeenCalled()
+    })
+
+    it('releases the lock when the run fails', async () => {
+      const { task, redis, authService } = withRedis('OK')
+      authService.mintEmailVerificationLink.mockRejectedValue(new Error('db down'))
+
+      await task.run()
+
+      expect(redis.eval).toHaveBeenCalledTimes(1)
+    })
+  })
 })

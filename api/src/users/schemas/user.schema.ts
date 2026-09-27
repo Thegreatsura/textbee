@@ -170,14 +170,18 @@ const UserClientSchema = SchemaFactory.createForClass(UserClient)
 // window boundaries in notifications/rules/usage-window.ts.
 @Schema({ _id: false })
 export class UserRollup {
-  @Prop({ type: Number, default: 0 })
+  // No defaults on the counts. A zero here would be indistinguishable from
+  // "never computed", and zero devices is a targetable fact. Readers gate on
+  // computedAt, and this keeps the stored document from asserting a zero nobody
+  // measured.
+  @Prop({ type: Number })
   deviceCount?: number
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number })
   apiKeyCount?: number
 
   /** Summed from the device counters, matching the dashboard's own totals. */
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number })
   totalSentSms?: number
 
   /** Oldest app build across the account's devices, for the update prompt. */

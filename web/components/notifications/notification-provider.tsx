@@ -84,10 +84,13 @@ export function NotificationProvider({
   )
 
   const send = useCallback(
-    (events: NotificationEvent[]) => {
+    (events: NotificationEvent[], onDelivered?: () => void) => {
       if (!events.length) return
       // Measurement must never break the page, so a failed post is dropped.
-      trackEvents.mutate(events, { onError: () => undefined })
+      trackEvents.mutate(events, {
+        onSuccess: () => onDelivered?.(),
+        onError: () => undefined,
+      })
     },
     [trackEvents],
   )
@@ -142,8 +145,16 @@ export function NotificationProvider({
     migrationAttempted.current = true
     const keyToId = new Map(data.notifications.map((n) => [n.key, n.id]))
     const events = pendingDismissalEvents(keyToId)
-    if (events.length) send(events)
-    markMigrated()
+
+    if (!events.length) {
+      markMigrated()
+      return
+    }
+
+    // Marked only once the server has the dismissals. Marking it before the post
+    // lands would mean a network error lost them permanently, and the engine
+    // would then show messages this reader had already cleared.
+    send(events, markMigrated)
   }, [data, mode, send])
 
   const value = useMemo(

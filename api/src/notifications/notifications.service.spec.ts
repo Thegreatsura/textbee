@@ -205,9 +205,11 @@ describe('NotificationsService feed and the engine flag', () => {
 describe('NotificationsService.recordEvents', () => {
   const knownRecord = { _id: NOTIFICATION_ID }
 
-  const withKnown = (records: any[] = [activeRecord()]) => {
+  const withKnown = (records: any[] = [activeRecord()], dismissEnabled = true) => {
     const t = build({ engineEnabled: true }, records)
-    t.notificationModel.find.mockImplementation(() => chain([knownRecord]))
+    t.notificationModel.find.mockImplementation(() =>
+      chain([{ ...knownRecord, dismiss: { enabled: dismissEnabled } }]),
+    )
     return t
   }
 
@@ -286,6 +288,42 @@ describe('NotificationsService.recordEvents', () => {
     const result = await t.service.recordEvents(user(), [
       { notificationId: 'not-an-id', type: 'impression' },
       { notificationId: String(NOTIFICATION_ID), type: 'nonsense' as any },
+      { notificationId: String(NOTIFICATION_ID), type: 'impression' },
+    ])
+
+    expect(result).toEqual({ recorded: 1 })
+  })
+
+  it('records a dismissal event for a record that allows dismissing', async () => {
+    const t = withKnown()
+
+    await t.service.recordEvents(user(), [
+      { notificationId: String(NOTIFICATION_ID), type: 'dismiss' },
+    ])
+
+    const stateOp = t.stateModel.bulkWrite.mock.calls[0][0][0].updateOne
+    expect(stateOp.update.$set.dismissedAt).toBeInstanceOf(Date)
+  })
+
+  it('ignores a dismissal event for a record that cannot be dismissed', async () => {
+    const t = withKnown([activeRecord()], false)
+
+    const result = await t.service.recordEvents(user(), [
+      { notificationId: String(NOTIFICATION_ID), type: 'dismiss' },
+    ])
+
+    // Otherwise one request could permanently hide an operational alert: the
+    // ranker treats dismissedAt in permanent mode as cleared for good, so a
+    // past-due or verification warning would never be shown again.
+    expect(result).toEqual({ recorded: 0 })
+    expect(t.stateModel.bulkWrite).not.toHaveBeenCalled()
+    expect(t.notificationModel.bulkWrite).not.toHaveBeenCalled()
+  })
+
+  it('still records an impression for a record that cannot be dismissed', async () => {
+    const t = withKnown([activeRecord()], false)
+
+    const result = await t.service.recordEvents(user(), [
       { notificationId: String(NOTIFICATION_ID), type: 'impression' },
     ])
 

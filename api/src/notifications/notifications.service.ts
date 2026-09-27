@@ -244,13 +244,19 @@ export class NotificationsService {
     }
     if (!byId.size) return { recorded: 0 }
 
-    // Only count events for records that exist, so a stale or invented id
-    // cannot create state rows.
+    // Only count events for records that exist, so a stale or invented id cannot
+    // create state rows. The dismiss rule comes along because a dismissal has to
+    // be allowed before it is recorded.
     const known = await this.notificationModel
       .find({ _id: { $in: [...byId.keys()].map((id) => new Types.ObjectId(id)) } })
-      .select('_id')
+      .select('_id dismiss')
       .lean()
     const knownIds = new Set(known.map((n: any) => String(n._id)))
+    const dismissible = new Set(
+      known
+        .filter((n: any) => n.dismiss?.enabled === true)
+        .map((n: any) => String(n._id)),
+    )
 
     const stateOps: AnyBulkWriteOperation[] = []
     const notificationOps: AnyBulkWriteOperation[] = []
@@ -288,6 +294,11 @@ export class NotificationsService {
             statsInc[path] = (statsInc[path] ?? 0) + 1
           }
         } else {
+          // A dismissal has to be permitted before it is honoured. Without this
+          // check one request could set dismissedAt on an operational alert,
+          // which the ranker then treats as permanently cleared, and a past-due
+          // or verification warning would never be shown to that account again.
+          if (!dismissible.has(id)) continue
           stateSet['dismissedAt'] = now
           statsInc['stats.dismisses'] = (statsInc['stats.dismisses'] ?? 0) + 1
           if (variantId) {
@@ -298,21 +309,26 @@ export class NotificationsService {
         recorded += 1
       }
 
-      stateOps.push({
-        updateOne: {
-          filter: { user: user._id, notification: notificationId },
-          update: {
-            ...(Object.keys(stateSet).length ? { $set: stateSet } : {}),
-            ...(Object.keys(stateInc).length ? { $inc: stateInc } : {}),
-            $setOnInsert: {
-              user: user._id,
-              notification: notificationId,
-              firstSeenAt: now,
+      // Nothing to write means nothing to upsert. Without this a skipped event,
+      // such as a dismissal of something that cannot be dismissed, would still
+      // create an empty state row.
+      if (Object.keys(stateSet).length || Object.keys(stateInc).length) {
+        stateOps.push({
+          updateOne: {
+            filter: { user: user._id, notification: notificationId },
+            update: {
+              ...(Object.keys(stateSet).length ? { $set: stateSet } : {}),
+              ...(Object.keys(stateInc).length ? { $inc: stateInc } : {}),
+              $setOnInsert: {
+                user: user._id,
+                notification: notificationId,
+                firstSeenAt: now,
+              },
             },
+            upsert: true,
           },
-          upsert: true,
-        },
-      })
+        })
+      }
 
       if (Object.keys(statsInc).length) {
         notificationOps.push({

@@ -171,6 +171,7 @@ describe('stats come from the rollup', () => {
           apiKeyCount: 1,
           totalSentSms: 940,
           minAppVersionCode: 17,
+          computedAt: NOW,
         },
       }),
       settings,
@@ -198,10 +199,39 @@ describe('stats come from the rollup', () => {
     expect(context['stats.hasOutdatedApp']).toBeUndefined()
   })
 
+  it('ignores zeroed counts that arrived without a computedAt', async () => {
+    const t = build()
+    const context = await t.loader.build({
+      // What a hydrated document looked like when the schema defaulted these to
+      // zero: indistinguishable from a measured account with nothing on it.
+      user: account({
+        rollup: { deviceCount: 0, apiKeyCount: 0, totalSentSms: 0 },
+      }),
+      settings,
+      now: NOW,
+      referenced: [],
+    })
+
+    expect(context['stats.deviceCount']).toBeUndefined()
+    expect(context['stats.apiKeyCount']).toBeUndefined()
+    expect(context['stats.totalSentSms']).toBeUndefined()
+  })
+
+  it('does not claim hasSentSms from an uncomputed rollup', async () => {
+    const t = build()
+    const context = await t.loader.build({
+      user: account({ milestones: {}, rollup: { totalSentSms: 5 } }),
+      settings,
+      now: NOW,
+      referenced: [],
+    })
+    expect(context['milestones.hasSentSms']).toBe(false)
+  })
+
   it('treats a current app as not outdated', async () => {
     const t = build()
     const context = await t.loader.build({
-      user: account({ rollup: { minAppVersionCode: 20 } }),
+      user: account({ rollup: { minAppVersionCode: 20, computedAt: NOW } }),
       settings,
       now: NOW,
       referenced: [],
@@ -212,7 +242,10 @@ describe('stats come from the rollup', () => {
   it('trusts the rollup for hasSentSms even without a milestone', async () => {
     const t = build()
     const context = await t.loader.build({
-      user: account({ milestones: {}, rollup: { totalSentSms: 5 } }),
+      user: account({
+        milestones: {},
+        rollup: { totalSentSms: 5, computedAt: NOW },
+      }),
       settings,
       now: NOW,
       referenced: [],

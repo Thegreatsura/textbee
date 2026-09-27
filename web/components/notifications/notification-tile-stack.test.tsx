@@ -262,6 +262,32 @@ describe('carrying over dismissals already made in this browser', () => {
     expect(window.localStorage.getItem('discord_banner_dismissed')).toBe('1')
   })
 
+  it('does not mark itself done when the post fails, so the dismissals are not lost', async () => {
+    window.localStorage.setItem('discord_banner_dismissed', '1')
+    server.use(
+      http.get(feedUrl, () =>
+        HttpResponse.json({
+          ...mockNotificationFeed,
+          notifications: [
+            { ...mockNotificationFeed.notifications[0], key: 'join-discord' },
+          ],
+        }),
+      ),
+      http.post(`${API}${ApiEndpoints.notifications.events()}`, () =>
+        HttpResponse.error(),
+      ),
+    )
+
+    renderStack()
+    await screen.findByText('Upgrade to Pro')
+
+    // Marking it done here would lose the dismissal for good, and the engine
+    // would then show messages this reader had already cleared.
+    await waitFor(() =>
+      expect(window.localStorage.getItem(MIGRATION_MARKER)).toBeNull(),
+    )
+  })
+
   it('only runs once', async () => {
     window.localStorage.setItem(MIGRATION_MARKER, '1')
     window.localStorage.setItem('discord_banner_dismissed', '1')

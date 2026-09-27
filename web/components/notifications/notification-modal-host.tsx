@@ -89,6 +89,9 @@ export function NotificationModalHost() {
                 onClick={() => {
                   recordClick(notification)
                   setClosedId(notification.id)
+                  // Acting on it is a stronger signal than closing it, so it
+                  // must not come back on the next load either.
+                  if (notification.dismissible) dismiss(notification)
                 }}
               >
                 {external ? (

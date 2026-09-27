@@ -147,8 +147,11 @@ export class NotificationContextLoader {
       'milestones.hasApiKey': Boolean(milestones?.firstApiKeyAt),
       // Backed by the rollup as well as the milestone, so this one boolean is
       // trustworthy even for an account the milestone backfill has not reached.
+      // The rollup half only counts once it has been computed.
       'milestones.hasSentSms':
-        Boolean(milestones?.firstSmsAt) || (user.rollup?.totalSentSms ?? 0) > 0,
+        Boolean(milestones?.firstSmsAt) ||
+        (Boolean(user.rollup?.computedAt) &&
+          (user.rollup?.totalSentSms ?? 0) > 0),
       'milestones.hasPaid': Boolean(milestones?.firstPaidAt),
       'milestones.daysSinceFirstSms': daysSince(milestones?.firstSmsAt, now),
     }
@@ -161,14 +164,20 @@ export class NotificationContextLoader {
     // Straight off the rollup. Deriving these here instead would mean scanning
     // every device document on every dashboard load.
     const rollup = user.rollup
+    // Nothing here is trusted until the rollup has actually been computed.
+    // Without this gate an account nobody has measured reads as owning zero
+    // devices, which is a targetable fact rather than an absence, and campaigns
+    // aimed at "no devices yet" would go to the whole unmeasured population.
+    const measured = Boolean(rollup?.computedAt)
     const oldest = rollup?.minAppVersionCode
     const latest = settings.latestAppVersionCode
 
     return {
-      'stats.deviceCount': rollup?.deviceCount,
-      'stats.apiKeyCount': rollup?.apiKeyCount,
-      'stats.totalSentSms': rollup?.totalSentSms,
+      'stats.deviceCount': measured ? rollup.deviceCount : undefined,
+      'stats.apiKeyCount': measured ? rollup.apiKeyCount : undefined,
+      'stats.totalSentSms': measured ? rollup.totalSentSms : undefined,
       'stats.hasOutdatedApp':
+        !measured ||
         oldest === undefined ||
         oldest === null ||
         latest === undefined ||

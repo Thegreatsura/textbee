@@ -55,6 +55,15 @@ export const handlers = [
   http.get(url(ApiEndpoints.gateway.getStats()), () =>
     dataEnvelope(mockStats)
   ),
+  http.get(url(ApiEndpoints.gateway.smsPermissionStatus()), () =>
+    dataEnvelope({
+      needsSmsPermission: false,
+      hoursSinceFailure: null,
+      deviceId: null,
+      deviceName: null,
+      failedAt: null,
+    })
+  ),
   http.get(url(ApiEndpoints.gateway.getWebhooks()), () =>
     dataEnvelope(mockWebhooks)
   ),

@@ -42,6 +42,7 @@ export const ApiEndpoints = {
     updateWebhook: (id: string) => `/webhooks/${id}`,
     deleteWebhook: (id: string) => `/webhooks/${id}`,
     getStats: () => '/gateway/stats',
+    smsPermissionStatus: () => '/gateway/sms-permission-status',
   },
   billing: {
     currentSubscription: () => '/billing/current-subscription',

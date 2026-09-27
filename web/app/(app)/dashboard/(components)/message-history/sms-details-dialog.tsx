@@ -18,6 +18,7 @@ import {
   Smartphone,
 } from 'lucide-react'
 import { CopyButton } from '@/components/shared/copy-button'
+import { smsPermissionGuideUrl } from '@/config/external-links'
 import { getStatusBadge } from './utils'
 import { messageDate, messageDirection } from './group'
 import { toExactLabel } from '@/components/shared/relative-time'
@@ -171,6 +172,19 @@ export default function SmsDetailsDialog({
               {message.errorMessage && (
                 <p className='break-words text-xs text-destructive'>
                   {message.errorMessage}
+                </p>
+              )}
+              {message.errorCode === 'PERMISSION_DENIED' && (
+                <p className='text-xs text-foreground'>
+                  The textbee app on this phone does not have SMS permission.{' '}
+                  <a
+                    href={smsPermissionGuideUrl('message_details')}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='font-medium underline underline-offset-2'
+                  >
+                    How to fix it
+                  </a>
                 </p>
               )}
             </div>

@@ -1,4 +1,5 @@
 import { evaluateCondition } from './condition-evaluator'
+import { HrefTokenValues, interpolateHref } from './interpolate-href'
 import {
   ConditionNode,
   EvaluationContext,
@@ -88,6 +89,11 @@ export interface SelectionInput {
   now: Date
   /** Stable per account and per day, so chosen copy does not flicker. */
   seed: string
+  /**
+   * Values for the tokens an authored link may carry. Substituted here so the
+   * dashboard keeps receiving finished hrefs and stays a renderer.
+   */
+  tokens?: HrefTokenValues
 }
 
 export interface ServedNotification {
@@ -416,7 +422,10 @@ export function selectNotifications(input: SelectionInput): SelectionResult {
       variantId: variant.id,
       title: variant.title,
       body: variant.body,
-      actions: variant.actions || [],
+      actions: (variant.actions || []).map((action) => ({
+        ...action,
+        href: interpolateHref(action.href, input.tokens),
+      })),
       // Opt in, not opt out: a record is dismissible only if it says so. The
       // operational alerts leave this off, which is why a past-due warning
       // cannot be cleared away.

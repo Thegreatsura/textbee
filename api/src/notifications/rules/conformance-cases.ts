@@ -1,5 +1,6 @@
 import { ConditionNode, EvaluationContext, TriState } from './types'
 import { AccountState, Candidate, SelectionSettings } from './notification-ranker'
+import { HrefTokenValues } from './interpolate-href'
 
 // THE SHARED CONTRACT. This file is mirrored outside this repository and
 // run by both test suites against each repo's own copy of the evaluator and
@@ -337,10 +338,13 @@ export interface SelectionCase {
   baseContext?: EvaluationContext
   nowIso?: string
   seed?: string
+  tokens?: HrefTokenValues
   /** Served keys, in order. */
   expectedServed: string[]
   /** Only the reasons asserted; other filtered records are ignored. */
   expectedReasons?: Record<string, string>
+  /** Per served key, the href its first action must come out with. */
+  expectedHrefs?: Record<string, string>
 }
 
 const NOW = '2026-09-27T12:00:00.000Z'
@@ -564,6 +568,127 @@ export const SELECTION_CASES: SelectionCase[] = [
     expectedServed: [],
     expectedReasons: { empty: 'disabled' },
   },
+  {
+    // Proves the substitution is wired into the ranker and not merely available
+    // as a function. Anything that ran the ranker without this step would report
+    // a working link for a record the feed serves broken.
+    name: 'an authored link is served with its tokens filled in',
+    candidates: [
+      tile({
+        id: '1',
+        key: 'survey',
+        variants: [
+          {
+            id: 'v1',
+            title: 'survey',
+            actions: [
+              {
+                label: 'Open',
+                href: 'https://forms.example/x?name={{user.name}}&email={{user.email}}',
+              },
+            ],
+          },
+        ],
+      }),
+    ],
+    tokens: { 'user.name': 'Ada Lovelace', 'user.email': 'ada@example.com' },
+    expectedServed: ['survey'],
+    expectedHrefs: {
+      survey: 'https://forms.example/x?name=Ada%20Lovelace&email=ada%40example.com',
+    },
+  },
+  {
+    name: 'a link is served without a raw token when no values are supplied',
+    candidates: [
+      tile({
+        id: '1',
+        key: 'survey',
+        variants: [
+          {
+            id: 'v1',
+            title: 'survey',
+            actions: [
+              { label: 'Open', href: 'https://forms.example/x?email={{user.email}}' },
+            ],
+          },
+        ],
+      }),
+    ],
+    expectedServed: ['survey'],
+    expectedHrefs: { survey: 'https://forms.example/x?email=' },
+  },
 ]
 
 export const SELECTION_DEFAULT_NOW = NOW
+
+// ---------------------------------------------------------------------------
+// Link token cases: the substitution on its own, away from ranking.
+// ---------------------------------------------------------------------------
+
+export interface HrefCase {
+  name: string
+  href: string
+  values?: HrefTokenValues
+  expected: string
+}
+
+export const HREF_CASES: HrefCase[] = [
+  {
+    name: 'a link with no tokens is untouched',
+    href: 'https://example.com/a?b=c',
+    values: { 'user.email': 'ada@example.com' },
+    expected: 'https://example.com/a?b=c',
+  },
+  {
+    name: 'a space is percent-encoded, not turned into a plus',
+    href: 'https://forms.example/x?name={{user.name}}',
+    values: { 'user.name': 'Ada Lovelace' },
+    expected: 'https://forms.example/x?name=Ada%20Lovelace',
+  },
+  {
+    // A `+` would be a literal plus here rather than a space, so the link
+    // would point at a path that does not exist.
+    name: 'a token in a path keeps a space encoded as %20',
+    href: 'https://example.com/u/{{user.name}}/settings',
+    values: { 'user.name': 'Ada Lovelace' },
+    expected: 'https://example.com/u/Ada%20Lovelace/settings',
+  },
+  {
+    name: 'an email is percent-encoded',
+    href: 'https://forms.example/x?email={{user.email}}',
+    values: { 'user.email': 'ada+test@example.com' },
+    expected: 'https://forms.example/x?email=ada%2Btest%40example.com',
+  },
+  {
+    name: 'whitespace inside the braces is tolerated',
+    href: 'https://forms.example/x?id={{ user.id }}',
+    values: { 'user.id': 'abc123' },
+    expected: 'https://forms.example/x?id=abc123',
+  },
+  {
+    name: 'the same token can appear more than once',
+    href: 'https://forms.example/x?a={{user.id}}&b={{user.id}}',
+    values: { 'user.id': 'abc' },
+    expected: 'https://forms.example/x?a=abc&b=abc',
+  },
+  {
+    // Fails closed the way the rest of the engine does: an author's typo must
+    // not reach the third party as a literal. Authoring rejects it on save too.
+    name: 'an unknown token is emptied rather than left in the link',
+    href: 'https://forms.example/x?q={{user.secret}}',
+    values: { 'user.email': 'ada@example.com' },
+    expected: 'https://forms.example/x?q=',
+  },
+  {
+    name: 'a known token the account has no value for is emptied',
+    href: 'https://forms.example/x?name={{user.name}}',
+    values: {},
+    expected: 'https://forms.example/x?name=',
+  },
+  {
+    name: 'a name that would break the query string is escaped',
+    href: 'https://forms.example/x?name={{user.name}}&next=1',
+    values: { 'user.name': 'a&b=c#d' },
+    expected: 'https://forms.example/x?name=a%26b%3Dc%23d&next=1',
+  },
+]

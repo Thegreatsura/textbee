@@ -37,7 +37,7 @@ import {
   monthlyWindowStart,
 } from '../notifications/rules/usage-window'
 import { usageEmailKey } from './usage-emails'
-import { verifyLink } from '../mail/email-render'
+import { pluralize, verifyLink } from '../mail/email-render'
 import {
   appPublicUrl,
   billingUrl,
@@ -1186,25 +1186,36 @@ export class BillingService {
           : monthlyLimit
 
       // Checked in this order: batch size, then 30 days, then today.
+      // A batch larger than the room left in a window counts as a hit on that window.
+      const monthlyRoom = monthlyFinite ? monthlyCeiling - processedSmsLastMonth : Infinity
+      const dailyRoom = dailyFinite ? dailyLimit - processedSmsToday : Infinity
       let tripped: 'bulk' | 'monthly' | 'daily' | null = null
       let reached = false
       if (bulkSendLimit !== -1 && value > bulkSendLimit) {
         tripped = 'bulk'
         reached = true
-      } else if (monthlyFinite && processedSmsLastMonth + value > monthlyCeiling) {
+      } else if (monthlyFinite && monthlyRoom <= 0) {
         tripped = 'monthly'
-        reached = processedSmsLastMonth >= monthlyCeiling
-      } else if (dailyFinite && processedSmsToday + value > dailyLimit) {
+        reached = true
+      } else if (dailyFinite && dailyRoom <= 0) {
         tripped = 'daily'
-        reached = processedSmsToday >= dailyLimit
+        reached = true
+      } else if (value > Math.min(monthlyRoom, dailyRoom)) {
+        tripped = dailyRoom <= monthlyRoom ? 'daily' : 'monthly'
       }
 
       if (tripped) {
-        const message = {
-          bulk: `This batch has ${value} recipients, and your plan allows ${bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`,
-          monthly: `Your account has used its ${monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`,
-          daily: `Your account has used all ${dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight UTC, or upgrade your plan to keep sending now.`,
-        }[tripped]
+        const room = tripped === 'daily' ? dailyRoom : monthlyRoom
+        const roomText = `${pluralize(room, 'message', 'messages')} left ${
+          tripped === 'daily' ? 'today' : 'in its 30-day allowance'
+        }`
+        const message = !reached
+          ? `This batch had ${value} recipients and your account has ${roomText}. Nothing was sent.`
+          : {
+              bulk: `This batch has ${value} recipients, and your plan allows ${bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`,
+              monthly: `Your account has used its ${monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`,
+              daily: `Your account has used all ${dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight UTC, or upgrade your plan to keep sending now.`,
+            }[tripped]
 
         const storeReceive =
           action === 'receive_sms' && this.receivesOverLimitAllowed()
@@ -1231,45 +1242,48 @@ export class BillingService {
           )
         }
 
-        // A batch that does not fit the room left is refused without a notice.
-        if (reached) {
-          const type = {
-            bulk: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
-            monthly: BillingNotificationType.MONTHLY_LIMIT_REACHED,
-            daily: BillingNotificationType.DAILY_LIMIT_REACHED,
-          }[tripped]
-          const title = {
-            bulk: 'Your batch was too big for your plan',
-            monthly: "You've reached your monthly message limit",
-            daily: "You've reached today's message limit",
-          }[tripped]
-          // A failed notice must never let an over-limit action through.
-          const notification = this.billingNotifications.notifyOnce({
-            userId: user._id,
-            type,
-            title,
-            message,
-            meta: {
-              processedSmsToday,
-              processedSmsLastMonth,
-              attempted: value,
-              dailyLimit,
-              monthlyLimit,
-              bulkSendLimit,
-              planName: plan.name,
-              limitTripped: tripped,
-            },
-            emailKey: usageEmailKey(type, plan.name),
-            recordHit: tripped !== 'bulk',
+        const type = {
+          bulk: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
+          monthly: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+          daily: BillingNotificationType.DAILY_LIMIT_REACHED,
+        }[tripped]
+        const title = !reached
+          ? 'Your batch did not fit'
+          : {
+              bulk: 'Your batch was too big for your plan',
+              monthly: "You've reached your monthly message limit",
+              daily: "You've reached today's message limit",
+            }[tripped]
+        const emailKey = reached
+          ? usageEmailKey(type, plan.name)
+          : usageEmailKey(BillingNotificationType.BULK_SMS_LIMIT_REACHED, plan.name)
+        // A failed notice must never let an over-limit action through.
+        const notification = this.billingNotifications.notifyOnce({
+          userId: user._id,
+          type,
+          title,
+          message,
+          meta: {
+            processedSmsToday,
+            processedSmsLastMonth,
+            attempted: value,
+            dailyLimit,
+            monthlyLimit,
+            bulkSendLimit,
+            planName: plan.name,
+            limitTripped: tripped,
+            ...(!reached && { roomWindow: tripped, roomLeft: room }),
+          },
+          emailKey,
+          recordHit: tripped !== 'bulk',
+        })
+        const logged = notification.catch((error) => {
+          console.error('canPerformAction: failed to record a limit notice', {
+            userId,
+            error: error?.message ?? error,
           })
-          const logged = notification.catch((error) => {
-            console.error('canPerformAction: failed to record a limit notice', {
-              userId,
-              error: error?.message ?? error,
-            })
-          })
-          if (!storeReceive) await logged
-        }
+        })
+        if (!storeReceive) await logged
 
         if (storeReceive) {
           return { overLimit: true }

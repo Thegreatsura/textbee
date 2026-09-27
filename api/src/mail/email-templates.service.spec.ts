@@ -57,19 +57,39 @@ describe('EmailTemplatesService', () => {
 
   it('falls back to the default when an override needs a missing value', async () => {
     const { service, warn } = build([
-      { key: 'U5', body: 'Batch of {{attempted}} over {{bulkLimit}}.', version: 3 },
+      { key: 'T2', body: 'Code {{otp}} for {{resetUrl}}', version: 3 },
     ])
 
-    const r = await service.render('U5', {
+    const r = await service.render('T2', {
       ...T3_VARS,
-      attempted: '120',
-      bulkLimit: null,
-      billingUrl: 'https://app.test/b',
+      linkTtl: '20 minutes',
+      resetUrl: 'https://app.test/r',
+      otp: null,
     })
       .catch((e) => e)
 
     // The default needs the same value, so the error surfaces after the fallback.
     expect(r).toBeInstanceOf(Error)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('missing otp'))
+  })
+
+  it('uses the default copy when only the override needs the missing value', async () => {
+    const { service, warn } = build([
+      { key: 'U5', body: 'Batch of {{attempted}} over {{bulkLimit}}.', version: 3 },
+    ])
+
+    const r = await service.render('U5', {
+      ...T3_VARS,
+      attempted: '5',
+      bulkLimit: null,
+      roomLeft: '1 message',
+      roomWindow: 'left today',
+      roomResetNote: 'midnight UTC',
+      billingUrl: 'https://app.test/b',
+    })
+
+    expect(r.version).toBe(0)
+    expect(r.document.text).toContain('1 message left today')
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('missing bulkLimit'))
   })
 
@@ -150,5 +170,48 @@ describe('EmailTemplatesService', () => {
         expect(used.filter((p) => !(p in t.variables))).toEqual([])
       }),
     )
+  })
+})
+
+describe('U5 versions', () => {
+  const base = {
+    firstName: 'Ada',
+    year: '2026',
+    unsubscribeUrl: 'u',
+    billingUrl: 'https://app.test/b',
+    attempted: '5',
+  }
+
+  it('renders the room version without the batch size text', async () => {
+    const { service } = build()
+
+    const r = await service.render('U5', {
+      ...base,
+      bulkLimit: '',
+      roomLeft: '1 message',
+      roomWindow: 'left today',
+      roomResetNote: 'midnight UTC',
+    })
+
+    expect(r.document.subject).toBe('Your batch was not sent')
+    expect(r.document.text).toContain('1 message left today')
+    expect(r.document.text).toContain('send the full batch after midnight UTC')
+    expect(r.document.text).not.toContain('per batch')
+  })
+
+  it('renders the batch size version without the room text', async () => {
+    const { service } = build()
+
+    const r = await service.render('U5', {
+      ...base,
+      attempted: '120',
+      bulkLimit: '50',
+      roomLeft: '',
+      roomWindow: '',
+      roomResetNote: '',
+    })
+
+    expect(r.document.text).toContain('allows up to 50 per batch')
+    expect(r.document.text).not.toContain('left today')
   })
 })

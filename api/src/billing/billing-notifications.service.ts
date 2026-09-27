@@ -101,7 +101,8 @@ export class BillingNotificationsService {
         type: doc.type,
         title: doc.title,
         message: doc.message,
-        meta: doc.meta,
+        // This event's figures, even when the stored notice was not refreshed.
+        meta,
         createdAt: doc.createdAt,
         sendEmail: true,
         emailKey,

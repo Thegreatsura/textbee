@@ -897,17 +897,72 @@ describe('BillingService - canPerformAction account checks', () => {
       })
     })
 
-    it('refuses a batch that does not fit the room left without a notice', async () => {
-      givenCounts(10, 100)
+    it('reports the batch size version of U5 without a limit hit', async () => {
+      givenCounts(0, 0)
 
-      await expect(service.canPerformAction(userId, 'bulk_send_sms', 45)).rejects.toMatchObject({
-        status: 429,
-      })
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 60)).rejects.toThrow()
 
-      expect(mockBillingNotifications.notifyOnce).not.toHaveBeenCalled()
+      expect(notices()[0]).toMatchObject({ emailKey: 'U5', recordHit: false })
+      expect(notices()[0].meta).not.toHaveProperty('roomWindow')
     })
 
-    it('refuses a 30-day overflow on a paid plan without a notice until the count is at the allowance', async () => {
+    it('counts a batch larger than the room left today as a daily hit and sends U5', async () => {
+      givenCounts(49, 100)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 5)).rejects.toMatchObject({
+        status: 429,
+        response: {
+          message: 'This batch had 5 recipients and your account has 1 message left today. Nothing was sent.',
+        },
+      })
+
+      expect(notices()).toHaveLength(1)
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.DAILY_LIMIT_REACHED,
+        title: 'Your batch did not fit',
+        message: 'This batch had 5 recipients and your account has 1 message left today. Nothing was sent.',
+        emailKey: 'U5',
+        recordHit: true,
+        meta: { roomWindow: 'daily', roomLeft: 1, attempted: 5 },
+      })
+    })
+
+    it('counts a batch larger than the 30-day room as a 30-day hit', async () => {
+      givenCounts(0, 290)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 20)).rejects.toThrow()
+
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+        title: 'Your batch did not fit',
+        message:
+          'This batch had 20 recipients and your account has 10 messages left in its 30-day allowance. Nothing was sent.',
+        emailKey: 'U5',
+        recordHit: true,
+        meta: { roomWindow: 'monthly', roomLeft: 10 },
+      })
+    })
+
+    it('uses the window with less room when both are short', async () => {
+      givenCounts(45, 290)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 12)).rejects.toThrow()
+
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.DAILY_LIMIT_REACHED,
+        meta: { roomWindow: 'daily', roomLeft: 5 },
+      })
+    })
+
+    it('reports a reached daily limit as U4 even when the 30-day room is also short', async () => {
+      givenCounts(50, 290)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 20)).rejects.toThrow()
+
+      expect(notices()[0]).toMatchObject({ emailKey: 'U4', recordHit: true })
+    })
+
+    it('records the hit and notice but no email for a paid plan whose batch does not fit', async () => {
       onPlan(plans.pro)
       givenCounts(10, 5450)
 
@@ -915,7 +970,13 @@ describe('BillingService - canPerformAction account checks', () => {
         status: 429,
       })
 
-      expect(mockBillingNotifications.notifyOnce).not.toHaveBeenCalled()
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+        title: 'Your batch did not fit',
+        emailKey: null,
+        recordHit: true,
+        meta: { roomWindow: 'monthly', roomLeft: 50 },
+      })
     })
 
     it.each([

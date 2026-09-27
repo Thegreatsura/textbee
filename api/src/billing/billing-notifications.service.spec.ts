@@ -151,6 +151,33 @@ describe('BillingNotificationsService - notifyOnce', () => {
     expect(queue.add).not.toHaveBeenCalled()
   })
 
+  it('creates the row with the hit day when it is missing', async () => {
+    model.findOne.mockResolvedValue(null)
+    model.findOneAndUpdate.mockResolvedValue(storedDoc())
+
+    await notify({
+      type: BillingNotificationType.DAILY_LIMIT_REACHED,
+      title: 'Your batch did not fit',
+      recordHit: true,
+      emailKey: 'U5',
+    })
+
+    const [filter, update, options] = model.findOneAndUpdate.mock.calls[0]
+    expect(filter.type).toBe(BillingNotificationType.DAILY_LIMIT_REACHED)
+    expect(update.$set).toMatchObject({ title: 'Your batch did not fit', lastHitAt: expect.any(Date) })
+    expect(update.$addToSet).toEqual({ hitDays: today() })
+    expect(update.$setOnInsert).toMatchObject({ type: BillingNotificationType.DAILY_LIMIT_REACHED })
+    expect(options).toMatchObject({ upsert: true })
+  })
+
+  it('queues the figures of this event, not the stored notice', async () => {
+    model.findOne.mockResolvedValue(storedDoc({ updatedAt: hoursAgo(0.1), meta: { old: true } }))
+
+    await notify({ emailKey: 'U5', meta: { roomWindow: 'daily', roomLeft: 1 } })
+
+    expect(queue.add.mock.calls[0][1].meta).toEqual({ roomWindow: 'daily', roomLeft: 1 })
+  })
+
   it('skips the hit write when the day is recorded and the last hit is recent', async () => {
     model.findOne.mockResolvedValue(
       storedDoc({

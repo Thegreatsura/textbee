@@ -311,26 +311,29 @@
     {
       "key": "U5",
       "stream": "usage",
-      "name": "Batch too big",
+      "name": "Batch not sent",
       "enabled": true,
       "sender": "notifications",
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "Your batch was too big for your plan",
-      "preheader": "Nothing was sent. Batches of {{bulkLimit}} or fewer go through.",
-      "body": "# Your batch was too big for your plan\n\nHi {{firstName}},\n\nYour batch had {{attempted}} recipients, and your plan allows up to {{bulkLimit}} per batch. Nothing was sent.\n\nYou can send the same list in batches of {{bulkLimit}} or fewer. Smaller batches cost nothing extra. They also do not slow delivery, because your phone sends one message at a time.\n\nPaid plans allow bigger batches: [compare plans]({{billingUrl}})",
+      "subject": "Your batch was not sent",
+      "preheader": "Nothing was sent. Here is what fits.",
+      "body": "# Your batch was not sent\n\nHi {{firstName}},\n\n{{#bulkLimit}}Your batch had {{attempted}} recipients, and your plan allows up to {{bulkLimit}} per batch. Nothing was sent.\n\nYou can send the same list in batches of {{bulkLimit}} or fewer. Smaller batches cost nothing extra. They also do not slow delivery, because your phone sends one message at a time.{{/bulkLimit}}{{#roomLeft}}Your batch had {{attempted}} recipients, but your account has {{roomLeft}} {{roomWindow}}. Nothing was sent.\n\nYou can send a smaller batch now, or send the full batch after {{roomResetNote}}.{{/roomLeft}}\n\nPaid plans allow bigger batches and a bigger allowance: [compare plans]({{billingUrl}})",
       "variables": {
         "firstName": "Sam",
         "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
         "attempted": "120",
-        "bulkLimit": "50"
+        "bulkLimit": "50",
+        "roomLeft": "",
+        "roomWindow": "left today",
+        "roomResetNote": "midnight UTC"
       },
-      "audience": "Plans with a finite batch limit",
-      "trigger": "A batch larger than the batch limit (checked before the daily and 30-day limits)",
+      "audience": "Free plan",
+      "trigger": "A batch is refused: larger than the batch limit, or larger than the room left today or in the last 30 days",
       "cap": "once per 7 days",
-      "notes": "",
-      "defaultHash": "bed8e3e71ba4af47"
+      "notes": "Two versions in one template. Batch-size refusal sets bulkLimit and leaves roomLeft empty. A batch that does not fit the room left sets roomLeft (for example \"1 message\"), roomWindow (\"left today\" or \"left in your 30-day allowance\") and roomResetNote (\"midnight UTC\" or \"older messages leave the 30-day count\"), and leaves bulkLimit empty. A refused batch that does not fit also counts as a limit hit for the follow-up emails.",
+      "defaultHash": "86a9765835af03f2"
     },
     {
       "key": "U6",

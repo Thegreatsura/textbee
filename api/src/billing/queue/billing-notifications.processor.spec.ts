@@ -133,6 +133,45 @@ describe('BillingNotificationsProcessor', () => {
     })
   })
 
+  it('fills the batch size version of U5', async () => {
+    await processor.handleSend(job('U5', { attempted: 120, bulkSendLimit: 50 }))
+
+    expect(mail.sendTemplated.mock.calls[0][0].vars).toMatchObject({
+      attempted: '120',
+      bulkLimit: '50',
+      roomLeft: '',
+      roomWindow: '',
+      roomResetNote: '',
+    })
+  })
+
+  it.each([
+    ['daily', 1, '1 message', 'left today', 'midnight UTC'],
+    ['monthly', 10, '10 messages', 'left in your 30-day allowance', 'older messages leave the 30-day count'],
+  ])('fills the %s room version of U5', async (roomWindow, roomLeft, left, windowText, note) => {
+    await processor.handleSend(
+      job('U5', { attempted: 5, bulkSendLimit: 50, roomWindow, roomLeft }),
+    )
+
+    expect(mail.sendTemplated.mock.calls[0][0].vars).toMatchObject({
+      attempted: '5',
+      bulkLimit: '',
+      roomLeft: left,
+      roomWindow: windowText,
+      roomResetNote: note,
+    })
+  })
+
+  it('shares the U5 window between both versions', async () => {
+    const lastSent = new Date(now.getTime() - 2 * 86400000)
+    sentEmails.findOne.mockImplementation(() => chain({ sentAt: lastSent }))
+
+    await processor.handleSend(job('U5', { attempted: 5, roomWindow: 'daily', roomLeft: 1 }))
+
+    expect(mail.sendTemplated).not.toHaveBeenCalled()
+    expect(sentEmails.findOne.mock.calls[0][0]).toMatchObject({ type: 'U5', status: 'sent' })
+  })
+
   it('cleans the device name for U6', async () => {
     await processor.handleSend(job('U6', { deviceLimit: 1, planName: 'free' }))
 

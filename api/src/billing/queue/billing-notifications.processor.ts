@@ -6,6 +6,7 @@ import { MailService } from '../../mail/mail.service'
 import {
   formatCount,
   formatDate,
+  pluralize,
   sanitizeUserText,
   TemplateVars,
 } from '../../mail/email-render'
@@ -164,8 +165,20 @@ export class BillingNotificationsProcessor {
       })
     }
     if (key === 'U5') {
-      vars.attempted = formatCount(meta.attempted)
-      vars.bulkLimit = formatCount(meta.bulkSendLimit)
+      // One template, two versions: batch size, or a batch larger than the room left.
+      const daily = meta.roomWindow === 'daily'
+      const roomCase = meta.roomWindow === 'daily' || meta.roomWindow === 'monthly'
+      Object.assign(vars, {
+        attempted: formatCount(meta.attempted),
+        bulkLimit: roomCase ? '' : formatCount(meta.bulkSendLimit),
+        roomLeft: roomCase ? pluralize(Number(meta.roomLeft), 'message', 'messages') : '',
+        roomWindow: roomCase ? (daily ? 'left today' : 'left in your 30-day allowance') : '',
+        roomResetNote: roomCase
+          ? daily
+            ? 'midnight UTC'
+            : 'older messages leave the 30-day count'
+          : '',
+      })
     }
     if (key === 'U6_paid') vars.deviceLimit = formatCount(meta.deviceLimit)
 

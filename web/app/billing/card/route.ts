@@ -4,6 +4,6 @@ import { emailLinkRedirect } from '@/lib/email-links'
 export const dynamic = 'force-dynamic'
 
 // Card update link from billing emails; the API checks the token.
-export function GET(request: NextRequest) {
+export async function GET(request: NextRequest) {
   return emailLinkRedirect(request, '/billing/card')
 }

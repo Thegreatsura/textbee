@@ -1573,7 +1573,7 @@ export class SmsPermissionStatusDTO {
     type: Date,
     nullable: true,
     description:
-      'When the phone reported the failure. Null unless needsSmsPermission is true.',
+      'When the server received the failure report from the phone. Null unless needsSmsPermission is true.',
   })
   failedAt: Date | null
 }

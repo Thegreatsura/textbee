@@ -3,6 +3,7 @@ import {
   PERMISSION_DENIED,
   hoursSincePermissionFailure,
   needsSmsPermission,
+  permissionFailureAt,
 } from '../notifications/rules/sms-permission'
 import { DeviceDocument } from './schemas/device.schema'
 import { SMSDocument } from './schemas/sms.schema'
@@ -51,6 +52,6 @@ export async function loadSmsPermissionStatus(
     hoursSinceFailure: hoursSincePermissionFailure(last, device, now) ?? null,
     deviceId: needs && last.device ? String(last.device) : null,
     deviceName: needs ? deviceLabel(device) : null,
-    failedAt: needs ? (last.failedAt ?? last.createdAt ?? null) : null,
+    failedAt: needs ? new Date(permissionFailureAt(last)) : null,
   }
 }

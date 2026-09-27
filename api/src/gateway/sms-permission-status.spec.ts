@@ -54,6 +54,25 @@ describe('loadSmsPermissionStatus', () => {
     })
   })
 
+  it('reports the server time of the failure, not the phone clock', async () => {
+    const reportedAt = new Date('2026-09-27T09:31:00.000Z')
+    const m = models(
+      {
+        status: 'failed',
+        errorCode: 'PERMISSION_DENIED',
+        failedAt: new Date('2026-09-27T20:30:00.000Z'),
+        updatedAt: reportedAt,
+        device: DEVICE_ID,
+      },
+      {},
+    )
+
+    const status = await loadSmsPermissionStatus(m.smsModel, m.deviceModel, USER_ID, NOW)
+
+    expect(status.failedAt).toEqual(reportedAt)
+    expect(status.hoursSinceFailure).toBe(2)
+  })
+
   it('prefers the device name the user gave', async () => {
     const m = models(
       { status: 'failed', errorCode: 'PERMISSION_DENIED', failedAt: FAILED_AT, device: DEVICE_ID },

@@ -1,5 +1,5 @@
 // The two window boundaries the message quota is measured over. Duplicated
-// verbatim in textbee-admin.
+// outside this repository.
 //
 // These exist as shared pure functions because both apps have to count usage the
 // same way and they never call each other. The count itself is one line of Mongo

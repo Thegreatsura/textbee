@@ -21,7 +21,7 @@ export type NotificationRenderer = (
 // ordering, capping and measurement.
 //
 // An unrecognised key falls through to the standard renderer on purpose: the
-// admin can invent a record at any time, and the dashboard must never break
+// record can be authored at any time, and the dashboard must never break
 // because of one.
 const RENDERERS: Record<string, NotificationRenderer> = {}
 

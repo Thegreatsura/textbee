@@ -203,7 +203,7 @@ describe('the tile itself', () => {
 
     renderStack()
 
-    // The admin can invent a record at any time; the dashboard must not break.
+    // A record can be authored at any time; the dashboard must not break.
     expect(await screen.findByText('Upgrade to Pro')).toBeInTheDocument()
   })
 })

@@ -9,9 +9,8 @@ import type { NotificationAction, ServedNotification } from '@/lib/api'
 
 // Presentational. Everything it shows was decided server side, so it holds no
 // targeting logic and takes no data of its own. The markup is deliberately
-// plain semantic utilities: the admin app renders this same shape in its preview
-// on an older Tailwind, and utilities like bg-linear-to-r would not survive the
-// trip.
+// plain semantic utilities: this same shape is rendered elsewhere on an older
+// Tailwind, and utilities like bg-linear-to-r would not survive the trip.
 
 const isExternal = (href: string) => /^https?:\/\//i.test(href)
 
@@ -32,7 +31,7 @@ function ActionButton({
       variant={variant}
       size='sm'
       asChild
-      className='text-xs md:text-sm'
+      className='h-7 px-2.5 text-xs'
       onClick={onActivate}
     >
       {external ? (
@@ -75,17 +74,22 @@ export function NotificationTile({
   }, [holdSeconds])
 
   return (
-    <Alert variant={notification.tone}>
-      <AlertDescription className='flex flex-col items-center gap-2 sm:flex-row md:gap-4'>
-        <span className='w-full text-center text-sm font-medium sm:flex-1 sm:text-left md:text-base'>
-          {notification.title}
-        </span>
-        {notification.body ? (
-          <span className='w-full text-center text-xs sm:flex-1 sm:text-left md:text-sm'>
-            {notification.body}
+    // One line on a desktop width. The message and its detail sit together on the
+    // left rather than in separate columns, which is what made these tall and
+    // left a gap down the middle of the bar.
+    <Alert variant={notification.tone} className='px-3 py-2'>
+      <AlertDescription className='flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3'>
+        <div className='flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2'>
+          <span className='text-sm font-medium leading-snug'>
+            {notification.title}
           </span>
-        ) : null}
-        <div className='mt-2 flex w-full flex-wrap items-center justify-center gap-2 sm:mt-0 sm:w-auto sm:justify-end'>
+          {notification.body ? (
+            <span className='text-xs leading-snug text-muted-foreground'>
+              {notification.body}
+            </span>
+          ) : null}
+        </div>
+        <div className='flex shrink-0 items-center gap-1.5'>
           {notification.actions.map((action, index) => (
             <ActionButton
               key={`${action.label}-${index}`}
@@ -99,9 +103,9 @@ export function NotificationTile({
               type='button'
               aria-label={`Dismiss: ${notification.title}`}
               onClick={() => onDismiss(notification)}
-              className='rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/60'
+              className='rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring/60'
             >
-              <X className='h-4 w-4' />
+              <X className='h-3.5 w-3.5' />
             </button>
           ) : null}
         </div>

@@ -12,7 +12,7 @@ export type NotificationSettingsDocument = NotificationSettings & Document
 //                  False silences even past-due and verification warnings, so it
 //                  is a kill switch, not a rollback.
 // Explicit: pluralising the class name would give 'notificationsettings', which
-// is not what the admin app writes the engine flag to.
+// is not the collection the engine flag is written to.
 @Schema({ timestamps: true, collection: 'dashboardnotificationsettings' })
 export class NotificationSettings {
   _id?: Types.ObjectId

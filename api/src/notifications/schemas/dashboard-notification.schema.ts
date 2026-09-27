@@ -8,7 +8,8 @@ import {
 
 export type DashboardNotificationDocument = DashboardNotification & Document
 
-// One authored message for the dashboard. The admin app writes these; this API
+// One authored message for the dashboard. These are authored outside this
+// service; this API
 // owns the schema and the indexes and only reads them. Named dashboard* because
 // billingnotifications and webhooknotifications already exist and are unrelated.
 
@@ -156,9 +157,9 @@ export class NotificationSource {
 
 const NotificationSourceSchema = SchemaFactory.createForClass(NotificationSource)
 
-// Named explicitly. The admin app reads and writes the same collection, and
-// leaving the name to Mongoose's pluralisation is how two apps end up on two
-// different collections that look correct in both codebases.
+// Named explicitly. This collection is read and written outside this service,
+// and leaving the name to Mongoose's pluralisation is how two codebases end up
+// on two different collections while looking correct in both.
 @Schema({ timestamps: true, collection: 'dashboardnotifications' })
 export class DashboardNotification {
   _id?: Types.ObjectId

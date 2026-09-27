@@ -9,7 +9,7 @@ export type NotificationStateDocument = NotificationState & Document
 // localStorage so a dismissal survives a new browser or device, so prior
 // exposure is targetable, and so there is anything at all to report on.
 // Explicit: pluralising the class name would give 'notificationstates', which
-// is not what the admin app reads.
+// is not the collection read outside this service.
 @Schema({ timestamps: true, collection: 'dashboardnotificationstates' })
 export class NotificationState {
   _id?: Types.ObjectId
@@ -60,7 +60,7 @@ export const NotificationStateSchema =
 // without such an index; do not repeat that here.
 NotificationStateSchema.index({ user: 1, notification: 1 }, { unique: true })
 
-// The admin's per-account history table, newest first.
+// The per-account history view, newest first.
 NotificationStateSchema.index({ user: 1, lastSeenAt: -1 })
 
 // Per-notification reporting across accounts.

@@ -12,14 +12,14 @@ import {
 
 // Pure. No I/O, no models, no framework. Takes a condition tree and an already
 // resolved context and returns a verdict plus a tree-shaped trace. Duplicated
-// verbatim in textbee-admin, which renders the trace as a per-leaf pass/fail
-// annotation so an admin can see why an account did not match.
+// outside this repository, where the trace is rendered as a per-leaf pass/fail
+// annotation, so it is possible to see why an account did not match.
 //
 // Two deliberate choices:
 //
 // 1. Nothing short-circuits. The context is fully loaded before evaluation, so
 //    visiting every branch costs nothing and yields a complete trace. A partial
-//    trace would make the admin preview useless on the exact trees that need
+//    trace would make a preview useless on the exact trees that need
 //    explaining.
 // 2. Everything fails to "unknown" rather than false. See TriState in types.ts.
 
@@ -153,7 +153,7 @@ function evaluateLeaf(
   )
 
   // An attribute this build does not know about. A registry running behind the
-  // admin can then only under-show, never crash and never over-show.
+  // registry running behind can then only under-show, never crash or over-show.
   if (!descriptor) {
     return {
       kind: 'leaf',

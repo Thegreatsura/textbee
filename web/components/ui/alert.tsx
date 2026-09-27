@@ -15,7 +15,7 @@ const alertVariants = cva(
         // patterns the alert components already used inline; naming them here
         // stops each one hand-writing its own and lets an authored record pick
         // one by name. Semantic utilities only, so the same markup renders
-        // identically in the admin app's preview despite its older Tailwind.
+        // identically where it is mirrored on an older Tailwind.
         info: "bg-card text-foreground",
         success: "border-success/30 bg-success/[0.07] text-foreground",
         warning: "border-warning/30 bg-warning/[0.08] text-foreground",

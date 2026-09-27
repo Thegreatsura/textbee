@@ -1104,7 +1104,7 @@ describe('BillingService - reads raise no usage notices', () => {
   })
 })
 
-describe('BillingService - payment retry state and churn cause', () => {
+describe('BillingService - payment retry state and end cause', () => {
   const eventAt = new Date('2026-09-20T12:00:00Z')
   const build = ({ pastDue = null as any, storedPastDue = null as any } = {}) => {
     const subscriptionModel = {

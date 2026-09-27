@@ -203,7 +203,7 @@ describe('BillingController - handlePolarWebhook', () => {
     )
   })
 
-  it('passes the cancel fields and event time to the churn cause rule', async () => {
+  it('passes the cancel fields and event time to the end cause rule', async () => {
     const payload: any = makePayload('subscription.canceled', {
       status: 'canceled',
       endsAt: '2026-07-01T10:00:00.000Z',

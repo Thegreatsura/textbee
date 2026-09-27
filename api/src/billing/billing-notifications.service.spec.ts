@@ -10,7 +10,7 @@ describe('BillingNotificationsService - notifyOnce', () => {
   const type = BillingNotificationType.MONTHLY_LIMIT_REACHED
   const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3600 * 1000)
 
-  let model: { findOne: jest.Mock; findOneAndUpdate: jest.Mock }
+  let model: { findOne: jest.Mock; findOneAndUpdate: jest.Mock; updateOne: jest.Mock }
   let queue: { add: jest.Mock }
   let service: BillingNotificationsService
 
@@ -24,13 +24,17 @@ describe('BillingNotificationsService - notifyOnce', () => {
     ...(lastEmailSentAt && { lastEmailSentAt }),
   })
 
-  const notify = () =>
-    service.notifyOnce({ userId, type, title: 'title', message: 'message' })
+  const notify = (extra: Record<string, any> = {}) =>
+    service.notifyOnce({ userId, type, title: 'title', message: 'message', emailKey: 'U2', ...extra })
 
   const jobOptions = () => queue.add.mock.calls[0][2]
 
   beforeEach(() => {
-    model = { findOne: jest.fn(), findOneAndUpdate: jest.fn() }
+    model = {
+      findOne: jest.fn(),
+      findOneAndUpdate: jest.fn(),
+      updateOne: jest.fn().mockResolvedValue({}),
+    }
     queue = { add: jest.fn().mockResolvedValue(undefined) }
     service = new BillingNotificationsService(model as any, queue as any)
   })
@@ -69,7 +73,7 @@ describe('BillingNotificationsService - notifyOnce', () => {
   })
 
   it('queues again with a new job id once the window has passed', async () => {
-    const lastSent = hoursAgo(49)
+    const lastSent = hoursAgo(31 * 24)
     model.findOne.mockResolvedValue(storedDoc(lastSent))
     model.findOneAndUpdate.mockResolvedValue(storedDoc(lastSent))
 
@@ -77,6 +81,56 @@ describe('BillingNotificationsService - notifyOnce', () => {
 
     expect(queue.add).toHaveBeenCalledTimes(1)
     expect(jobOptions().jobId).toBe(`n1:${lastSent.getTime()}`)
+  })
+
+  it('keeps an in-app notice without queueing an email when there is no template', async () => {
+    model.findOne.mockResolvedValue(null)
+    model.findOneAndUpdate.mockResolvedValue(storedDoc())
+
+    await notify({ emailKey: null })
+
+    expect(model.findOneAndUpdate).toHaveBeenCalled()
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('carries the template key to the job', async () => {
+    model.findOne.mockResolvedValue(null)
+    model.findOneAndUpdate.mockResolvedValue(storedDoc())
+
+    await notify()
+
+    expect(queue.add.mock.calls[0][1]).toMatchObject({ emailKey: 'U2', sendEmail: true })
+  })
+
+  it('records the hit day even inside the email window', async () => {
+    model.findOne.mockResolvedValue(storedDoc(hoursAgo(1)))
+
+    await notify({ recordHit: true })
+
+    const [filter, update, options] = model.updateOne.mock.calls[0]
+    expect(filter).toEqual({ user: expect.any(Types.ObjectId), type })
+    expect(update.$addToSet).toEqual({ hitDays: new Date().toISOString().slice(0, 10) })
+    expect(update.$set.lastHitAt).toBeInstanceOf(Date)
+    expect(options).toEqual({ upsert: true })
+    expect(queue.add).not.toHaveBeenCalled()
+  })
+
+  it('skips the hit write when the day is recorded and the last hit is recent', async () => {
+    const today = new Date().toISOString().slice(0, 10)
+    model.findOne.mockResolvedValue({
+      ...storedDoc(hoursAgo(1)),
+      hitDays: [today],
+      lastHitAt: new Date(Date.now() - 10_000),
+    })
+
+    await notify({ recordHit: true })
+
+    expect(model.updateOne).not.toHaveBeenCalled()
+  })
+
+  it('uses 7 and 30 day windows before queueing again', () => {
+    expect(BILLING_NOTIFICATION_DEDUPE_HOURS[BillingNotificationType.DAILY_LIMIT_REACHED]).toBe(168)
+    expect(BILLING_NOTIFICATION_DEDUPE_HOURS[BillingNotificationType.MONTHLY_LIMIT_REACHED]).toBe(720)
   })
 
   it('has a window for every notification type', () => {

@@ -532,7 +532,8 @@ describe('BillingService - canPerformAction account checks', () => {
       expect(mockBillingNotifications.notifyOnce).toHaveBeenCalledWith(
         expect.objectContaining({
           type: BillingNotificationType.MONTHLY_LIMIT_REACHED,
-          sendEmail: true,
+          emailKey: 'U2',
+          recordHit: true,
         }),
       )
     })
@@ -553,14 +554,14 @@ describe('BillingService - canPerformAction account checks', () => {
       })
     })
 
-    it('tells the notice whether receives over the limit are stored', async () => {
+    it('still notifies when receives over the limit are rejected', async () => {
       process.env.RECEIVE_SMS_OVER_LIMIT = 'reject'
 
       await expect(service.canPerformAction(userId, 'receive_sms', 1)).rejects.toMatchObject({
         status: 429,
       })
       expect(mockBillingNotifications.notifyOnce).toHaveBeenCalledWith(
-        expect.objectContaining({ meta: expect.objectContaining({ receivesStored: false }) }),
+        expect.objectContaining({ meta: expect.objectContaining({ limitTripped: 'monthly' }) }),
       )
     })
 
@@ -709,9 +710,9 @@ describe('BillingService - canPerformAction account checks', () => {
       await expect(service.canPerformAction(userId, 'send_sms', 1)).resolves.toEqual({
         overLimit: false,
       })
-      expect(noticeOf(BillingNotificationType.MONTHLY_LIMIT_APPROACHING)?.meta).toEqual({
-        processedSmsLastMonth: 4000,
-        monthlyLimit: 5000,
+      expect(noticeOf(BillingNotificationType.MONTHLY_LIMIT_APPROACHING)).toMatchObject({
+        meta: { processedSmsLastMonth: 4000, monthlyLimit: 5000, planName: 'pro' },
+        emailKey: 'U1_paid',
       })
     })
 
@@ -747,9 +748,9 @@ describe('BillingService - canPerformAction account checks', () => {
 
       await service.canPerformAction(userId, 'send_sms', 1)
 
-      expect(noticeOf(BillingNotificationType.DAILY_LIMIT_APPROACHING)?.meta).toEqual({
-        processedSmsToday: 40,
-        dailyLimit: 50,
+      expect(noticeOf(BillingNotificationType.DAILY_LIMIT_APPROACHING)).toMatchObject({
+        meta: { processedSmsToday: 40, dailyLimit: 50, planName: 'free' },
+        emailKey: 'U3',
       })
       expect(noticeOf(BillingNotificationType.MONTHLY_LIMIT_APPROACHING)).toBeUndefined()
     })
@@ -762,6 +763,141 @@ describe('BillingService - canPerformAction account checks', () => {
       await expect(service.canPerformAction(userId, 'send_sms', 1)).resolves.toEqual({
         overLimit: false,
       })
+    })
+  })
+
+  describe('limit check order and usage email variants', () => {
+    const plans = {
+      pro: { _id: 'plan_pro', name: 'pro', dailyLimit: -1, monthlyLimit: 5000, bulkSendLimit: -1 },
+      scale: { _id: 'plan_scale', name: 'scale', dailyLimit: -1, monthlyLimit: 25000, bulkSendLimit: -1 },
+      custom: { _id: 'plan_c', name: 'custom-acme', dailyLimit: 1000, monthlyLimit: 10000, bulkSendLimit: 500 },
+    }
+    const onPlan = (plan: any) => {
+      mockSubscriptionModel.findOne.mockResolvedValue({ plan: plan._id })
+      mockPlanModel.findById.mockResolvedValue(plan)
+    }
+    const givenCounts = (today: number, last30Days: number) =>
+      mockSmsModel.countDocuments.mockResolvedValueOnce(today).mockResolvedValueOnce(last30Days)
+    const notices = () => mockBillingNotifications.notifyOnce.mock.calls.map(([n]) => n)
+
+    beforeEach(() => {
+      delete process.env.RECEIVE_SMS_OVER_LIMIT
+      givenUser({ emailVerifiedAt: new Date() })
+    })
+
+    it('reports a batch over the batch limit as U5 and nothing else', async () => {
+      givenCounts(0, 0)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 60)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(notices()).toHaveLength(1)
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
+        emailKey: 'U5',
+        recordHit: false,
+        meta: { limitTripped: 'bulk', attempted: 60 },
+      })
+    })
+
+    it('checks the 30-day limit before the daily one', async () => {
+      givenCounts(50, 300)
+
+      await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(notices()).toHaveLength(1)
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+        emailKey: 'U2',
+      })
+    })
+
+    it('reports the daily limit as U4 on the free plan', async () => {
+      givenCounts(50, 120)
+
+      await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.DAILY_LIMIT_REACHED,
+        emailKey: 'U4',
+        recordHit: true,
+        meta: { limitTripped: 'daily', processedSmsToday: 50 },
+      })
+    })
+
+    it('refuses a batch that does not fit the room left without a notice', async () => {
+      givenCounts(10, 100)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 45)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(mockBillingNotifications.notifyOnce).not.toHaveBeenCalled()
+    })
+
+    it('refuses a 30-day overflow on a paid plan without a notice until the count is at the allowance', async () => {
+      onPlan(plans.pro)
+      givenCounts(10, 5450)
+
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 100)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(mockBillingNotifications.notifyOnce).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['pro', 'U2_paid'],
+      ['scale', 'U2_top'],
+    ])('picks the 30-day email for %s', async (name, key) => {
+      const plan = plans[name]
+      onPlan(plan)
+      givenCounts(10, Math.floor(plan.monthlyLimit * 1.1))
+
+      await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+        status: 429,
+      })
+
+      expect(notices()[0]).toMatchObject({ emailKey: key, meta: { planName: name } })
+    })
+
+    it('sends no daily or batch email to a custom plan', async () => {
+      onPlan(plans.custom)
+      givenCounts(1000, 2000)
+
+      await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
+        status: 429,
+      })
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.DAILY_LIMIT_REACHED,
+        emailKey: null,
+      })
+
+      jest.clearAllMocks()
+      givenCounts(0, 0)
+      await expect(service.canPerformAction(userId, 'bulk_send_sms', 600)).rejects.toMatchObject({
+        status: 429,
+      })
+      expect(notices()[0]).toMatchObject({
+        type: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
+        emailKey: null,
+      })
+    })
+
+    it('counts today from midnight UTC', async () => {
+      givenCounts(0, 0)
+
+      await service.canPerformAction(userId, 'send_sms', 1)
+
+      const since = mockSmsModel.countDocuments.mock.calls[0][0].createdAt.$gte as Date
+      expect(since.getUTCHours()).toBe(0)
+      expect(since.getUTCMinutes()).toBe(0)
+      expect(Date.now() - since.getTime()).toBeLessThan(24 * 3600 * 1000)
     })
   })
 })
@@ -887,5 +1023,28 @@ describe('BillingService - first payment reporting', () => {
       success: true,
       plan: 'pro',
     })
+  })
+})
+
+describe('BillingService - reads raise no usage notices', () => {
+  it('getCurrentSubscription does not notify at 100% usage', async () => {
+    const notifyOnce = jest.fn()
+    const freePlan = { name: 'free', dailyLimit: 50, monthlyLimit: 300, bulkSendLimit: 50 }
+    const service = new BillingService(
+      { findOne: jest.fn().mockResolvedValue(freePlan) } as any,
+      { findOne: jest.fn(() => ({ populate: jest.fn().mockResolvedValue(null) })) } as any,
+      {} as any,
+      { countDocuments: jest.fn().mockResolvedValue(300) } as any,
+      {} as any,
+      {} as any,
+      { notifyOnce } as any,
+      {} as any,
+      {} as any,
+    )
+
+    const result = await service.getCurrentSubscription({ _id: '507f1f77bcf86cd799439011' })
+
+    expect(result.usage.monthlyRemaining).toBe(0)
+    expect(notifyOnce).not.toHaveBeenCalled()
   })
 })

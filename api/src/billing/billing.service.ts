@@ -32,6 +32,11 @@ import {
   BillingNotificationType,
 } from './billing-notifications.service'
 import { resolveClientAddress } from '../common/client-address'
+import {
+  dailyWindowStart,
+  monthlyWindowStart,
+} from '../notifications/rules/usage-window'
+import { usageEmailKey } from './usage-emails'
 
 // Paid plans are allowed a little past their nominal monthly limit before sends
 // are refused. Exported because notification targeting measures usage against
@@ -79,25 +84,19 @@ export class BillingService {
 
     const processedSmsToday = await this.smsModel.countDocuments({
       user: user._id,
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      createdAt: { $gte: dailyWindowStart(new Date()) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
       user: user._id,
       createdAt: {
-        $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+        $gte: monthlyWindowStart(new Date()),
       },
     })
 
     if (subscription) {
       const plan = subscription.plan
       const effectiveLimits = this.getEffectiveLimits(subscription, plan)
-
-      this.notifyApproachingLimits(
-        user._id,
-        { today: processedSmsToday, last30Days: processedSmsLastMonth },
-        effectiveLimits,
-      )
 
       return {
         ...subscription.toObject(),
@@ -134,12 +133,6 @@ export class BillingService {
 
     const plan = await this.planModel.findOne({ name: 'free' })
     const effectiveLimits = this.getEffectiveLimits(null, plan)
-
-    this.notifyApproachingLimits(
-      user._id,
-      { today: processedSmsToday, last30Days: processedSmsLastMonth },
-      effectiveLimits,
-    )
 
     return {
       plan,
@@ -686,6 +679,7 @@ export class BillingService {
 
   private notifyApproachingLimits(
     userId: Types.ObjectId,
+    planName: string,
     used: { today: number; last30Days: number },
     limits: { dailyLimit: number; monthlyLimit: number },
   ) {
@@ -693,10 +687,17 @@ export class BillingService {
       type: BillingNotificationType,
       title: string,
       message: string,
-      meta: Record<string, number>,
+      meta: Record<string, any>,
     ) =>
       this.billingNotifications
-        .notifyOnce({ userId, type, title, message, meta, sendEmail: true })
+        .notifyOnce({
+          userId,
+          type,
+          title,
+          message,
+          meta: { ...meta, planName },
+          emailKey: usageEmailKey(type, planName),
+        })
         .catch(() => {})
 
     const { dailyLimit, monthlyLimit } = limits
@@ -753,6 +754,10 @@ export class BillingService {
     deviceLimit: number,
     activeDeviceCount: number,
   ) {
+    const subscription = await this.subscriptionModel
+      .findOne({ user: new Types.ObjectId(String(userId)), isActive: true })
+      .populate('plan')
+    const planName = (subscription?.plan as Plan | undefined)?.name ?? 'free'
     await this.billingNotifications.notifyOnce({
       userId,
       type: BillingNotificationType.DEVICE_LIMIT_REACHED,
@@ -761,8 +766,12 @@ export class BillingService {
       meta: {
         deviceLimit,
         activeDeviceCount,
+        planName,
       },
-      sendEmail: true,
+      emailKey: usageEmailKey(
+        BillingNotificationType.DEVICE_LIMIT_REACHED,
+        planName,
+      ),
     })
   }
 
@@ -1054,67 +1063,46 @@ export class BillingService {
         // Otherwise, continue with limit checks using effective limits
       }
 
-      let hasReachedLimit = false
-      let message = ''
-
       const processedSmsToday = await this.smsModel.countDocuments({
         user: user._id,
-        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        createdAt: { $gte: dailyWindowStart(new Date()) },
       })
       const processedSmsLastMonth = await this.smsModel.countDocuments({
         user: user._id,
         createdAt: {
-          $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+          $gte: monthlyWindowStart(new Date()),
         },
       })
 
-      let dailyExceeded = false
-      let monthlyExceeded = false
-      let bulkExceeded = false
+      const { dailyLimit, monthlyLimit, bulkSendLimit } = effectiveLimits
+      const dailyFinite = dailyLimit !== -1
+      const monthlyFinite = monthlyLimit !== -1
+      // Paid plans may run a little past their nominal 30-day limit.
+      const monthlyCeiling =
+        monthlyFinite && plan.name !== 'free'
+          ? Math.floor(monthlyLimit * PAID_MONTHLY_LIMIT_MULTIPLIER)
+          : monthlyLimit
 
-      if (['send_sms', 'receive_sms', 'bulk_send_sms'].includes(action)) {
-        const dailyFinite = effectiveLimits.dailyLimit !== -1
-        const monthlyFinite = effectiveLimits.monthlyLimit !== -1
-
-        // exceeded checks
-        dailyExceeded =
-          dailyFinite && processedSmsToday + value > effectiveLimits.dailyLimit
-        monthlyExceeded =
-          monthlyFinite &&
-          processedSmsLastMonth + value > effectiveLimits.monthlyLimit
-        bulkExceeded =
-          effectiveLimits.bulkSendLimit !== -1 &&
-          value > effectiveLimits.bulkSendLimit
-
-        if (dailyExceeded) {
-          hasReachedLimit = true
-          message = `Your account has used all ${effectiveLimits.dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight, or upgrade your plan to keep sending now.`
-        }
-
-        if (monthlyExceeded) {
-          hasReachedLimit = true
-          message = `Your account has used its ${effectiveLimits.monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`
-        }
-
-        if (bulkExceeded) {
-          hasReachedLimit = true
-          message = `This batch has ${value} recipients, and your plan allows ${effectiveLimits.bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`
-        }
+      // Checked in this order: batch size, then 30 days, then today.
+      let tripped: 'bulk' | 'monthly' | 'daily' | null = null
+      let reached = false
+      if (bulkSendLimit !== -1 && value > bulkSendLimit) {
+        tripped = 'bulk'
+        reached = true
+      } else if (monthlyFinite && processedSmsLastMonth + value > monthlyCeiling) {
+        tripped = 'monthly'
+        reached = processedSmsLastMonth >= monthlyCeiling
+      } else if (dailyFinite && processedSmsToday + value > dailyLimit) {
+        tripped = 'daily'
+        reached = processedSmsToday >= dailyLimit
       }
 
-      if (hasReachedLimit) {
-        if (
-          plan.name !== 'free' &&
-          monthlyExceeded &&
-          !dailyExceeded &&
-          !bulkExceeded &&
-          processedSmsLastMonth + value <=
-            Math.floor(
-              effectiveLimits.monthlyLimit * PAID_MONTHLY_LIMIT_MULTIPLIER,
-            )
-        ) {
-          return { overLimit: false }
-        }
+      if (tripped) {
+        const message = {
+          bulk: `This batch has ${value} recipients, and your plan allows ${bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`,
+          monthly: `Your account has used its ${monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`,
+          daily: `Your account has used all ${dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight UTC, or upgrade your plan to keep sending now.`,
+        }[tripped]
 
         const storeReceive =
           action === 'receive_sms' && this.receivesOverLimitAllowed()
@@ -1130,44 +1118,46 @@ export class BillingService {
               value,
               message,
               hasReachedLimit: true,
-              dailyLimit: effectiveLimits.dailyLimit,
-              dailyRemaining: effectiveLimits.dailyLimit - processedSmsToday,
-              monthlyRemaining:
-                effectiveLimits.monthlyLimit - processedSmsLastMonth,
-              bulkSendLimit: effectiveLimits.bulkSendLimit,
-              monthlyLimit: effectiveLimits.monthlyLimit,
+              tripped,
+              reached,
+              dailyLimit,
+              dailyRemaining: dailyLimit - processedSmsToday,
+              monthlyRemaining: monthlyLimit - processedSmsLastMonth,
+              bulkSendLimit,
+              monthlyLimit,
             }),
           )
         }
 
-        let type: BillingNotificationType
-        let titleForEmail = ''
-        if (dailyExceeded) {
-          type = BillingNotificationType.DAILY_LIMIT_REACHED
-          titleForEmail = "You've reached today's message limit"
-        } else if (monthlyExceeded) {
-          type = BillingNotificationType.MONTHLY_LIMIT_REACHED
-          titleForEmail = "You've reached your monthly message limit"
-        } else if (bulkExceeded) {
-          type = BillingNotificationType.BULK_SMS_LIMIT_REACHED
-          titleForEmail = 'Your batch was too big for your plan'
-        }
-        if (type) {
+        // A batch that does not fit the room left is refused without a notice.
+        if (reached) {
+          const type = {
+            bulk: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
+            monthly: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+            daily: BillingNotificationType.DAILY_LIMIT_REACHED,
+          }[tripped]
+          const title = {
+            bulk: 'Your batch was too big for your plan',
+            monthly: "You've reached your monthly message limit",
+            daily: "You've reached today's message limit",
+          }[tripped]
           const notification = this.billingNotifications.notifyOnce({
             userId: user._id,
             type,
-            title: titleForEmail || 'Usage limit notice',
+            title,
             message,
             meta: {
               processedSmsToday,
               processedSmsLastMonth,
               attempted: value,
-              dailyLimit: effectiveLimits.dailyLimit,
-              monthlyLimit: effectiveLimits.monthlyLimit,
-              bulkSendLimit: effectiveLimits.bulkSendLimit,
-              receivesStored: this.receivesOverLimitAllowed(),
+              dailyLimit,
+              monthlyLimit,
+              bulkSendLimit,
+              planName: plan.name,
+              limitTripped: tripped,
             },
-            sendEmail: true,
+            emailKey: usageEmailKey(type, plan.name),
+            recordHit: tripped !== 'bulk',
           })
           if (storeReceive) {
             notification.catch(() => {})
@@ -1184,27 +1174,25 @@ export class BillingService {
           {
             message: message,
             hasReachedLimit: true,
-            dailyLimit: effectiveLimits.dailyLimit,
-            dailyRemaining: effectiveLimits.dailyLimit - processedSmsToday,
-            monthlyRemaining:
-              effectiveLimits.monthlyLimit - processedSmsLastMonth,
-            bulkSendLimit: effectiveLimits.bulkSendLimit,
-            monthlyLimit: effectiveLimits.monthlyLimit,
+            dailyLimit,
+            dailyRemaining: dailyLimit - processedSmsToday,
+            monthlyRemaining: monthlyLimit - processedSmsLastMonth,
+            bulkSendLimit,
+            monthlyLimit,
           },
           HttpStatus.TOO_MANY_REQUESTS,
         )
       }
 
-      if (['send_sms', 'receive_sms', 'bulk_send_sms'].includes(action)) {
-        this.notifyApproachingLimits(
-          user._id,
-          {
-            today: processedSmsToday + value,
-            last30Days: processedSmsLastMonth + value,
-          },
-          effectiveLimits,
-        )
-      }
+      this.notifyApproachingLimits(
+        user._id,
+        plan.name,
+        {
+          today: processedSmsToday + value,
+          last30Days: processedSmsLastMonth + value,
+        },
+        effectiveLimits,
+      )
 
       return { overLimit: false }
     } catch (error) {
@@ -1237,13 +1225,13 @@ export class BillingService {
 
     const processedSmsToday = await this.smsModel.countDocuments({
       user: new Types.ObjectId(userId),
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      createdAt: { $gte: dailyWindowStart(new Date()) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
       user: new Types.ObjectId(userId),
       createdAt: {
-        $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+        $gte: monthlyWindowStart(new Date()),
       },
     })
 

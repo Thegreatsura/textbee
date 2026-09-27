@@ -45,6 +45,13 @@ export class BillingNotification {
   @Prop({ type: Date })
   lastEmailSentAt?: Date
 
+  // UTC days ("YYYY-MM-DD") on which the account hit this limit.
+  @Prop({ type: [String], default: undefined })
+  hitDays?: string[]
+
+  @Prop({ type: Date })
+  lastHitAt?: Date
+
   // present because of timestamps: true
   @Prop({ type: Date })
   createdAt?: Date

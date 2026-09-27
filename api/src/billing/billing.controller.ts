@@ -1,4 +1,14 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  Query,
+  Res,
+} from '@nestjs/common'
+import { Response } from 'express'
 import { BillingService } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
 import {
@@ -143,6 +153,23 @@ export class BillingController {
       user: req.user,
       payload,
     })
+  }
+
+  // Signed links from billing emails, reached through the web app.
+  @ApiExcludeEndpoint()
+  @Get('card')
+  async cardUpdate(@Query('t') t: string, @Res() res: Response) {
+    const url = await this.billingService.cardUpdateRedirect(t)
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
+    return res.redirect(302, url)
+  }
+
+  @ApiExcludeEndpoint()
+  @Get('checkout/resume')
+  async checkoutResume(@Query('t') t: string, @Res() res: Response) {
+    const url = await this.billingService.checkoutResumeRedirect(t)
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
+    return res.redirect(302, url)
   }
 
   // Provider to server callback with a signed raw body, not something a

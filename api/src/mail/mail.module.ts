@@ -15,6 +15,8 @@ import {
   EmailSuppressionSchema,
 } from './schemas/email-suppression.schema'
 import { User, UserSchema } from '../users/schemas/user.schema'
+import { EmailController } from './email.controller'
+import { SesEventsService } from './ses-events.service'
 
 @Module({
   imports: [
@@ -47,7 +49,8 @@ import { User, UserSchema } from '../users/schemas/user.schema'
       },
     } as any),
   ],
-  providers: [MailService, EmailTemplatesService],
+  controllers: [EmailController],
+  providers: [MailService, EmailTemplatesService, SesEventsService],
   exports: [MailService, EmailTemplatesService],
 })
 export class MailModule {}

@@ -37,6 +37,12 @@ import {
   monthlyWindowStart,
 } from '../notifications/rules/usage-window'
 import { usageEmailKey } from './usage-emails'
+import { verifyLink } from '../mail/email-render'
+import {
+  appPublicUrl,
+  billingUrl,
+  emailLinkSecret,
+} from '../mail/email-links'
 
 // Paid plans are allowed a little past their nominal monthly limit before sends
 // are refused. Exported because notification targeting measures usage against
@@ -1374,6 +1380,59 @@ export class BillingService {
       productId,
       productName,
     })
+  }
+
+  private linkId(token: unknown, purpose: string): string | null {
+    const secret = emailLinkSecret()
+    if (!secret) return null
+    return verifyLink(secret, token, purpose, Math.floor(Date.now() / 1000))
+  }
+
+  /** Where a signed card update link leads: the customer portal, or the billing page. */
+  async cardUpdateRedirect(token: unknown): Promise<string> {
+    const fallback = billingUrl()
+    const polarSubscriptionId = this.linkId(token, 'card')
+    if (!polarSubscriptionId) return fallback
+    try {
+      const subscription = await this.subscriptionModel.findOne({
+        polarSubscriptionId,
+        polarCustomerId: { $nin: [null, ''] },
+      })
+      if (!subscription?.polarCustomerId) return fallback
+      const session = await this.polarApi.customerSessions.create({
+        customerId: subscription.polarCustomerId,
+        returnUrl: fallback,
+      })
+      const url = session?.customerPortalUrl
+      return typeof url === 'string' && url.startsWith('https://') ? url : fallback
+    } catch (error) {
+      console.error('failed to open the customer portal from an email link', error?.message)
+      return fallback
+    }
+  }
+
+  /** Where a signed checkout link leads: the open checkout, or a new one for the same plan. */
+  async checkoutResumeRedirect(token: unknown): Promise<string> {
+    const checkoutSessionId = this.linkId(token, 'checkout-resume')
+    if (!checkoutSessionId) return billingUrl()
+    let session: CheckoutSessionDocument | null = null
+    try {
+      session = await this.checkoutSessionModel.findOne({ checkoutSessionId })
+    } catch (error) {
+      console.error('failed to load a checkout from an email link', error?.message)
+    }
+    if (
+      session &&
+      !session.isCompleted &&
+      !session.isAbandoned &&
+      session.expiresAt?.getTime() > Date.now() &&
+      session.checkoutUrl?.startsWith('https://')
+    ) {
+      return session.checkoutUrl
+    }
+    const plan = encodeURIComponent(session?.planName || 'pro')
+    const interval = session?.billingInterval === 'yearly' ? 'yearly' : 'monthly'
+    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}`
   }
 
   /**

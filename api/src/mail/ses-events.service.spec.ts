@@ -1,0 +1,150 @@
+import { createSign, generateKeyPairSync } from 'crypto'
+import { isSnsUrl, SesEventsService, snsStringToSign } from './ses-events.service'
+
+describe('SesEventsService', () => {
+  const { publicKey, privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 })
+  const certPem = publicKey.export({ type: 'spki', format: 'pem' }).toString()
+  const CERT_URL = 'https://sns.us-east-1.amazonaws.com/SimpleNotificationService-abc.pem'
+  const TOPIC = 'arn:aws:sns:us-east-1:123456789012:ses-events'
+  const env = { ...process.env }
+
+  const signed = (msg: Record<string, any>, version: '1' | '2' = '2'): any => {
+    const full = { SignatureVersion: version, SigningCertURL: CERT_URL, TopicArn: TOPIC, ...msg }
+    const signer = createSign(version === '1' ? 'RSA-SHA1' : 'RSA-SHA256')
+    signer.update(snsStringToSign(full))
+    return { ...full, Signature: signer.sign(privateKey, 'base64') }
+  }
+
+  const notification = (event: Record<string, any>, version: '1' | '2' = '2') =>
+    signed(
+      {
+        Type: 'Notification',
+        MessageId: 'm1',
+        Message: JSON.stringify(event),
+        Timestamp: '2026-09-27T10:00:00.000Z',
+      },
+      version,
+    )
+
+  let model: { updateOne: jest.Mock }
+  let service: SesEventsService
+  let fetchText: jest.SpyInstance
+
+  beforeEach(() => {
+    process.env = { ...env }
+    delete process.env.SES_EVENTS_TOPIC_ARN
+    model = { updateOne: jest.fn().mockResolvedValue({}) }
+    service = new SesEventsService(model as any)
+    fetchText = jest.spyOn(service, 'fetchText').mockResolvedValue(certPem)
+    jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined)
+    jest.spyOn((service as any).logger, 'log').mockImplementation(() => undefined)
+  })
+  afterAll(() => {
+    process.env = env
+  })
+
+  const bounce = {
+    eventType: 'Bounce',
+    bounce: {
+      bounceType: 'Permanent',
+      bounceSubType: 'General',
+      timestamp: '2026-09-27T09:59:00.000Z',
+      bouncedRecipients: [{ emailAddress: 'Ada <ADA@example.com>' }, { emailAddress: 'b@example.com' }],
+    },
+  }
+
+  it.each(['1', '2'] as const)('suppresses a permanent bounce signed with version %s', async (v) => {
+    await expect(service.handle(JSON.stringify(notification(bounce, v)))).resolves.toBe('ok')
+
+    expect(model.updateOne).toHaveBeenCalledTimes(2)
+    const [filter, update, options] = model.updateOne.mock.calls[0]
+    expect(filter).toEqual({ email: 'ada@example.com' })
+    expect(update.$set).toMatchObject({ reason: 'bounce', source: 'ses', detail: 'General' })
+    expect(update.$set.at).toEqual(new Date('2026-09-27T09:59:00.000Z'))
+    expect(options).toEqual({ upsert: true })
+  })
+
+  it('suppresses a complaint in the notification format', async () => {
+    await service.handle(
+      JSON.stringify(
+        notification({
+          notificationType: 'Complaint',
+          complaint: { complainedRecipients: [{ emailAddress: 'c@example.com' }] },
+        }),
+      ),
+    )
+
+    expect(model.updateOne.mock.calls[0][0]).toEqual({ email: 'c@example.com' })
+    expect(model.updateOne.mock.calls[0][1].$set.reason).toBe('complaint')
+  })
+
+  it.each([
+    ['a transient bounce', { eventType: 'Bounce', bounce: { bounceType: 'Transient', bouncedRecipients: [{ emailAddress: 'a@example.com' }] } }],
+    ['a delivery', { eventType: 'Delivery', delivery: {} }],
+    ['an unknown shape', { hello: 'world' }],
+  ])('ignores %s', async (_l, event) => {
+    await expect(service.handle(JSON.stringify(notification(event)))).resolves.toBe('ok')
+    expect(model.updateOne).not.toHaveBeenCalled()
+  })
+
+  it('rejects a message whose content was changed after signing', async () => {
+    const msg = notification(bounce)
+    msg.Message = msg.Message.replace('b@example.com', 'x@example.com')
+
+    await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
+    expect(model.updateOne).not.toHaveBeenCalled()
+  })
+
+  it('rejects a certificate outside the SNS host', async () => {
+    const msg = { ...notification(bounce), SigningCertURL: 'https://evil.example.com/cert.pem' }
+
+    await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
+    expect(fetchText).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown signature version', async () => {
+    const msg = { ...notification(bounce), SignatureVersion: '3' }
+
+    await expect(service.handle(JSON.stringify(msg))).resolves.toBe('rejected')
+  })
+
+  it('rejects another topic when one is configured', async () => {
+    process.env.SES_EVENTS_TOPIC_ARN = 'arn:aws:sns:us-east-1:123456789012:other'
+
+    await expect(service.handle(JSON.stringify(notification(bounce)))).resolves.toBe('rejected')
+  })
+
+  it('caches the signing certificate', async () => {
+    await service.handle(JSON.stringify(notification(bounce)))
+    await service.handle(JSON.stringify(notification(bounce)))
+
+    expect(fetchText).toHaveBeenCalledTimes(1)
+  })
+
+  it('confirms a subscription through the SNS host only', async () => {
+    const confirm = signed({
+      Type: 'SubscriptionConfirmation',
+      MessageId: 'm2',
+      Token: 'tok',
+      Message: 'confirm',
+      SubscribeURL: 'https://sns.us-east-1.amazonaws.com/?Action=ConfirmSubscription&Token=tok',
+      Timestamp: '2026-09-27T10:00:00.000Z',
+    })
+
+    await expect(service.handle(JSON.stringify(confirm))).resolves.toBe('ok')
+    expect(fetchText).toHaveBeenLastCalledWith(confirm.SubscribeURL)
+  })
+
+  it('answers invalid input without throwing', async () => {
+    await expect(service.handle('not json')).resolves.toBe('invalid')
+    await expect(service.handle('{}')).resolves.toBe('invalid')
+    await expect(service.handle(undefined)).resolves.toBe('invalid')
+  })
+
+  it('accepts only https SNS hosts', () => {
+    expect(isSnsUrl('https://sns.eu-west-1.amazonaws.com/x.pem')).toBe(true)
+    expect(isSnsUrl('http://sns.eu-west-1.amazonaws.com/x.pem')).toBe(false)
+    expect(isSnsUrl('https://sns.eu-west-1.amazonaws.com.evil.com/x.pem')).toBe(false)
+    expect(isSnsUrl('https://evil.com/sns.us-east-1.amazonaws.com')).toBe(false)
+  })
+})

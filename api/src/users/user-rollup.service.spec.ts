@@ -31,7 +31,7 @@ const build = (devices: any[] = [], apiKeyCount = 0) => {
     findOne: jest.fn().mockImplementation(() => chain(null)),
   }
   const subscriptionModel: any = {
-    findOne: jest.fn().mockImplementation(() => chain(null)),
+    find: jest.fn().mockImplementation(() => chain([])),
   }
 
   const service = new UserRollupService(
@@ -191,26 +191,69 @@ describe('UserRollupService.backfillMilestones', () => {
     expect(await t.service.backfillMilestones({ batchSize: 1 })).toBe(0)
   })
 
-  it('derives the first payment date, which predates the milestone', async () => {
+  const withPaidSubscriptions = (subscriptions: any[]) => {
     const t = build()
-    const startedPaying = new Date('2026-03-01T00:00:00.000Z')
     t.userModel.find
       .mockImplementationOnce(() => chain([{ _id: USER_ID, milestones: {} }]))
       .mockImplementationOnce(() => chain([]))
-    t.subscriptionModel.findOne.mockImplementation(() =>
-      chain({ subscriptionStartDate: startedPaying, createdAt: new Date() }),
-    )
+    t.subscriptionModel.find.mockImplementation(() => chain(subscriptions))
+    return t
+  }
+
+  const paidAtOf = (t: ReturnType<typeof build>) =>
+    t.userModel.bulkWrite.mock.calls[0][0][0].updateOne.update.$min[
+      'milestones.firstPaidAt'
+    ]
+
+  it('derives the first payment date, which predates the milestone', async () => {
+    const startedPaying = new Date('2026-03-01T00:00:00.000Z')
+    const t = withPaidSubscriptions([
+      { subscriptionStartDate: startedPaying, createdAt: new Date() },
+    ])
 
     await t.service.backfillMilestones({ batchSize: 1 })
 
-    const update = t.userModel.bulkWrite.mock.calls[0][0][0].updateOne.update
     // Otherwise every account that paid before the milestone existed reads as
     // never having paid.
-    expect(update.$min['milestones.firstPaidAt']).toEqual(startedPaying)
-    expect(t.subscriptionModel.findOne).toHaveBeenCalledWith({
+    expect(paidAtOf(t)).toEqual(startedPaying)
+    expect(t.subscriptionModel.find).toHaveBeenCalledWith({
       user: USER_ID,
       amount: { $gt: 0 },
     })
+  })
+
+  it('takes the earliest payment date even when the record order disagrees', async () => {
+    const recordedFirst = new Date('2026-05-01T00:00:00.000Z')
+    const paidEarlier = new Date('2026-03-01T00:00:00.000Z')
+    const t = withPaidSubscriptions([
+      // Recorded first, but the provider says it started later.
+      { createdAt: recordedFirst, subscriptionStartDate: recordedFirst },
+      // Recorded second, carrying a historical start date from reconciliation.
+      { createdAt: new Date('2026-05-02T00:00:00.000Z'), subscriptionStartDate: paidEarlier },
+    ])
+
+    await t.service.backfillMilestones({ batchSize: 1 })
+
+    // Reading the start date off whichever row was recorded first would report a
+    // first payment two months late.
+    expect(paidAtOf(t)).toEqual(paidEarlier)
+  })
+
+  it('falls back to when a subscription was recorded if the provider gave no start date', async () => {
+    const recorded = new Date('2026-04-01T00:00:00.000Z')
+    const t = withPaidSubscriptions([{ createdAt: recorded }])
+
+    await t.service.backfillMilestones({ batchSize: 1 })
+
+    expect(paidAtOf(t)).toEqual(recorded)
+  })
+
+  it('derives no payment date from a subscription with no dates at all', async () => {
+    const t = withPaidSubscriptions([{}])
+
+    await t.service.backfillMilestones({ batchSize: 1 })
+
+    expect(t.userModel.bulkWrite).not.toHaveBeenCalled()
   })
 
   it('skips an account with nothing to derive', async () => {

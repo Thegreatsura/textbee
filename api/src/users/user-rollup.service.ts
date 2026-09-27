@@ -15,6 +15,27 @@ import { User, UserDocument } from './schemas/user.schema'
 // key facts, which change rarely; the message counts it deliberately does not
 // hold are counted on demand, because the quota window slides.
 
+/**
+ * The earliest date an account actually paid, across its paid subscriptions.
+ *
+ * Each row's effective date is the provider's start date where it reported one,
+ * else when we recorded the row. Taking the minimum of those rather than reading
+ * one chosen row matters because the two orderings can disagree.
+ */
+function earliestPaymentDate(
+  subscriptions: Array<{ createdAt?: Date; subscriptionStartDate?: Date }>,
+): Date | undefined {
+  let earliest: Date | undefined
+  for (const subscription of subscriptions || []) {
+    const effective =
+      subscription?.subscriptionStartDate ?? subscription?.createdAt
+    if (!effective) continue
+    const at = new Date(effective)
+    if (!earliest || at < earliest) earliest = at
+  }
+  return earliest
+}
+
 interface RollupFacts {
   deviceCount: number
   apiKeyCount: number
@@ -255,14 +276,20 @@ export class UserRollupService {
         .select('createdAt')
         .sort({ createdAt: 1 })
         .lean(),
-      // Earliest subscription that cost something. Without this every account
-      // that paid before the milestone existed reads as never having paid, so
-      // milestones.hasPaid would be false for exactly the long-standing
-      // customers a campaign would want to treat differently.
+      // Every subscription that cost something, not just the earliest record.
+      // The two orders can disagree: a row recorded first can carry a later
+      // provider start date, and reconciled rows carry historical ones, so
+      // sorting by createdAt and reading the start date off that row can report
+      // a first payment later than the real one. There are only ever a handful
+      // per account, so the comparison happens below.
+      //
+      // Without any of this, every account that paid before the milestone
+      // existed reads as never having paid, and milestones.hasPaid would be
+      // false for exactly the long-standing customers a campaign would want to
+      // treat differently.
       this.subscriptionModel
-        .findOne({ user: userId, amount: { $gt: 0 } })
+        .find({ user: userId, amount: { $gt: 0 } })
         .select('createdAt subscriptionStartDate')
-        .sort({ createdAt: 1 })
         .lean(),
     ])
 
@@ -270,9 +297,7 @@ export class UserRollupService {
       firstDeviceAt: (device as any)?.createdAt,
       firstApiKeyAt: (apiKey as any)?.createdAt,
       firstSmsAt: (sms as any)?.createdAt,
-      // The start date when the provider reported one, else when we recorded it.
-      firstPaidAt:
-        (paid as any)?.subscriptionStartDate ?? (paid as any)?.createdAt,
+      firstPaidAt: earliestPaymentDate(paid as any[]),
     }
   }
 

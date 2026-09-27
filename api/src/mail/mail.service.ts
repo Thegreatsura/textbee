@@ -116,15 +116,12 @@ export class MailService {
     const category = template.stream as EmailCategory
     const log = { userId, category, type: key, meta }
 
-    const user = await this.userModel
-      .findById(userId)
-      .select('+emailVerificationWaivedAt')
-      .lean()
+    const user = await this.userModel.findById(userId).lean()
     const address = (to ?? user?.email)?.trim()
     const suppressed = address
       ? !!(await this.suppressionModel.exists({ email: address.toLowerCase() }))
       : false
-    const reason = skipReason(user, category, key, suppressed)
+    const reason = skipReason(user, suppressed)
     if (reason) {
       await this.saveSkip(address, reason, log)
       return 'skipped'

@@ -288,8 +288,7 @@ describe('MailService.sendTemplated', () => {
     }
     const sentEmailModel: any = { create: jest.fn().mockResolvedValue({}) }
     const lean = jest.fn().mockResolvedValue(user)
-    const select = jest.fn(() => ({ lean }))
-    const userModel: any = { findById: jest.fn(() => ({ select })) }
+    const userModel: any = { findById: jest.fn(() => ({ lean })) }
     const suppressionModel: any = {
       exists: jest.fn().mockResolvedValue(suppressed ? { _id: 'x' } : null),
     }
@@ -304,7 +303,7 @@ describe('MailService.sendTemplated', () => {
       userModel,
       suppressionModel,
     )
-    return { service, mailerService, sentEmailModel, suppressionModel, select }
+    return { service, mailerService, sentEmailModel, suppressionModel }
   }
 
   const sendT2 = (service: MailService) =>
@@ -330,11 +329,10 @@ describe('MailService.sendTemplated', () => {
   })
 
   it('sends html and text from the notifications sender with the tag header', async () => {
-    const { service, mailerService, sentEmailModel, select } = setup()
+    const { service, mailerService, sentEmailModel } = setup()
 
     await expect(sendT2(service)).resolves.toBe('sent')
 
-    expect(select).toHaveBeenCalledWith('+emailVerificationWaivedAt')
     const mail = mailerService.sendMail.mock.calls[0][0]
     expect(mail).toMatchObject({
       to: 'ada@example.com',

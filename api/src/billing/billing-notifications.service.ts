@@ -8,6 +8,7 @@ import {
   BillingNotificationDocument,
   BillingNotificationType,
 } from './schemas/billing-notification.schema'
+import { USAGE_EMAIL_LIMITS } from './usage-emails'
 
 type NotifyOnceInput = {
   userId: Types.ObjectId | string
@@ -21,22 +22,24 @@ type NotifyOnceInput = {
   recordHit?: boolean
 }
 
-// Minimum hours between queued emails per notification type. The processor
-// applies the per-template limits from sent emails on top of this.
-export const BILLING_NOTIFICATION_DEDUPE_HOURS: Record<
-  BillingNotificationType,
-  number
-> = {
-  [BillingNotificationType.EMAIL_VERIFICATION_REQUIRED]: 24,
-  [BillingNotificationType.DAILY_LIMIT_REACHED]: 7 * 24,
-  [BillingNotificationType.MONTHLY_LIMIT_REACHED]: 30 * 24,
-  [BillingNotificationType.BULK_SMS_LIMIT_REACHED]: 7 * 24,
-  [BillingNotificationType.DEVICE_LIMIT_REACHED]: 30 * 24,
-  [BillingNotificationType.DAILY_LIMIT_APPROACHING]: 7 * 24,
-  [BillingNotificationType.MONTHLY_LIMIT_APPROACHING]: 30 * 24,
-}
-
+const HOUR_MS = 60 * 60 * 1000
 const HIT_WRITE_INTERVAL_MS = 60 * 1000
+export const NOTICE_REFRESH_MS = HOUR_MS
+export const FAILED_EMAIL_RETRY_MS = HOUR_MS
+
+/** True while an earlier attempt of this template still covers the notice. */
+export const emailAttemptCovers = (
+  doc: Pick<BillingNotification, 'lastEmailKey' | 'lastEmailAttemptAt' | 'lastEmailResult'> | null,
+  emailKey: string,
+  now: Date,
+): boolean => {
+  if (!doc?.lastEmailAttemptAt || doc.lastEmailKey !== emailKey) return false
+  const wait =
+    doc.lastEmailResult === 'failed'
+      ? FAILED_EMAIL_RETRY_MS
+      : USAGE_EMAIL_LIMITS[emailKey]?.windowMs ?? HOUR_MS
+  return now.getTime() - new Date(doc.lastEmailAttemptAt).getTime() < wait
+}
 
 @Injectable()
 export class BillingNotificationsService {
@@ -56,38 +59,50 @@ export class BillingNotificationsService {
     recordHit = false,
   }: NotifyOnceInput) {
     const user = new Types.ObjectId(userId)
-    const windowMs = this.getDedupeWindowMs(type)
+    const now = new Date()
     const existing = await this.notificationModel.findOne({ user, type })
 
-    if (recordHit) {
-      await this.recordHit(user, type, existing, { title, message, meta })
-    }
+    // The in-app notice is refreshed at most hourly; hits write at most once a minute.
+    const refresh =
+      !existing?.updatedAt ||
+      now.getTime() - new Date(existing.updatedAt).getTime() >= NOTICE_REFRESH_MS
+    const day = now.toISOString().slice(0, 10)
+    const hit =
+      recordHit &&
+      !(
+        existing?.hitDays?.includes(day) &&
+        existing.lastHitAt &&
+        now.getTime() - new Date(existing.lastHitAt).getTime() < HIT_WRITE_INTERVAL_MS
+      )
 
-    if (existing) {
-      const lastSentAt = existing.lastEmailSentAt
-      if (lastSentAt && lastSentAt.getTime() >= Date.now() - windowMs) {
-        return existing
+    let doc = existing
+    if (refresh || hit) {
+      const update: Record<string, any> = refresh
+        ? { $set: { title, message, meta }, $setOnInsert: { user, type } }
+        : { $setOnInsert: { user, type, title, message, meta } }
+      if (hit) {
+        update.$addToSet = { hitDays: day }
+        update.$set = { ...update.$set, lastHitAt: now }
       }
+      doc = await this.notificationModel.findOneAndUpdate({ user, type }, update, {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      })
     }
 
-    const updated = await this.notificationModel.findOneAndUpdate(
-      { user, type },
-      { $set: { title, message, meta }, $setOnInsert: { user, type } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    )
-
-    if (!emailKey) return updated
+    if (!emailKey || !doc || emailAttemptCovers(doc, emailKey, now)) return doc
 
     await this.billingQueue.add(
       'send',
       {
-        notificationId: updated._id,
-        userId: updated.user,
-        type: updated.type,
-        title: updated.title,
-        message: updated.message,
-        meta: updated.meta,
-        createdAt: updated.createdAt,
+        notificationId: doc._id,
+        userId: doc.user,
+        type: doc.type,
+        title: doc.title,
+        message: doc.message,
+        meta: doc.meta,
+        createdAt: doc.createdAt,
         sendEmail: true,
         emailKey,
       },
@@ -95,41 +110,14 @@ export class BillingNotificationsService {
         delay: 30000,
         attempts: 3,
         backoff: { type: 'exponential', delay: 2000 },
-        // one pending job per sent email; a finished job must not block the next one
-        jobId: `${updated._id}:${updated.lastEmailSentAt?.getTime() ?? 0}`,
+        // one pending job per attempt; a finished job must not block the next one
+        jobId: `${doc._id}:${emailKey}:${doc.lastEmailAttemptAt?.getTime() ?? 0}`,
         removeOnComplete: true,
         removeOnFail: true,
       },
     )
 
-    return updated
-  }
-
-  // Every hit counts, whether or not an email goes out; repeat hits write at most once a minute.
-  private async recordHit(
-    user: Types.ObjectId,
-    type: BillingNotificationType,
-    existing: BillingNotificationDocument | null,
-    fields: { title: string; message: string; meta: Record<string, any> },
-  ) {
-    const now = new Date()
-    const day = now.toISOString().slice(0, 10)
-    if (
-      existing?.hitDays?.includes(day) &&
-      existing.lastHitAt &&
-      now.getTime() - existing.lastHitAt.getTime() < HIT_WRITE_INTERVAL_MS
-    ) {
-      return
-    }
-    await this.notificationModel.updateOne(
-      { user, type },
-      {
-        $addToSet: { hitDays: day },
-        $set: { lastHitAt: now },
-        $setOnInsert: { user, type, ...fields },
-      },
-      { upsert: true },
-    )
+    return doc
   }
 
   async listForUser(userId: Types.ObjectId | string, { limit = 50 } = {}) {
@@ -137,10 +125,6 @@ export class BillingNotificationsService {
       .find({ user: new Types.ObjectId(userId) })
       .sort({ createdAt: -1 })
       .limit(limit)
-  }
-
-  private getDedupeWindowMs(type: BillingNotificationType) {
-    return BILLING_NOTIFICATION_DEDUPE_HOURS[type] * 60 * 60 * 1000
   }
 }
 

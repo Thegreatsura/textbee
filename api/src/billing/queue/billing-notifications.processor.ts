@@ -70,7 +70,11 @@ export class BillingNotificationsProcessor {
     }
 
     const now = new Date()
-    if (await this.isCapped(userId, emailKey, now)) return
+    const cappedFrom = await this.cappedFrom(userId, emailKey, now)
+    if (cappedFrom) {
+      await this.recordAttempt(notificationId, emailKey, 'skipped', cappedFrom)
+      return
+    }
 
     const vars = await this.buildVars(emailKey, userId, job.data.meta ?? {}, now)
     const result = await this.mailService.sendTemplated({
@@ -79,27 +83,52 @@ export class BillingNotificationsProcessor {
       vars,
       meta: { billingNotificationId: notificationId, notificationType: type },
     })
-
-    if (result === 'sent') {
-      await this.notificationModel.updateOne(
-        { _id: notificationId },
-        { $inc: { sentEmailCount: 1 }, $set: { lastEmailSentAt: now } },
-      )
-    }
+    await this.recordAttempt(notificationId, emailKey, result, now)
   }
 
-  /** True when this email already went out inside its window. */
-  async isCapped(userId: Types.ObjectId | string, key: string, now: Date) {
+  private async recordAttempt(
+    notificationId: Types.ObjectId,
+    emailKey: string,
+    result: 'sent' | 'skipped' | 'failed',
+    at: Date,
+  ) {
+    const update: Record<string, any> = {
+      $set: { lastEmailKey: emailKey, lastEmailAttemptAt: at, lastEmailResult: result },
+    }
+    if (result === 'sent') {
+      update.$set.lastEmailSentAt = at
+      update.$inc = { sentEmailCount: 1 }
+    }
+    await this.notificationModel.updateOne({ _id: notificationId }, update)
+  }
+
+  /** When this template is capped, the time its gate should count from; otherwise null. */
+  async cappedFrom(
+    userId: Types.ObjectId | string,
+    key: string,
+    now: Date,
+  ): Promise<Date | null> {
     const { windowMs, maxInWindow } = USAGE_EMAIL_LIMITS[key]
-    const sentSince = (ms: number) =>
-      this.sentEmailModel.countDocuments({
-        user: new Types.ObjectId(String(userId)),
-        type: key,
-        status: 'sent',
-        sentAt: { $gte: new Date(now.getTime() - ms) },
-      })
-    if ((await sentSince(windowMs)) > 0) return true
-    return !!maxInWindow && (await sentSince(maxInWindow.windowMs)) >= maxInWindow.count
+    const filter = (ms: number) => ({
+      user: new Types.ObjectId(String(userId)),
+      type: key,
+      status: 'sent',
+      sentAt: { $gte: new Date(now.getTime() - ms) },
+    })
+    const last = await this.sentEmailModel
+      .findOne(filter(windowMs))
+      .sort({ sentAt: -1 })
+      .select('sentAt')
+      .lean()
+    if (last?.sentAt) return new Date(last.sentAt)
+    if (
+      maxInWindow &&
+      (await this.sentEmailModel.countDocuments(filter(maxInWindow.windowMs))) >=
+        maxInWindow.count
+    ) {
+      return now
+    }
+    return null
   }
 
   async buildVars(

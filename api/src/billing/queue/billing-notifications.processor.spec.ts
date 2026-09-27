@@ -18,7 +18,7 @@ describe('BillingNotificationsProcessor', () => {
   let mail: { sendTemplated: jest.Mock }
   let notifications: { updateOne: jest.Mock }
   let users: { findById: jest.Mock }
-  let sentEmails: { countDocuments: jest.Mock }
+  let sentEmails: { findOne: jest.Mock; countDocuments: jest.Mock }
   let plans: { find: jest.Mock }
   let sms: { findOne: jest.Mock }
   let devices: { findOne: jest.Mock }
@@ -44,7 +44,10 @@ describe('BillingNotificationsProcessor', () => {
     mail = { sendTemplated: jest.fn().mockResolvedValue('sent') }
     notifications = { updateOne: jest.fn().mockResolvedValue(undefined) }
     users = { findById: jest.fn(() => chain({ signupCountry: 'GB' })) }
-    sentEmails = { countDocuments: jest.fn().mockResolvedValue(0) }
+    sentEmails = {
+      findOne: jest.fn(() => chain(null)),
+      countDocuments: jest.fn().mockResolvedValue(0),
+    }
     plans = {
       find: jest.fn(() =>
         chain([
@@ -91,7 +94,15 @@ describe('BillingNotificationsProcessor', () => {
     })
     expect(notifications.updateOne).toHaveBeenCalledWith(
       { _id: 'n1' },
-      expect.objectContaining({ $inc: { sentEmailCount: 1 } }),
+      {
+        $set: {
+          lastEmailKey: 'U2',
+          lastEmailAttemptAt: now,
+          lastEmailResult: 'sent',
+          lastEmailSentAt: now,
+        },
+        $inc: { sentEmailCount: 1 },
+      },
     )
   })
 
@@ -141,29 +152,34 @@ describe('BillingNotificationsProcessor', () => {
     ['U6_paid', 30],
     ['U3', 7],
     ['U5', 7],
-  ])('skips %s already sent in the last %i days', async (key, days) => {
-    sentEmails.countDocuments.mockResolvedValue(1)
+  ])('skips %s already sent in the last %i days and records when', async (key, days) => {
+    const lastSent = new Date(now.getTime() - 86400000)
+    sentEmails.findOne.mockImplementation(() => chain({ sentAt: lastSent }))
 
     await processor.handleSend(job(key, {}))
 
     expect(mail.sendTemplated).not.toHaveBeenCalled()
-    const filter = sentEmails.countDocuments.mock.calls[0][0]
+    const filter = sentEmails.findOne.mock.calls[0][0]
     expect(filter).toMatchObject({ type: key, status: 'sent' })
     expect(now.getTime() - filter.sentAt.$gte.getTime()).toBe(days * 86400000)
+    expect(notifications.updateOne).toHaveBeenCalledWith(
+      { _id: 'n1' },
+      { $set: { lastEmailKey: key, lastEmailAttemptAt: lastSent, lastEmailResult: 'skipped' } },
+    )
   })
 
   it('sends U4 at most three times in 90 days', async () => {
-    sentEmails.countDocuments.mockResolvedValueOnce(0).mockResolvedValueOnce(3)
+    sentEmails.countDocuments.mockResolvedValue(3)
 
     await processor.handleSend(job('U4', {}))
 
     expect(mail.sendTemplated).not.toHaveBeenCalled()
-    const filter = sentEmails.countDocuments.mock.calls[1][0]
+    const filter = sentEmails.countDocuments.mock.calls[0][0]
     expect(now.getTime() - filter.sentAt.$gte.getTime()).toBe(90 * 86400000)
   })
 
   it('sends U4 when two went out in 90 days and none this week', async () => {
-    sentEmails.countDocuments.mockResolvedValueOnce(0).mockResolvedValueOnce(2)
+    sentEmails.countDocuments.mockResolvedValue(2)
 
     await processor.handleSend(job('U4', { processedSmsToday: 50, dailyLimit: 50 }))
 
@@ -176,13 +192,19 @@ describe('BillingNotificationsProcessor', () => {
     expect(mail.sendTemplated).not.toHaveBeenCalled()
   })
 
-  it('does not mark the notice as emailed when the send was skipped', async () => {
-    mail.sendTemplated.mockResolvedValue('skipped')
+  it.each(['skipped', 'failed'])(
+    'records a %s attempt without marking the notice as emailed',
+    async (result) => {
+      mail.sendTemplated.mockResolvedValue(result)
 
-    await processor.handleSend(job('U5', { attempted: 120, bulkSendLimit: 50 }))
+      await processor.handleSend(job('U5', { attempted: 120, bulkSendLimit: 50 }))
 
-    expect(notifications.updateOne).not.toHaveBeenCalled()
-  })
+      expect(notifications.updateOne).toHaveBeenCalledWith(
+        { _id: 'n1' },
+        { $set: { lastEmailKey: 'U5', lastEmailAttemptAt: now, lastEmailResult: result } },
+      )
+    },
+  )
 
   it('logs a failed email job', () => {
     const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)

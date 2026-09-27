@@ -48,7 +48,7 @@ const CANDIDATE_CACHE_MS = 60_000
 const MAX_EVENTS_PER_REQUEST = 20
 
 // Variant ids reach a Mongo update path (stats.byVariant.<id>), so they are
-// restricted rather than trusted. A dot or a dollar in an admin-authored id
+// restricted rather than trusted. A dot or a dollar in an operator-authored id
 // would otherwise rewrite an unintended part of the document.
 const SAFE_VARIANT_ID = /^[A-Za-z0-9_-]{1,40}$/
 
@@ -133,7 +133,7 @@ export class NotificationsService {
     return candidates
   }
 
-  /** Drops the cache so an admin edit shows up at once in a dev loop. */
+  /** Drops the cache so an edit shows up at once in a dev loop. */
   clearCandidateCache(): void {
     this.candidateCache = null
   }

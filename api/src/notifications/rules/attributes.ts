@@ -1,8 +1,8 @@
 import { AttributeDescriptor, Operator } from './types'
 
 // The descriptor half of the attribute registry: data only, no resolvers. The
-// admin rule builder renders itself from this, and both APIs validate incoming
-// condition trees against it. Duplicated verbatim in textbee-admin.
+// rule builder renders itself from this, and both sides validate incoming
+// condition trees against it. This file is mirrored outside this repository.
 //
 // The resolver half lives per repo, in context-loader.ts here, because each app
 // reads these values off the user document its own way. Every counted attribute

@@ -88,9 +88,7 @@ export default function DashboardLayout({
         </div>
 
         <BreadcrumbNav />
-        <div className='space-y-2 p-4 pb-0'>
-          <NotificationTileStack />
-        </div>
+        <NotificationTileStack />
         <main id='main-content' tabIndex={-1}>
           {children}
         </main>

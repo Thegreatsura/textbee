@@ -17,12 +17,20 @@ export function NotificationTileStack() {
   // no new gap and no flash of one implementation before the other.
   if (mode === 'loading') return null
 
-  if (mode === 'legacy') return <LegacyAlertStack />
+  // The slot owns its own spacing so that an account with nothing to see gets no
+  // element at all, rather than an empty band of padding above the page.
+  if (mode === 'legacy') {
+    return (
+      <div className='space-y-1.5 px-4 pt-3'>
+        <LegacyAlertStack />
+      </div>
+    )
+  }
 
   if (!tiles.length) return null
 
   return (
-    <>
+    <div className='space-y-1.5 px-4 pt-3'>
       {tiles.map((notification) => {
         const Renderer = rendererFor(notification)
         return (
@@ -35,6 +43,6 @@ export function NotificationTileStack() {
           />
         )
       })}
-    </>
+    </div>
   )
 }

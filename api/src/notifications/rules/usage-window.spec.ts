@@ -4,7 +4,7 @@ import {
   monthlyWindowStart,
 } from './usage-window'
 
-// Part of the cross-repo contract: textbee-admin runs the same assertions
+// Part of the shared contract: the same assertions run against the mirrored copy,
 // against its copy, so both count usage over identical windows.
 
 describe('dailyWindowStart', () => {

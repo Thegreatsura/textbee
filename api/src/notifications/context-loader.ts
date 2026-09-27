@@ -17,7 +17,7 @@ import {
 } from './rules/usage-window'
 import { NotificationSettings } from './schemas/notification-settings.schema'
 
-// The resolver half of the attribute registry. The admin app resolves the same
+// The resolver half of the attribute registry. The same attributes are resolved
 // attributes from the same stored data, so its preview cannot disagree with what
 // this feed serves.
 //

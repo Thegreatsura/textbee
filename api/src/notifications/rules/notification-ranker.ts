@@ -8,7 +8,7 @@ import {
 
 // Pure. The single entry point for turning a set of candidate notifications plus
 // one account's history into the finished, ordered, capped list the dashboard
-// renders. Duplicated verbatim in textbee-admin so its preview and this feed can
+// renders. Mirrored outside this repository so a preview and this feed can
 // never disagree, and covered end to end by conformance-cases.ts.
 
 export type NotificationKind = 'system' | 'campaign'
@@ -278,7 +278,7 @@ export function selectNotifications(input: SelectionInput): SelectionResult {
   for (const candidate of input.candidates || []) {
     const state = stateById.get(String(candidate.id))
 
-    // Audience is evaluated even for records already blocked, so the admin
+    // Audience is evaluated even for records already blocked, so a
     // preview always has a trace to annotate. It is arithmetic over an
     // already-loaded context, so this costs nothing worth saving.
     const context: EvaluationContext = {

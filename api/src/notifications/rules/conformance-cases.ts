@@ -1,10 +1,10 @@
 import { ConditionNode, EvaluationContext, TriState } from './types'
 import { AccountState, Candidate, SelectionSettings } from './notification-ranker'
 
-// THE CROSS-REPO CONTRACT. This file is duplicated verbatim in textbee-admin and
+// THE SHARED CONTRACT. This file is mirrored outside this repository and
 // run by both test suites against each repo's own copy of the evaluator and
 // ranker. The two APIs never call each other, so nothing else would catch them
-// drifting apart: if this file and its spec pass in both repos, an admin preview
+// drifting apart: if this file and its spec pass on both sides, a preview
 // and the live feed agree.
 //
 // Adding an operator or changing a semantic means adding cases here in the same

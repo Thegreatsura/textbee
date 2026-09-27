@@ -1,6 +1,6 @@
 // Shared vocabulary for the targeting rules. This file, attributes.ts,
 // condition-evaluator.ts, notification-ranker.ts and conformance-cases.ts are
-// duplicated verbatim in textbee-admin, which runs the same engine to preview
+// mirrored outside this repository, where the same engine runs to preview
 // what a given account would be served. The two APIs never call each other, so
 // the conformance fixture is what keeps the copies honest: change any semantics
 // here and add cases there in the same commit.
@@ -31,9 +31,9 @@ export interface AttributeDescriptor {
   type: AttributeType
   group: string
   operators: Operator[]
-  /** Known values, for the admin rule builder. Not enforced at evaluation. */
+  /** Known values, for the rule builder. Not enforced at evaluation. */
   options?: string[]
-  /** Shown in the admin when a value needs explaining. */
+  /** Shown alongside the field when a value needs explaining. */
   hint?: string
 }
 

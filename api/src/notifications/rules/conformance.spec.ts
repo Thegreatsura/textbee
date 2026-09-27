@@ -9,8 +9,8 @@ import {
 } from './conformance-cases'
 
 // Runs the shared fixture against this repo's copy of the engine. The identical
-// spec runs in textbee-admin against its copy. These two suites passing is the
-// only thing that stops an admin preview and the live feed disagreeing, since
+// spec runs against the mirrored copy. Both suites passing is the
+// only thing that stops a preview and the live feed disagreeing, since
 // the two APIs never call each other.
 
 describe('condition evaluator conformance', () => {

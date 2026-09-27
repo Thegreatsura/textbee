@@ -8,8 +8,8 @@ import { Subscription } from '../billing/schemas/subscription.schema'
 import { User, UserDocument } from './schemas/user.schema'
 
 // Owns user.rollup. This is the only place the counts behind it are derived, so
-// the admin app can read the stored numbers instead of reimplementing the
-// aggregation and risking a preview that disagrees with the live feed.
+// the stored numbers can be read elsewhere rather than the aggregation being
+// reimplemented, which would risk a preview disagreeing with the live feed.
 //
 // Nothing here runs on the message send path. The rollup holds device and API
 // key facts, which change rarely; the message counts it deliberately does not

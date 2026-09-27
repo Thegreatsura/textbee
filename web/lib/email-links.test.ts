@@ -28,4 +28,23 @@ describe('emailLinkTarget', () => {
       'https://app.example.com/dashboard/account/billing',
     )
   })
+
+  it.each([
+    'http://api.example.com/api/v1',
+    'ftp://api.example.com',
+    'not a url',
+  ])('refuses the API base %s', (base) => {
+    expect(emailLinkTarget('/billing/card', 'abc', ORIGIN, base)).toBe(
+      'https://app.example.com/dashboard/account/billing',
+    )
+  })
+
+  it.each(['http://localhost:3001/api/v1', 'http://127.0.0.1:3001/api/v1'])(
+    'allows the local API base %s',
+    (base) => {
+      expect(emailLinkTarget('/billing/card', 'abc', ORIGIN, base)).toBe(
+        `${base}/billing/card?t=abc`,
+      )
+    },
+  )
 })

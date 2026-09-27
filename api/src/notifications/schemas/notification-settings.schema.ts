@@ -11,7 +11,9 @@ export type NotificationSettingsDocument = NotificationSettings & Document
 //   globalEnabled  decides whether ANY message shows once the engine is live.
 //                  False silences even past-due and verification warnings, so it
 //                  is a kill switch, not a rollback.
-@Schema({ timestamps: true })
+// Explicit: pluralising the class name would give 'notificationsettings', which
+// is not what the admin app writes the engine flag to.
+@Schema({ timestamps: true, collection: 'dashboardnotificationsettings' })
 export class NotificationSettings {
   _id?: Types.ObjectId
 

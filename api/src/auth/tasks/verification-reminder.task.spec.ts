@@ -3,14 +3,21 @@ import { VerificationReminderTask } from './verification-reminder.task'
 
 describe('VerificationReminderTask', () => {
   const now = new Date('2026-09-27T12:00:00Z')
-  const a = { _id: new Types.ObjectId(), email: 'a@example.com' }
-  const b = { _id: new Types.ObjectId(), email: 'b@example.com' }
+  const account = () => ({ _id: new Types.ObjectId(), email: 'a@example.com' })
 
-  const setup = (users: any[], alreadySent: any[] = []) => {
-    const lean = jest.fn().mockResolvedValue(users)
-    const chain = { select: jest.fn(() => chain), limit: jest.fn(() => chain), lean }
-    const userModel: any = { find: jest.fn(() => chain) }
-    const sentEmailModel: any = { distinct: jest.fn().mockResolvedValue(alreadySent) }
+  const setup = (pages: any[][], history: any[] = []) => {
+    const find = jest.fn()
+    for (const page of [...pages, []]) {
+      const chain: any = {
+        sort: jest.fn(() => chain),
+        select: jest.fn(() => chain),
+        limit: jest.fn(() => chain),
+        lean: jest.fn().mockResolvedValue(page),
+      }
+      find.mockImplementationOnce(() => chain)
+    }
+    const userModel: any = { find }
+    const sentEmailModel: any = { aggregate: jest.fn().mockResolvedValue(history) }
     const authService: any = {
       mintEmailVerificationLink: jest.fn().mockResolvedValue('https://app.test/verify?c=1'),
     }
@@ -35,12 +42,12 @@ describe('VerificationReminderTask', () => {
     })
   })
 
-  it('mints a 24 hour reminder link and sends V2 once per account', async () => {
-    const { task, authService, mailService } = setup([a, b], [b._id])
+  it('mints a 24 hour reminder link and sends V2', async () => {
+    const a = account()
+    const { task, authService, mailService } = setup([[a]])
 
     await expect(task.sendDue(now)).resolves.toBe(1)
 
-    expect(authService.mintEmailVerificationLink).toHaveBeenCalledTimes(1)
     expect(authService.mintEmailVerificationLink).toHaveBeenCalledWith(a, {
       lifetimeMs: 24 * 3600 * 1000,
       source: 'reminder',
@@ -51,5 +58,38 @@ describe('VerificationReminderTask', () => {
       vars: { verificationUrl: 'https://app.test/verify?c=1', linkTtl: '24 hours' },
       redactVars: ['verificationUrl'],
     })
+  })
+
+  it('skips accounts already sent or skipped, and those with three failures', async () => {
+    const [sent, skipped, failedThrice, failedTwice] = [account(), account(), account(), account()]
+    const { task, mailService } = setup(
+      [[sent, skipped, failedThrice, failedTwice]],
+      [
+        { _id: sent._id, done: 1, failed: 0 },
+        { _id: skipped._id, done: 1, failed: 0 },
+        { _id: failedThrice._id, done: 0, failed: 3 },
+        { _id: failedTwice._id, done: 0, failed: 2 },
+      ],
+    )
+
+    await task.sendDue(now)
+
+    expect(mailService.sendTemplated).toHaveBeenCalledTimes(1)
+    expect(mailService.sendTemplated.mock.calls[0][0].userId).toBe(failedTwice._id)
+  })
+
+  it('pages past a full batch of finished accounts', async () => {
+    const full = Array.from({ length: 500 }, account)
+    const fresh = account()
+    const { task, userModel, mailService } = setup(
+      [full, [fresh]],
+      full.map((u) => ({ _id: u._id, done: 1, failed: 0 })),
+    )
+
+    await task.sendDue(now)
+
+    expect(userModel.find.mock.calls[1][0]._id.$gt).toBe(full[499]._id)
+    expect(mailService.sendTemplated).toHaveBeenCalledTimes(1)
+    expect(mailService.sendTemplated.mock.calls[0][0].userId).toBe(fresh._id)
   })
 })

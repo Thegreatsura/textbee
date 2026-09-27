@@ -8,7 +8,9 @@ export type NotificationStateDocument = NotificationState & Document
 // One account's history with one notification. Server side rather than
 // localStorage so a dismissal survives a new browser or device, so prior
 // exposure is targetable, and so there is anything at all to report on.
-@Schema({ timestamps: true })
+// Explicit: pluralising the class name would give 'notificationstates', which
+// is not what the admin app reads.
+@Schema({ timestamps: true, collection: 'dashboardnotificationstates' })
 export class NotificationState {
   _id?: Types.ObjectId
 

@@ -156,7 +156,10 @@ export class NotificationSource {
 
 const NotificationSourceSchema = SchemaFactory.createForClass(NotificationSource)
 
-@Schema({ timestamps: true })
+// Named explicitly. The admin app reads and writes the same collection, and
+// leaving the name to Mongoose's pluralisation is how two apps end up on two
+// different collections that look correct in both codebases.
+@Schema({ timestamps: true, collection: 'dashboardnotifications' })
 export class DashboardNotification {
   _id?: Types.ObjectId
 

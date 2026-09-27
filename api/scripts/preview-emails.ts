@@ -42,16 +42,6 @@ const SAMPLES: Record<string, Record<string, any>> = {
       monthlyLimit: 5000,
     }),
   },
-  'verify-email': {
-    name: 'Alex',
-    verificationLink: 'https://app.textbee.dev/verify?token=sample-token-value',
-  },
-  'password-reset-request': {
-    name: 'Alex',
-    resetLink: 'https://app.textbee.dev/reset-password?token=sample-token-value',
-    otp: '482913',
-  },
-  'password-reset-success': { name: 'Alex' },
   'customer-support-confirmation': {
     name: 'Alex',
     email: 'alex@example.com',

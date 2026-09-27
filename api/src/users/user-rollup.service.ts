@@ -90,6 +90,85 @@ export class UserRollupService {
     }
   }
 
+  /**
+   * The same facts for many accounts in two aggregations rather than two queries
+   * each.
+   *
+   * This matters more than it looks: the application runs in Europe and the
+   * database in us-east-1, so a round trip costs about 90ms. Measured against
+   * production, the per-account path took 562ms, which is nearly six hours for
+   * the whole base and would have been repeated by the nightly sweep. Grouping
+   * server side also keeps the result small, which is the shape this database's
+   * egress bill wants.
+   */
+  private async factsForMany(
+    userIds: Types.ObjectId[],
+  ): Promise<Map<string, RollupFacts>> {
+    const [devices, apiKeys] = await Promise.all([
+      this.deviceModel.aggregate([
+        { $match: { user: { $in: userIds } } },
+        {
+          $group: {
+            _id: '$user',
+            deviceCount: { $sum: 1 },
+            totalSentSms: { $sum: { $ifNull: ['$sentSMSCount', 0] } },
+            // Same precedence the dashboard uses: the heartbeat-reported build
+            // wins over the one recorded at registration.
+            minAppVersionCode: {
+              $min: {
+                $ifNull: ['$appVersionInfo.versionCode', '$appVersionCode'],
+              },
+            },
+          },
+        },
+      ]),
+      this.apiKeyModel.aggregate([
+        { $match: { user: { $in: userIds } } },
+        {
+          $group: {
+            _id: '$user',
+            // Only unrevoked keys count, but the pass has to see all of them to
+            // derive the first one, so it is one group rather than two queries.
+            apiKeyCount: {
+              $sum: {
+                $cond: [
+                  { $eq: [{ $ifNull: ['$revokedAt', null] }, null] },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    ])
+
+    const byId = new Map<string, RollupFacts>()
+    for (const id of userIds) {
+      byId.set(String(id), {
+        deviceCount: 0,
+        apiKeyCount: 0,
+        totalSentSms: 0,
+        minAppVersionCode: undefined,
+      })
+    }
+    for (const row of devices as any[]) {
+      const facts = byId.get(String(row._id))
+      if (!facts) continue
+      facts.deviceCount = row.deviceCount ?? 0
+      facts.totalSentSms = row.totalSentSms ?? 0
+      facts.minAppVersionCode =
+        typeof row.minAppVersionCode === 'number'
+          ? row.minAppVersionCode
+          : undefined
+    }
+    for (const row of apiKeys as any[]) {
+      const facts = byId.get(String(row._id))
+      if (facts) facts.apiKeyCount = row.apiKeyCount ?? 0
+    }
+    return byId
+  }
+
   private async factsFor(userId: Types.ObjectId): Promise<RollupFacts> {
     // Projected: device documents carry around ten telemetry subdocuments now,
     // and none of them are wanted here.
@@ -155,36 +234,53 @@ export class UserRollupService {
   async recomputeAll(options?: {
     batchSize?: number
     onlyMissing?: boolean
+    /** Recompute anything not measured within this many days. */
+    staleAfterDays?: number
+    /** Stop after this many accounts, so a repair pass stays bounded. */
+    maxAccounts?: number
   }): Promise<number> {
     const batchSize = options?.batchSize ?? 500
-    const filter = options?.onlyMissing
-      ? { 'rollup.computedAt': { $exists: false } }
-      : {}
+    const maxAccounts = options?.maxAccounts ?? Infinity
+
+    const missing = { 'rollup.computedAt': { $exists: false } }
+    let filter: Record<string, unknown> = {}
+    if (options?.staleAfterDays !== undefined) {
+      // Repair shape: never measured, or measured too long ago to trust. A missed
+      // change hook leaves a stale rollup that nothing else would notice.
+      const cutoff = new Date(
+        Date.now() - options.staleAfterDays * 24 * 60 * 60 * 1000,
+      )
+      filter = {
+        $or: [missing, { 'rollup.computedAt': { $lt: cutoff } }],
+      }
+    } else if (options?.onlyMissing) {
+      filter = missing
+    }
 
     let processed = 0
     let lastId: Types.ObjectId | undefined
 
     for (;;) {
+      if (processed >= maxAccounts) break
+      const remaining = maxAccounts - processed
       const page = await this.userModel
         .find(lastId ? { ...filter, _id: { $gt: lastId } } : filter)
         .select('_id')
         .sort({ _id: 1 })
-        .limit(batchSize)
+        .limit(Math.min(batchSize, remaining))
         .lean()
 
       if (!page.length) break
 
-      const operations: AnyBulkWriteOperation[] = []
-      for (const row of page) {
-        const facts = await this.factsFor(row._id as Types.ObjectId)
-        operations.push({
-          updateOne: {
-            filter: { _id: row._id },
-            update: { $set: this.toUpdate(facts) },
-            timestamps: false,
-          },
-        })
-      }
+      const ids = page.map((row) => row._id as Types.ObjectId)
+      const facts = await this.factsForMany(ids)
+      const operations: AnyBulkWriteOperation[] = ids.map((id) => ({
+        updateOne: {
+          filter: { _id: id },
+          update: { $set: this.toUpdate(facts.get(String(id))) },
+          timestamps: false,
+        },
+      }))
 
       if (operations.length) {
         await this.userModel.bulkWrite(operations)
@@ -222,9 +318,12 @@ export class UserRollupService {
 
       if (!page.length) break
 
+      const ids = page.map((row) => row._id as Types.ObjectId)
+      const derivedByUser = await this.derivedMilestonesForMany(ids)
+
       const operations: AnyBulkWriteOperation[] = []
-      for (const row of page) {
-        const derived = await this.derivedMilestones(row._id as Types.ObjectId)
+      for (const id of ids) {
+        const derived = derivedByUser.get(String(id)) ?? {}
         const update: Record<string, unknown> = {}
         for (const [field, value] of Object.entries(derived)) {
           if (value) update[`milestones.${field}`] = value
@@ -232,7 +331,7 @@ export class UserRollupService {
         if (!Object.keys(update).length) continue
         operations.push({
           updateOne: {
-            filter: { _id: row._id },
+            filter: { _id: id },
             update: { $min: update },
             // Also makes modifiedCount mean something: with timestamps on,
             // updatedAt changes on every pass and every account counts as
@@ -255,50 +354,51 @@ export class UserRollupService {
     return processed
   }
 
-  private async derivedMilestones(
-    userId: Types.ObjectId,
-  ): Promise<Record<string, Date | undefined>> {
-    const [device, apiKey, sms, paid] = await Promise.all([
-      this.deviceModel
-        .findOne({ user: userId })
-        .select('createdAt')
-        .sort({ createdAt: 1 })
-        .lean(),
-      this.apiKeyModel
-        .findOne({ user: userId })
-        .select('createdAt')
-        .sort({ createdAt: 1 })
-        .lean(),
-      // Walks the {user, createdAt} index backwards rather than scanning, which
-      // matters because this is the largest collection in the database.
-      this.smsModel
-        .findOne({ user: userId })
-        .select('createdAt')
-        .sort({ createdAt: 1 })
-        .lean(),
-      // Every subscription that cost something, not just the earliest record.
-      // The two orders can disagree: a row recorded first can carry a later
-      // provider start date, and reconciled rows carry historical ones, so
-      // sorting by createdAt and reading the start date off that row can report
-      // a first payment later than the real one. There are only ever a handful
-      // per account, so the comparison happens below.
-      //
-      // Without any of this, every account that paid before the milestone
-      // existed reads as never having paid, and milestones.hasPaid would be
-      // false for exactly the long-standing customers a campaign would want to
-      // treat differently.
-      this.subscriptionModel
-        .find({ user: userId, amount: { $gt: 0 } })
-        .select('createdAt subscriptionStartDate')
-        .lean(),
+  /**
+   * Milestone dates for many accounts in four aggregations.
+   *
+   * The message pass is the expensive one, so it groups over the
+   * {user, createdAt} index and returns one date per account rather than reading
+   * documents. Per account this was five round trips; over the whole base that
+   * was the difference between minutes and hours.
+   */
+  private async derivedMilestonesForMany(
+    userIds: Types.ObjectId[],
+  ): Promise<Map<string, Record<string, Date | undefined>>> {
+    const firstBy = async (
+      model: Model<any>,
+      match: Record<string, unknown>,
+      field: string,
+      expression: unknown = '$createdAt',
+    ) => {
+      const rows = await model.aggregate([
+        { $match: { user: { $in: userIds }, ...match } },
+        { $group: { _id: '$user', at: { $min: expression } } },
+      ])
+      return rows.map((row: any) => [String(row._id), { [field]: row.at }])
+    }
+
+    const [devices, apiKeys, sms, paid] = await Promise.all([
+      firstBy(this.deviceModel, {}, 'firstDeviceAt'),
+      firstBy(this.apiKeyModel, {}, 'firstApiKeyAt'),
+      firstBy(this.smsModel, {}, 'firstSmsAt'),
+      // The provider's start date where it reported one, else when we recorded
+      // the row, taken across every paid subscription rather than off whichever
+      // was recorded first: the two orderings can disagree.
+      firstBy(this.subscriptionModel, { amount: { $gt: 0 } }, 'firstPaidAt', {
+        $ifNull: ['$subscriptionStartDate', '$createdAt'],
+      }),
     ])
 
-    return {
-      firstDeviceAt: (device as any)?.createdAt,
-      firstApiKeyAt: (apiKey as any)?.createdAt,
-      firstSmsAt: (sms as any)?.createdAt,
-      firstPaidAt: earliestPaymentDate(paid as any[]),
+    const byId = new Map<string, Record<string, Date | undefined>>()
+    for (const group of [devices, apiKeys, sms, paid]) {
+      for (const [id, entry] of group as Array<
+        [string, Record<string, Date | undefined>]
+      >) {
+        byId.set(id, { ...(byId.get(id) ?? {}), ...entry })
+      }
     }
+    return byId
   }
 
   /** How many accounts have never had a rollup computed. */

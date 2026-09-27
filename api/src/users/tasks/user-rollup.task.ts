@@ -21,7 +21,16 @@ export class UserRollupTask {
   async recomputeRollups() {
     const startedAt = Date.now()
     try {
-      const processed = await this.rollup.recomputeAll({ batchSize: 500 })
+      // A repair pass, not a full sweep. The change hooks keep an active account
+      // current, so this only has to catch accounts that were never measured or
+      // whose hook was missed. Recomputing the whole base nightly would spend
+      // hours on cross-region round trips for almost no change, and this
+      // database's egress bill is already worth watching.
+      const processed = await this.rollup.recomputeAll({
+        batchSize: 500,
+        staleAfterDays: 30,
+        maxAccounts: 5000,
+      })
       this.logger.log(
         `Recomputed ${processed} user rollups in ${Date.now() - startedAt}ms`,
       )

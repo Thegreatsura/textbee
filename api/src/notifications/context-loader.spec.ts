@@ -398,7 +398,7 @@ describe('sending attributes', () => {
   }
 
   it('reads the latest outgoing message only when referenced', async () => {
-    const t = build({ lastSent: failed })
+    const t = build({ lastSent: failed, device: { enabled: true } })
 
     const context = await t.loader.build({
       user: account(),

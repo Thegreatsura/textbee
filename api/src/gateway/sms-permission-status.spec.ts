@@ -44,7 +44,7 @@ describe('loadSmsPermissionStatus', () => {
       user: USER_ID,
       type: 'SENT',
     })
-    expect(m.lastChain.sort).toHaveBeenCalledWith({ createdAt: -1 })
+    expect(m.lastChain.sort).toHaveBeenCalledWith({ createdAt: -1, _id: -1 })
     expect(status).toEqual({
       needsSmsPermission: true,
       hoursSinceFailure: 2,
@@ -78,6 +78,17 @@ describe('loadSmsPermissionStatus', () => {
       deviceName: null,
       failedAt: null,
     })
+  })
+
+  it('does not block on a device that was removed', async () => {
+    const m = models(
+      { status: 'failed', errorCode: 'PERMISSION_DENIED', failedAt: FAILED_AT, device: DEVICE_ID },
+      null,
+    )
+
+    const status = await loadSmsPermissionStatus(m.smsModel, m.deviceModel, USER_ID, NOW)
+
+    expect(status.needsSmsPermission).toBe(false)
   })
 
   it('returns null for an account that never sent', async () => {

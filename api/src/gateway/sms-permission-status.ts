@@ -19,7 +19,7 @@ export interface SmsPermissionStatus {
 const deviceLabel = (device: any): string | null =>
   device?.name || [device?.brand, device?.model].filter(Boolean).join(' ') || null
 
-// Two indexed reads: the latest outgoing message ({user, createdAt, type}),
+// Two indexed reads: the latest outgoing message ({user, createdAt, _id}),
 // then its device only when that message failed for a missing permission.
 export async function loadSmsPermissionStatus(
   smsModel: Model<SMSDocument>,
@@ -29,8 +29,10 @@ export async function loadSmsPermissionStatus(
 ): Promise<SmsPermissionStatus> {
   const last: any = await smsModel
     .findOne({ user: userId, type: SMSType.SENT })
-    .sort({ createdAt: -1 })
-    .select('status errorCode createdAt failedAt device simSubscriptionId')
+    .sort({ createdAt: -1, _id: -1 })
+    .select(
+      'status errorCode createdAt updatedAt failedAt device simSubscriptionId',
+    )
     .lean()
 
   const blocked =
@@ -39,15 +41,14 @@ export async function loadSmsPermissionStatus(
     blocked && last.device
       ? await deviceModel
           .findById(last.device)
-          .select('appStateInfo name brand model')
+          .select('appStateInfo enabled name brand model')
           .lean()
       : null
 
-  const needs = needsSmsPermission(last, device?.appStateInfo)
+  const needs = needsSmsPermission(last, device)
   return {
     needsSmsPermission: needs ?? null,
-    hoursSinceFailure:
-      hoursSincePermissionFailure(last, device?.appStateInfo, now) ?? null,
+    hoursSinceFailure: hoursSincePermissionFailure(last, device, now) ?? null,
     deviceId: needs && last.device ? String(last.device) : null,
     deviceName: needs ? deviceLabel(device) : null,
     failedAt: needs ? (last.failedAt ?? last.createdAt ?? null) : null,

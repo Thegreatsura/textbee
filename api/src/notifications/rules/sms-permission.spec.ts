@@ -13,8 +13,8 @@ const now = new Date(fixture.now)
 
 describe('sms permission conformance', () => {
   it.each(fixture.cases.map((c: any) => [c.name, c]))('%s', (_name, c: any) => {
-    expect(needsSmsPermission(c.last, c.appState) ?? null).toBe(c.needs)
-    expect(hoursSincePermissionFailure(c.last, c.appState, now) ?? null).toBe(
+    expect(needsSmsPermission(c.last, c.device) ?? null).toBe(c.needs)
+    expect(hoursSincePermissionFailure(c.last, c.device, now) ?? null).toBe(
       c.hours,
     )
   })

@@ -252,10 +252,8 @@ export class NotificationsService {
       .select('_id dismiss')
       .lean()
     const knownIds = new Set(known.map((n: any) => String(n._id)))
-    const dismissible = new Set(
-      known
-        .filter((n: any) => n.dismiss?.enabled === true)
-        .map((n: any) => String(n._id)),
+    const dismissRules = new Map<string, any>(
+      known.map((n: any) => [String(n._id), n.dismiss ?? {}]),
     )
 
     const stateOps: AnyBulkWriteOperation[] = []
@@ -298,8 +296,16 @@ export class NotificationsService {
           // check one request could set dismissedAt on an operational alert,
           // which the ranker then treats as permanently cleared, and a past-due
           // or verification warning would never be shown to that account again.
-          if (!dismissible.has(id)) continue
+          const rule = dismissRules.get(id)
+          if (rule?.enabled !== true) continue
           stateSet['dismissedAt'] = now
+          // Mirrors the dismiss endpoint. For a snooze-mode record the ranker
+          // reads snoozedUntil, not dismissedAt, so writing only the latter
+          // would record a dismissal that changed nothing. That is the path the
+          // legacy migration uses, so it would have quietly failed to carry over
+          // the dismissals it exists to carry.
+          const snoozeFrom = this.snoozeUntil(rule, now)
+          if (snoozeFrom) stateSet['snoozedUntil'] = snoozeFrom
           statsInc['stats.dismisses'] = (statsInc['stats.dismisses'] ?? 0) + 1
           if (variantId) {
             const path = `stats.byVariant.${variantId}.dismisses`
@@ -345,6 +351,25 @@ export class NotificationsService {
     return { recorded }
   }
 
+  /**
+   * When a dismissal should hide a record until a later time rather than for
+   * good. Null for permanent and session modes, which the ranker reads from
+   * dismissedAt instead.
+   */
+  private snoozeUntil(
+    rule: { mode?: string; snoozeHours?: number } | undefined | null,
+    now: Date,
+    requestedHours?: number,
+  ): Date | null {
+    if ((rule?.mode ?? 'permanent') !== 'snooze') return null
+    const hours =
+      typeof requestedHours === 'number' && Number.isFinite(requestedHours)
+        ? Math.min(Math.max(requestedHours, 1), 24 * 365)
+        : rule?.snoozeHours
+    if (!hours) return null
+    return new Date(now.getTime() + hours * 60 * 60 * 1000)
+  }
+
   async dismiss(
     user: UserDocument,
     notificationId: string,
@@ -365,16 +390,13 @@ export class NotificationsService {
     }
 
     const now = new Date()
-    const mode = (notification as any).dismiss?.mode ?? 'permanent'
-    const hours =
-      typeof snoozeHours === 'number' && Number.isFinite(snoozeHours)
-        ? Math.min(Math.max(snoozeHours, 1), 24 * 365)
-        : (notification as any).dismiss?.snoozeHours
-
     const update: Record<string, unknown> = { dismissedAt: now }
-    if (mode === 'snooze' && hours) {
-      update.snoozedUntil = new Date(now.getTime() + hours * 60 * 60 * 1000)
-    }
+    const snoozedUntil = this.snoozeUntil(
+      (notification as any).dismiss,
+      now,
+      snoozeHours,
+    )
+    if (snoozedUntil) update.snoozedUntil = snoozedUntil
 
     await this.stateModel.updateOne(
       { user: user._id, notification: new Types.ObjectId(notificationId) },

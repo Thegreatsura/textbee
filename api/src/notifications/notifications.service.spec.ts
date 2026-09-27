@@ -205,10 +205,13 @@ describe('NotificationsService feed and the engine flag', () => {
 describe('NotificationsService.recordEvents', () => {
   const knownRecord = { _id: NOTIFICATION_ID }
 
-  const withKnown = (records: any[] = [activeRecord()], dismissEnabled = true) => {
+  const withKnown = (
+    records: any[] = [activeRecord()],
+    dismiss: any = { enabled: true, mode: 'permanent' },
+  ) => {
     const t = build({ engineEnabled: true }, records)
     t.notificationModel.find.mockImplementation(() =>
-      chain([{ ...knownRecord, dismiss: { enabled: dismissEnabled } }]),
+      chain([{ ...knownRecord, dismiss }]),
     )
     return t
   }
@@ -306,7 +309,7 @@ describe('NotificationsService.recordEvents', () => {
   })
 
   it('ignores a dismissal event for a record that cannot be dismissed', async () => {
-    const t = withKnown([activeRecord()], false)
+    const t = withKnown([activeRecord()], { enabled: false })
 
     const result = await t.service.recordEvents(user(), [
       { notificationId: String(NOTIFICATION_ID), type: 'dismiss' },
@@ -321,13 +324,44 @@ describe('NotificationsService.recordEvents', () => {
   })
 
   it('still records an impression for a record that cannot be dismissed', async () => {
-    const t = withKnown([activeRecord()], false)
+    const t = withKnown([activeRecord()], { enabled: false })
 
     const result = await t.service.recordEvents(user(), [
       { notificationId: String(NOTIFICATION_ID), type: 'impression' },
     ])
 
     expect(result).toEqual({ recorded: 1 })
+  })
+
+  it('snoozes a dismissal event on a snooze-mode record, not just stamps it', async () => {
+    const t = withKnown([activeRecord()], {
+      enabled: true,
+      mode: 'snooze',
+      snoozeHours: 24,
+    })
+
+    await t.service.recordEvents(user(), [
+      { notificationId: String(NOTIFICATION_ID), type: 'dismiss' },
+    ])
+
+    const update = t.stateModel.bulkWrite.mock.calls[0][0][0].updateOne.update
+    // The ranker reads snoozedUntil for this mode, so stamping only dismissedAt
+    // would record a dismissal that hid nothing. This is the path the legacy
+    // migration uses.
+    expect(update.$set.dismissedAt).toBeInstanceOf(Date)
+    expect(update.$set.snoozedUntil).toBeInstanceOf(Date)
+    expect(update.$set.snoozedUntil.getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('leaves no snooze on a permanent record', async () => {
+    const t = withKnown()
+
+    await t.service.recordEvents(user(), [
+      { notificationId: String(NOTIFICATION_ID), type: 'dismiss' },
+    ])
+
+    const update = t.stateModel.bulkWrite.mock.calls[0][0][0].updateOne.update
+    expect(update.$set.snoozedUntil).toBeUndefined()
   })
 
   it('refuses to build an update path out of an unsafe variant id', async () => {

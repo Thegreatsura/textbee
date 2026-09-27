@@ -26,6 +26,7 @@ describe('BillingService - cancellation handling', () => {
   }
   const mockSubscriptionModel = {
     updateOne: jest.fn(),
+    updateMany: jest.fn(),
   }
   const emptyModel = {}
   const mockBillingNotifications = {}
@@ -122,6 +123,60 @@ describe('BillingService - cancellation handling', () => {
         service.cancelSubscription({ userId, polarProductId: 'unknown' }),
       ).rejects.toThrow('No plan found for product ID: unknown')
       expect(mockSubscriptionModel.updateOne).not.toHaveBeenCalled()
+    })
+
+    it('writes the end cause on every row of the subscription, active or not', async () => {
+      mockSubscriptionModel.updateMany.mockResolvedValue({})
+
+      await service.cancelSubscription({
+        userId,
+        polarProductId,
+        cancelAtPeriodEnd: false,
+        status: 'canceled',
+        churnCause: 'payment_failed',
+        polarSubscriptionId: 'sub_1',
+      })
+
+      expect(mockSubscriptionModel.updateMany).toHaveBeenCalledWith(
+        { polarSubscriptionId: 'sub_1' },
+        { $set: { churnCause: 'payment_failed' } },
+      )
+      const [, update] = mockSubscriptionModel.updateOne.mock.calls[0]
+      expect(update).not.toHaveProperty('churnCause')
+    })
+
+    it('keeps the end cause when the revoke arrives first', async () => {
+      mockSubscriptionModel.updateMany.mockResolvedValue({})
+
+      await service.revokeSubscription({ userId, polarProductId })
+      // The revoke already deactivated the row, so the active-only update matches nothing.
+      mockSubscriptionModel.updateOne.mockResolvedValue({ modifiedCount: 0 })
+      await service.cancelSubscription({
+        userId,
+        polarProductId,
+        churnCause: 'payment_failed',
+        polarSubscriptionId: 'sub_1',
+      })
+
+      expect(mockSubscriptionModel.updateMany).toHaveBeenCalledWith(
+        { polarSubscriptionId: 'sub_1' },
+        { $set: { churnCause: 'payment_failed' } },
+      )
+    })
+
+    it('leaves the end cause alone when the revoke arrives second', async () => {
+      mockSubscriptionModel.updateMany.mockResolvedValue({})
+
+      await service.cancelSubscription({
+        userId,
+        polarProductId,
+        churnCause: 'payment_failed',
+        polarSubscriptionId: 'sub_1',
+      })
+      await service.revokeSubscription({ userId, polarProductId })
+
+      const revokeUpdate = mockSubscriptionModel.updateOne.mock.calls[1][1]
+      expect(revokeUpdate).toEqual({ isActive: false, subscriptionEndDate: expect.any(Date) })
     })
   })
 

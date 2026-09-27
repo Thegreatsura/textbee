@@ -1016,6 +1016,7 @@ export class BillingService {
     currentPeriodEnd,
     status,
     churnCause,
+    polarSubscriptionId,
   }: {
     userId: string
     polarProductId?: string
@@ -1023,7 +1024,16 @@ export class BillingService {
     currentPeriodEnd?: Date
     status?: string
     churnCause?: 'customer' | 'payment_failed'
+    polarSubscriptionId?: string
   }) {
+    // Not limited to active rows: the revoke event can arrive first.
+    if (churnCause && polarSubscriptionId) {
+      await this.subscriptionModel.updateMany(
+        { polarSubscriptionId },
+        { $set: { churnCause } },
+      )
+    }
+
     const userObjectId = new Types.ObjectId(userId)
 
     const plan = await this.planModel.findOne({
@@ -1049,7 +1059,6 @@ export class BillingService {
           subscriptionEndDate: currentPeriodEnd,
         }),
         ...(status && { status }),
-        ...(churnCause && { churnCause }),
       },
     )
 

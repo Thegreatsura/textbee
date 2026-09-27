@@ -247,6 +247,7 @@ export class BillingController {
           cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
           currentPeriodEnd: payload.data?.currentPeriodEnd,
           status: payload.data?.status,
+          polarSubscriptionId: event?.id,
           churnCause: await this.billingService.churnCause({
             polarSubscriptionId: event?.id,
             status: event?.status,

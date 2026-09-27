@@ -130,6 +130,7 @@ describe('BillingController - handlePolarWebhook', () => {
       cancelAtPeriodEnd: true,
       currentPeriodEnd: '2026-07-17T00:00:00.000Z',
       status: 'active',
+      polarSubscriptionId: 'sub_123',
       churnCause: 'customer',
     })
     // A scheduled cancellation must not route to the downgrade or switchPlan.

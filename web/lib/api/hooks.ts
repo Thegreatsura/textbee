@@ -17,6 +17,7 @@ import type {
   NotificationEvent,
   NotificationFeed,
   Plan,
+  SmsPermissionStatus,
   Subscription,
   User,
   WebhookNotification,
@@ -106,6 +107,18 @@ export function useDevices(options?: ListQueryOpts<Device>) {
         .then((r) => r.data as ListEnvelope<Device>),
     select: selectList<Device>,
     ...options,
+  })
+}
+
+// Polled so the alert clears within a minute of the fix on the phone.
+export function useSmsPermissionStatus() {
+  return useQuery({
+    queryKey: queryKeys.smsPermissionStatus,
+    queryFn: () =>
+      httpBrowserClient
+        .get(ApiEndpoints.gateway.smsPermissionStatus())
+        .then(unwrapData<SmsPermissionStatus>),
+    refetchInterval: 60_000,
   })
 }
 

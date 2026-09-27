@@ -33,6 +33,14 @@ export interface GatewayStats {
   totalApiKeyCount?: number
 }
 
+export interface SmsPermissionStatus {
+  needsSmsPermission: boolean | null
+  hoursSinceFailure: number | null
+  deviceId: string | null
+  deviceName: string | null
+  failedAt: string | null
+}
+
 export interface Device {
   _id: string
   brand?: string

@@ -9,6 +9,7 @@ export const queryKeys = {
   subscription: ['currentSubscription'] as const,
   stats: ['stats'] as const,
   devices: ['devices'] as const,
+  smsPermissionStatus: ['smsPermissionStatus'] as const,
   webhooks: ['webhooks'] as const,
   billingPlans: ['billingPlans'] as const,
   notificationFeed: ['notificationFeed'] as const,

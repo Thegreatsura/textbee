@@ -8,11 +8,20 @@ const chain = (result: any) => {
   const node: any = {}
   node.select = jest.fn().mockReturnValue(node)
   node.populate = jest.fn().mockReturnValue(node)
+  node.sort = jest.fn().mockReturnValue(node)
   node.lean = jest.fn().mockResolvedValue(result)
   return node
 }
 
-const build = (over: { subscription?: any; plan?: any; waived?: boolean } = {}) => {
+const build = (
+  over: {
+    subscription?: any
+    plan?: any
+    waived?: boolean
+    lastSent?: any
+    device?: any
+  } = {},
+) => {
   const subscriptionModel: any = {
     findOne: jest.fn().mockImplementation(() => chain(over.subscription ?? null)),
   }
@@ -30,15 +39,22 @@ const build = (over: { subscription?: any; plan?: any; waived?: boolean } = {}) 
         chain({ emailVerificationWaivedAt: over.waived ? NOW : undefined }),
       ),
   }
-  const smsModel: any = { countDocuments: jest.fn().mockResolvedValue(7) }
+  const smsModel: any = {
+    countDocuments: jest.fn().mockResolvedValue(7),
+    findOne: jest.fn().mockImplementation(() => chain(over.lastSent ?? null)),
+  }
+  const deviceModel: any = {
+    findById: jest.fn().mockImplementation(() => chain(over.device ?? null)),
+  }
 
   const loader = new NotificationContextLoader(
     subscriptionModel,
     planModel,
     userModel,
     smsModel,
+    deviceModel,
   )
-  return { loader, subscriptionModel, planModel, userModel, smsModel }
+  return { loader, subscriptionModel, planModel, userModel, smsModel, deviceModel }
 }
 
 const account = (over: Record<string, any> = {}) =>
@@ -69,6 +85,7 @@ describe('attribute groups are loaded only when referenced', () => {
 
     expect(t.subscriptionModel.findOne).not.toHaveBeenCalled()
     expect(t.smsModel.countDocuments).not.toHaveBeenCalled()
+    expect(t.smsModel.findOne).not.toHaveBeenCalled()
     expect(t.userModel.findById).not.toHaveBeenCalled()
   })
 
@@ -369,5 +386,81 @@ describe('subscription attributes', () => {
     expect(context['subscription.status']).toBe('past_due')
     expect(context['subscription.cancelAtPeriodEnd']).toBe(true)
     expect(context['subscription.daysUntilPeriodEnd']).toBe(10)
+  })
+})
+
+describe('sending attributes', () => {
+  const failed = {
+    status: 'failed',
+    errorCode: 'PERMISSION_DENIED',
+    failedAt: new Date('2026-09-27T09:30:00.000Z'),
+    device: new Types.ObjectId(),
+  }
+
+  it('reads the latest outgoing message only when referenced', async () => {
+    const t = build({ lastSent: failed, device: { enabled: true } })
+
+    const context = await t.loader.build({
+      user: account(),
+      settings,
+      now: NOW,
+      referenced: ['sending.needsSmsPermission'],
+    })
+
+    expect(t.smsModel.findOne).toHaveBeenCalledWith({
+      user: USER_ID,
+      type: 'SENT',
+    })
+    expect(context['sending.needsSmsPermission']).toBe(true)
+    expect(context['sending.hoursSinceLastPermissionFailure']).toBe(2)
+  })
+
+  it('clears once the phone reports the permission granted', async () => {
+    const t = build({
+      lastSent: failed,
+      device: {
+        appStateInfo: {
+          hasSendSmsPermission: true,
+          lastUpdated: new Date('2026-09-27T11:00:00.000Z'),
+        },
+      },
+    })
+
+    const context = await t.loader.build({
+      user: account(),
+      settings,
+      now: NOW,
+      referenced: ['sending.needsSmsPermission'],
+    })
+
+    expect(context['sending.needsSmsPermission']).toBe(false)
+    expect(context['sending.hoursSinceLastPermissionFailure']).toBeUndefined()
+  })
+
+  it('does not read the device when the last send worked', async () => {
+    const t = build({ lastSent: { status: 'delivered' } })
+
+    const context = await t.loader.build({
+      user: account(),
+      settings,
+      now: NOW,
+      referenced: ['sending.needsSmsPermission'],
+    })
+
+    expect(t.deviceModel.findById).not.toHaveBeenCalled()
+    expect(context['sending.needsSmsPermission']).toBe(false)
+  })
+
+  it('leaves an account that never sent unjudgeable', async () => {
+    const t = build()
+
+    const context = await t.loader.build({
+      user: account(),
+      settings,
+      now: NOW,
+      referenced: ['sending.needsSmsPermission'],
+    })
+
+    expect(context['sending.needsSmsPermission']).toBeUndefined()
   })
 })

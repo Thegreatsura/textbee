@@ -45,6 +45,7 @@ import {
   toRecoveryPayload,
 } from './pending-recovery'
 import { errorHistoryPush } from './error-history'
+import { loadSmsPermissionStatus } from './sms-permission-status'
 import {
   resolveReportAttempt,
   resolveReportedAt,
@@ -1746,6 +1747,15 @@ const updatedSms = await this.smsModel.findByIdAndUpdate(
       totalDeviceCount,
       totalApiKeyCount,
     }
+  }
+
+  async getSmsPermissionStatus(user: User) {
+    return loadSmsPermissionStatus(
+      this.smsModel as any,
+      this.deviceModel,
+      user._id as Types.ObjectId,
+      new Date(),
+    )
   }
 
   private getRecipientsPreview(recipients: string[]): string {

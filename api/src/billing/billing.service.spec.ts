@@ -1224,14 +1224,25 @@ describe('BillingService - payment retry state and end cause', () => {
     eventAt,
   }
 
+  const newer = {
+    polarSubscriptionId: 'sub_1',
+    $or: [{ statusEventAt: null }, { statusEventAt: { $lt: eventAt } }],
+  }
+
   it('keeps the first retry period start when the provider gives none', async () => {
     const { service, subscriptionModel } = build()
 
     await service.syncPastDue({ polarSubscriptionId: 'sub_1', status: 'past_due', eventAt })
 
-    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
-      { polarSubscriptionId: 'sub_1', isActive: true, pastDueAt: null },
-      { $set: { pastDueAt: eventAt } },
+    expect(subscriptionModel.updateMany).toHaveBeenNthCalledWith(
+      1,
+      { ...newer, isActive: true, pastDueAt: null },
+      { $set: { pastDueAt: eventAt, statusEventAt: eventAt } },
+    )
+    expect(subscriptionModel.updateMany).toHaveBeenNthCalledWith(
+      2,
+      { ...newer, isActive: true },
+      { $set: { statusEventAt: eventAt } },
     )
   })
 
@@ -1246,20 +1257,28 @@ describe('BillingService - payment retry state and end cause', () => {
     })
 
     expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
-      { polarSubscriptionId: 'sub_1', isActive: true },
-      { $set: { pastDueAt: new Date('2026-09-18T00:00:00Z') } },
+      { ...newer, isActive: true },
+      { $set: { pastDueAt: new Date('2026-09-18T00:00:00Z'), statusEventAt: eventAt } },
     )
   })
 
-  it('clears the retry period once the subscription is active again', async () => {
+  it('clears the retry period only for an event newer than the last one applied', async () => {
     const { service, subscriptionModel } = build()
 
     await service.syncPastDue({ polarSubscriptionId: 'sub_1', status: 'active', eventAt })
 
-    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(
-      { polarSubscriptionId: 'sub_1', pastDueAt: { $ne: null } },
-      { $unset: { pastDueAt: 1 } },
-    )
+    expect(subscriptionModel.updateMany).toHaveBeenCalledWith(newer, {
+      $set: { statusEventAt: eventAt },
+      $unset: { pastDueAt: 1 },
+    })
+  })
+
+  it('ignores other statuses', async () => {
+    const { service, subscriptionModel } = build()
+
+    await service.syncPastDue({ polarSubscriptionId: 'sub_1', status: 'canceled', eventAt })
+
+    expect(subscriptionModel.updateMany).not.toHaveBeenCalled()
   })
 
   it('reads an immediate end after a retry period as payment_failed', async () => {

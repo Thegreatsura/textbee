@@ -236,6 +236,31 @@ describe('BillingController - handlePolarWebhook', () => {
     },
   )
 
+  it('orders status changes by the provider modification time', async () => {
+    const payload: any = makePayload('subscription.updated', {
+      status: 'past_due',
+      modifiedAt: '2026-07-01T08:00:00.000Z',
+    })
+    payload.timestamp = '2026-07-01T09:00:00.000Z'
+
+    await handle(payload)
+
+    expect(mockBillingService.syncPastDue).toHaveBeenCalledWith(
+      expect.objectContaining({ eventAt: new Date('2026-07-01T08:00:00.000Z') }),
+    )
+  })
+
+  it('falls back to the webhook time without a modification time', async () => {
+    const payload: any = makePayload('subscription.past_due', { status: 'past_due' })
+    payload.timestamp = '2026-07-01T09:00:00.000Z'
+
+    await handle(payload)
+
+    expect(mockBillingService.syncPastDue).toHaveBeenCalledWith(
+      expect.objectContaining({ eventAt: new Date('2026-07-01T09:00:00.000Z') }),
+    )
+  })
+
   it('clears a scheduled cancellation on subscription.uncanceled', async () => {
     await handle(makePayload('subscription.uncanceled'))
 

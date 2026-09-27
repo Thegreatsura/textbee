@@ -950,19 +950,35 @@ export class BillingService {
     eventAt: Date
   }) {
     if (!polarSubscriptionId) return
-    if (status === 'past_due') {
-      await this.subscriptionModel.updateMany(
-        pastDueAt
-          ? { polarSubscriptionId, isActive: true }
-          : { polarSubscriptionId, isActive: true, pastDueAt: null },
-        { $set: { pastDueAt: pastDueAt ? new Date(pastDueAt) : eventAt } },
-      )
-    } else if (status === 'active') {
-      await this.subscriptionModel.updateMany(
-        { polarSubscriptionId, pastDueAt: { $ne: null } },
-        { $unset: { pastDueAt: 1 } },
-      )
+    if (status !== 'past_due' && status !== 'active') return
+    // Events can arrive out of order; only a newer status change is applied.
+    const newer = {
+      polarSubscriptionId,
+      $or: [{ statusEventAt: null }, { statusEventAt: { $lt: eventAt } }],
     }
+    if (status === 'active') {
+      await this.subscriptionModel.updateMany(newer, {
+        $set: { statusEventAt: eventAt },
+        $unset: { pastDueAt: 1 },
+      })
+      return
+    }
+    if (pastDueAt) {
+      await this.subscriptionModel.updateMany(
+        { ...newer, isActive: true },
+        { $set: { pastDueAt: new Date(pastDueAt), statusEventAt: eventAt } },
+      )
+      return
+    }
+    // Keeps the first start of the retry period.
+    await this.subscriptionModel.updateMany(
+      { ...newer, isActive: true, pastDueAt: null },
+      { $set: { pastDueAt: eventAt, statusEventAt: eventAt } },
+    )
+    await this.subscriptionModel.updateMany(
+      { ...newer, isActive: true },
+      { $set: { statusEventAt: eventAt } },
+    )
   }
 
   /** payment_failed when the provider ended the plan right after a failed renewal. */

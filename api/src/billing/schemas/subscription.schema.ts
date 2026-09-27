@@ -77,6 +77,10 @@ export class Subscription {
   @Prop({ type: Date })
   pastDueAt?: Date
 
+  // Provider time of the last applied status change, to ignore older events.
+  @Prop({ type: Date })
+  statusEventAt?: Date
+
   @Prop({ type: String, enum: ['customer', 'payment_failed'] })
   churnCause?: 'customer' | 'payment_failed'
 }

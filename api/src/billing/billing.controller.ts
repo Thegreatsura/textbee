@@ -192,7 +192,7 @@ export class BillingController {
         polarSubscriptionId: event?.id,
         status: event?.status,
         pastDueAt: event?.pastDueAt ?? event?.past_due_at,
-        eventAt,
+        eventAt: event?.modifiedAt ? new Date(event.modifiedAt) : eventAt,
       })
 
     // Handle Polar.sh webhook events

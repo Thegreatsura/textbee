@@ -850,9 +850,12 @@ export class BillingService {
     console.log(`Deactivated subscriptions: ${result.modifiedCount}`)
 
     // Create or update the new subscription
+    // A running subscription has no end cause.
+    const running = status === 'active' && !cancelAtPeriodEnd
     const updateResult = await this.subscriptionModel.updateOne(
       { user: userObjectId, plan: plan._id },
       {
+        ...(running && { $unset: { churnCause: 1 } }),
         isActive: true,
         currentPeriodStart,
         currentPeriodEnd,

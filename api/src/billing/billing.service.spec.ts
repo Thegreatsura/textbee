@@ -1020,6 +1020,24 @@ describe('BillingService - first payment reporting', () => {
     mockUsersService.markMilestone.mockResolvedValue(true)
   })
 
+  it('clears the end cause when the subscription runs again', async () => {
+    await service.switchPlan(activePayment)
+
+    const [filter, update] = mockSubscriptionModel.updateOne.mock.calls[0]
+    expect(filter).toEqual({ user: expect.any(Types.ObjectId), plan: proPlan._id })
+    expect(update.$unset).toEqual({ churnCause: 1 })
+    expect(update.isActive).toBe(true)
+  })
+
+  it.each([
+    ['scheduled to cancel', { cancelAtPeriodEnd: true }],
+    ['not active', { status: 'canceled' }],
+  ])('keeps the end cause while the subscription is %s', async (_l, change) => {
+    await service.switchPlan({ ...activePayment, ...change })
+
+    expect(mockSubscriptionModel.updateOne.mock.calls[0][1]).not.toHaveProperty('$unset')
+  })
+
   it('reports the sale the first time an account pays', async () => {
     await service.switchPlan(activePayment)
 

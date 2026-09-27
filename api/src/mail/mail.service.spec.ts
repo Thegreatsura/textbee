@@ -396,7 +396,6 @@ describe('MailService.sendTemplated', () => {
       'not_eligible',
     ],
     ['a missing account', { user: null }, 'not_eligible'],
-    ['a disabled template', { overrides: [{ key: 'T2', enabled: false, version: 2 }] }, 'disabled'],
   ])('skips %s and logs why', async (_label, opts: any, reason) => {
     const { service, mailerService, sentEmailModel } = setup(opts)
 
@@ -408,6 +407,37 @@ describe('MailService.sendTemplated', () => {
       error: reason,
       type: 'T2',
     })
+  })
+
+  it('skips a disabled template and logs why', async () => {
+    const { service, mailerService, sentEmailModel } = setup({
+      overrides: [{ key: 'V2', enabled: false, version: 2 }],
+    })
+
+    await expect(
+      service.sendTemplated({
+        key: 'V2',
+        userId,
+        vars: { verificationUrl: 'https://app.test/v', linkTtl: '24 hours' },
+      }),
+    ).resolves.toBe('skipped')
+
+    expect(mailerService.sendMail).not.toHaveBeenCalled()
+    expect(sentEmailModel.create.mock.calls[0][0]).toMatchObject({
+      status: 'skipped',
+      error: 'disabled',
+      type: 'V2',
+    })
+  })
+
+  it('still sends a password reset that a row disables, but not to a suppressed address', async () => {
+    const overrides = [{ key: 'T2', enabled: false, version: 2 }]
+    const on = setup({ overrides })
+    await expect(sendT2(on.service)).resolves.toBe('sent')
+
+    const suppressed = setup({ overrides, suppressed: true })
+    await expect(sendT2(suppressed.service)).resolves.toBe('skipped')
+    expect(suppressed.mailerService.sendMail).not.toHaveBeenCalled()
   })
 
   it('checks suppression by the lowercase address', async () => {

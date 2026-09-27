@@ -93,12 +93,29 @@ describe('EmailTemplatesService', () => {
   })
 
   it('skips rendering a disabled template', async () => {
-    const { service } = build([{ key: 'T3', enabled: false, version: 2 }])
+    const { service } = build([{ key: 'V2', enabled: false, version: 2 }])
 
-    const r = await service.render('T3', T3_VARS)
+    const r = await service.render('V2', { linkTtl: '24 hours', verificationUrl: 'u' })
 
     expect(r.enabled).toBe(false)
     expect(r.document).toBeUndefined()
+  })
+
+  it.each(['T1', 'T2', 'T3'])('keeps %s on when a row disables it, with a warning', async (key) => {
+    const { service, warn } = build([{ key, enabled: false, version: 2 }])
+    const vars = {
+      ...T3_VARS,
+      linkTtl: '20 minutes',
+      verificationUrl: 'https://app.test/v',
+      resetUrl: 'https://app.test/r',
+      otp: '123456',
+    }
+
+    const r = await service.render(key, vars)
+
+    expect(r.enabled).toBe(true)
+    expect(r.document.subject).toBeTruthy()
+    expect(warn).toHaveBeenCalledWith(`email_template_disable_ignored key=${key}`)
   })
 
   it('applies a footer override and ignores one with a foreign placeholder', async () => {

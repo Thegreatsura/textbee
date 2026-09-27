@@ -56,6 +56,8 @@ type Override = Pick<
 
 export const CACHE_TTL_MS = 60 * 1000
 const COPY_FIELDS = ['subject', 'preheader', 'body'] as const
+// Verification and password emails always send; an account cannot work without them.
+export const ALWAYS_ENABLED = new Set(['T1', 'T2', 'T3'])
 const USAGE_BAR_VARS = ['usageLabel', 'used', 'limit']
 
 export const EMAIL_DEFAULTS: EmailDefaults = JSON.parse(
@@ -128,7 +130,11 @@ export class EmailTemplatesService {
 
     const rows = await this.overrides()
     const row = rows.get(key)
-    const enabled = typeof row?.enabled === 'boolean' ? row.enabled : template.enabled
+    let enabled = typeof row?.enabled === 'boolean' ? row.enabled : template.enabled
+    if (!enabled && ALWAYS_ENABLED.has(key)) {
+      this.logger.warn(`email_template_disable_ignored key=${key}`)
+      enabled = true
+    }
     if (!enabled) return { template, enabled, version: 0 }
 
     const footerKey = `footer_${template.footer}`

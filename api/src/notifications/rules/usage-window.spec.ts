@@ -8,16 +8,14 @@ import {
 // against its copy, so both count usage over identical windows.
 
 describe('dailyWindowStart', () => {
-  it('is server-local midnight of the same day', () => {
-    const now = new Date(2026, 8, 27, 15, 42, 31, 500)
-    const start = dailyWindowStart(now)
-    expect(start.getFullYear()).toBe(2026)
-    expect(start.getMonth()).toBe(8)
-    expect(start.getDate()).toBe(27)
-    expect(start.getHours()).toBe(0)
-    expect(start.getMinutes()).toBe(0)
-    expect(start.getSeconds()).toBe(0)
-    expect(start.getMilliseconds()).toBe(0)
+  it('is midnight UTC of the same UTC day', () => {
+    const start = dailyWindowStart(new Date('2026-09-27T15:42:31.500Z'))
+    expect(start.toISOString()).toBe('2026-09-27T00:00:00.000Z')
+  })
+
+  it('uses the UTC day, not the server day', () => {
+    const start = dailyWindowStart(new Date('2026-09-27T23:30:00-05:00'))
+    expect(start.toISOString()).toBe('2026-09-28T00:00:00.000Z')
   })
 
   it('does not mutate its argument', () => {

@@ -1,4 +1,14 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common'
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  UseGuards,
+  Request,
+  Query,
+  Res,
+} from '@nestjs/common'
+import { Response } from 'express'
 import { BillingService } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
 import {
@@ -145,6 +155,23 @@ export class BillingController {
     })
   }
 
+  // Signed links from billing emails, reached through the web app.
+  @ApiExcludeEndpoint()
+  @Get('card')
+  async cardUpdate(@Query('t') t: string, @Res() res: Response) {
+    const url = await this.billingService.cardUpdateRedirect(t)
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
+    return res.redirect(302, url)
+  }
+
+  @ApiExcludeEndpoint()
+  @Get('checkout/resume')
+  async checkoutResume(@Query('t') t: string, @Res() res: Response) {
+    const url = await this.billingService.checkoutResumeRedirect(t)
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
+    return res.redirect(302, url)
+  }
+
   // Provider to server callback with a signed raw body, not something a
   // developer calls, so it stays out of the docs.
   @ApiExcludeEndpoint()
@@ -157,6 +184,16 @@ export class BillingController {
 
     // store the payload in the database
     await this.billingService.storePolarWebhookPayload(payload)
+
+    const eventAt = new Date((payload as any).timestamp ?? Date.now())
+    const event: any = payload.data
+    const pastDue = () =>
+      this.billingService.syncPastDue({
+        polarSubscriptionId: event?.id,
+        status: event?.status,
+        pastDueAt: event?.pastDueAt ?? event?.past_due_at,
+        eventAt: event?.modifiedAt ? new Date(event.modifiedAt) : eventAt,
+      })
 
     // Handle Polar.sh webhook events
     switch (payload.type) {
@@ -181,6 +218,17 @@ export class BillingController {
           polarCustomerId: payload.data?.customerId,
           cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
         })
+        await pastDue()
+        break
+
+      case 'subscription.past_due':
+        await pastDue()
+        break
+
+      case 'subscription.uncanceled':
+        await this.billingService.uncancelSubscription({
+          polarSubscriptionId: event?.id,
+        })
         break
 
       // @ts-ignore
@@ -199,6 +247,14 @@ export class BillingController {
           cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
           currentPeriodEnd: payload.data?.currentPeriodEnd,
           status: payload.data?.status,
+          polarSubscriptionId: event?.id,
+          churnCause: await this.billingService.churnCause({
+            polarSubscriptionId: event?.id,
+            status: event?.status,
+            cancelAtPeriodEnd: event?.cancelAtPeriodEnd,
+            endsAt: event?.endsAt ?? event?.endedAt,
+            eventAt,
+          }),
         })
         break
 

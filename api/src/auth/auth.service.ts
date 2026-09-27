@@ -21,7 +21,6 @@ import {
   PasswordResetDocument,
 } from './schemas/password-reset.schema'
 import { MailService } from '../mail/mail.service'
-import { firstName } from '../mail/first-name'
 import { TurnstileService } from '../common/turnstile.service'
 import { escapeRegExp } from '../common/escape-regexp'
 import { RequestResetPasswordInputDTO, ResetPasswordInputDTO } from './auth.dto'
@@ -303,17 +302,14 @@ export class AuthService {
     })
     await passwordReset.save()
 
-    const resetLink = `${process.env.FRONTEND_URL || 'https://textbee.dev'}/reset-password?email=${encodeURIComponent(user.email)}&otp=${otp}`
+    const resetUrl = `${process.env.FRONTEND_URL || 'https://textbee.dev'}/reset-password?email=${encodeURIComponent(user.email)}&otp=${otp}`
 
-    await this.mailService.sendEmailFromTemplate({
-      to: user.email,
-      subject: 'textbee.dev - Password Reset',
-      template: 'password-reset-request',
-      context: { name: firstName(user.name), resetLink, otp },
-    }, {
+    await this.mailService.sendTemplated({
+      key: 'T2',
       userId: user._id,
-      category: 'auth',
-      redactContextKeys: ['otp', 'resetLink'],
+      to: user.email,
+      vars: { resetUrl, otp, linkTtl: '20 minutes' },
+      redactVars: ['resetUrl', 'otp'],
     })
 
     return acceptedResponse
@@ -375,12 +371,11 @@ export class AuthService {
     passwordReset.expiresAt = new Date(Date.now())
     await passwordReset.save()
 
-    this.mailService.sendEmailFromTemplate({
-      to: user.email,
-      subject: 'textbee.dev - Password Reset',
-      template: 'password-reset-success',
-      context: { name: firstName(user.name) },
-    }, { userId: user._id, category: 'auth' })
+    this.mailService
+      .sendTemplated({ key: 'T3', userId: user._id, to: user.email })
+      .catch((e) => {
+        console.log('Failed to send password changed email', e?.message)
+      })
 
     return { message: 'Password reset successfully' }
   }
@@ -417,11 +412,12 @@ export class AuthService {
   }
 
   async sendEmailVerificationEmail(user: UserDocument) {
-    // Check if user has requested email verification more than 5 times in the last 24 hours
+    // Reminder links do not count toward the resend cap.
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const verificationCount = await this.emailVerificationModel.countDocuments({
       user: user._id,
       createdAt: { $gte: twentyFourHoursAgo },
+      source: { $ne: 'reminder' },
     })
 
     if (verificationCount >= 5) {
@@ -434,35 +430,38 @@ export class AuthService {
       )
     }
 
-    const verificationCode = uuidv4()
-    const expiresAt = new Date(Date.now() + 20 * 60 * 1000) // 20 minutes
+    const verificationUrl = await this.mintEmailVerificationLink(user)
 
-    const hashedVerificationCode = await bcrypt.hash(verificationCode, 10)
-
-    const emailVerification = new this.emailVerificationModel({
-      user: user._id,
-      verificationCode: hashedVerificationCode,
-      expiresAt,
-    })
-    await emailVerification.save()
-
-    const verificationLink = `${process.env.FRONTEND_URL || 'https://textbee.dev'}/verify-email?userId=${user._id}&verificationCode=${verificationCode}`
-
-    await this.mailService.sendEmailFromTemplate({
-      to: user.email,
-      subject: 'textbee.dev - Verify Email',
-      template: 'verify-email',
-      context: {
-        name: firstName(user.name),
-        verificationLink,
-      },
-    }, {
+    await this.mailService.sendTemplated({
+      key: 'T1',
       userId: user._id,
-      category: 'auth',
-      redactContextKeys: ['verificationLink'],
+      to: user.email,
+      vars: { verificationUrl, linkTtl: '20 minutes' },
+      redactVars: ['verificationUrl'],
     })
 
     return { message: 'Email verification email sent' }
+  }
+
+  /** Stores a new hashed verification code and returns its link. */
+  async mintEmailVerificationLink(
+    user: Pick<UserDocument, '_id'>,
+    {
+      lifetimeMs = 20 * 60 * 1000,
+      source,
+    }: { lifetimeMs?: number; source?: 'reminder' } = {},
+  ): Promise<string> {
+    const verificationCode = uuidv4()
+    const hashedVerificationCode = await bcrypt.hash(verificationCode, 10)
+
+    await new this.emailVerificationModel({
+      user: user._id,
+      verificationCode: hashedVerificationCode,
+      expiresAt: new Date(Date.now() + lifetimeMs),
+      ...(source && { source }),
+    }).save()
+
+    return `${process.env.FRONTEND_URL || 'https://textbee.dev'}/verify-email?userId=${user._id}&verificationCode=${verificationCode}`
   }
 
   async verifyEmail({ userId, verificationCode }) {

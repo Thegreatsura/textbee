@@ -10,48 +10,14 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import inlineCss = require('inline-css')
-import {
-  buildEmailContent,
-  NOTIFICATION_SUBJECTS,
-} from '../src/billing/notification-content'
 import { renderTemplate, TEMPLATE_DIR } from '../src/mail/render-template'
 
 const OUT_DIR = path.join(__dirname, '..', 'tmp', 'email-preview')
 
 const YEAR = new Date().getFullYear()
 
-/** Meta as the billing service actually records it, per notification type. */
-const BILLING_META: Record<string, Record<string, any>> = {
-  daily_limit_approaching: { processedSmsToday: 42, dailyLimit: 50 },
-  monthly_limit_approaching: { processedSmsLastMonth: 4100, monthlyLimit: 5000 },
-  daily_limit_reached: { processedSmsToday: 50, dailyLimit: 50 },
-  monthly_limit_reached: { processedSmsLastMonth: 5000, monthlyLimit: 5000 },
-  bulk_sms_limit_reached: { attempted: 1200, bulkSendLimit: 50 },
-  device_limit_reached: { deviceLimit: 1 },
-  email_verification_required: {},
-}
-
 /** Realistic context per template, so the preview shows real-shaped content. */
 const SAMPLES: Record<string, Record<string, any>> = {
-  // Built through the real content builder, so the preview cannot drift from
-  // what actually sends. Every billing type is rendered, not just one.
-  'billing-notification': {
-    name: 'Alex',
-    ...buildEmailContent('monthly_limit_approaching', {
-      processedSmsLastMonth: 4100,
-      monthlyLimit: 5000,
-    }),
-  },
-  'verify-email': {
-    name: 'Alex',
-    verificationLink: 'https://app.textbee.dev/verify?token=sample-token-value',
-  },
-  'password-reset-request': {
-    name: 'Alex',
-    resetLink: 'https://app.textbee.dev/reset-password?token=sample-token-value',
-    otp: '482913',
-  },
-  'password-reset-success': { name: 'Alex' },
   'customer-support-confirmation': {
     name: 'Alex',
     email: 'alex@example.com',
@@ -151,23 +117,6 @@ async function main() {
 
   const rendered: string[] = []
   const problems: string[] = []
-
-  // Every billing notification type gets its own preview, since they share one
-  // template but say completely different things.
-  for (const type of Object.keys(NOTIFICATION_SUBJECTS)) {
-    const context = {
-      name: 'Alex',
-      ...buildEmailContent(type, BILLING_META[type] ?? {}),
-    }
-    const inlined = await inlineCss(
-      renderTemplate('billing-notification', context),
-      { url: ' ' },
-    )
-    const label = `billing-${type.replace(/_/g, '-')}`
-    fs.writeFileSync(path.join(OUT_DIR, `${label}.html`), inlined)
-    rendered.push(label)
-    problems.push(...validate(label, inlined))
-  }
 
   for (const name of names) {
     const context = { currentYear: YEAR, ...(SAMPLES[name] ?? {}) }

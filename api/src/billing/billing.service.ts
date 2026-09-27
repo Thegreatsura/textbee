@@ -32,6 +32,17 @@ import {
   BillingNotificationType,
 } from './billing-notifications.service'
 import { resolveClientAddress } from '../common/client-address'
+import {
+  dailyWindowStart,
+  monthlyWindowStart,
+} from '../notifications/rules/usage-window'
+import { usageEmailKey } from './usage-emails'
+import { pluralize, verifyLink } from '../mail/email-render'
+import {
+  appPublicUrl,
+  billingUrl,
+  emailLinkSecret,
+} from '../mail/email-links'
 
 // Paid plans are allowed a little past their nominal monthly limit before sends
 // are refused. Exported because notification targeting measures usage against
@@ -79,25 +90,19 @@ export class BillingService {
 
     const processedSmsToday = await this.smsModel.countDocuments({
       user: user._id,
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      createdAt: { $gte: dailyWindowStart(new Date()) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
       user: user._id,
       createdAt: {
-        $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+        $gte: monthlyWindowStart(new Date()),
       },
     })
 
     if (subscription) {
       const plan = subscription.plan
       const effectiveLimits = this.getEffectiveLimits(subscription, plan)
-
-      this.notifyApproachingLimits(
-        user._id,
-        { today: processedSmsToday, last30Days: processedSmsLastMonth },
-        effectiveLimits,
-      )
 
       return {
         ...subscription.toObject(),
@@ -134,12 +139,6 @@ export class BillingService {
 
     const plan = await this.planModel.findOne({ name: 'free' })
     const effectiveLimits = this.getEffectiveLimits(null, plan)
-
-    this.notifyApproachingLimits(
-      user._id,
-      { today: processedSmsToday, last30Days: processedSmsLastMonth },
-      effectiveLimits,
-    )
 
     return {
       plan,
@@ -298,13 +297,19 @@ export class BillingService {
             user: user._id,
           },
           {
-            user: user._id,
-            checkoutSessionId: checkout.id,
-            checkoutUrl: checkout.url,
-            planName: payload.planName,
-            billingInterval,
-            expiresAt: new Date(checkout.expiresAt),
-            payload: checkout,
+            $set: {
+              user: user._id,
+              checkoutSessionId: checkout.id,
+              checkoutUrl: checkout.url,
+              planName: payload.planName,
+              billingInterval,
+              expiresAt: new Date(checkout.expiresAt),
+              payload: checkout,
+              sessionStartedAt: new Date(),
+              isCompleted: false,
+              isAbandoned: false,
+            },
+            $unset: { completedAt: 1 },
           },
           { upsert: true },
         )
@@ -686,6 +691,7 @@ export class BillingService {
 
   private notifyApproachingLimits(
     userId: Types.ObjectId,
+    planName: string,
     used: { today: number; last30Days: number },
     limits: { dailyLimit: number; monthlyLimit: number },
   ) {
@@ -693,10 +699,17 @@ export class BillingService {
       type: BillingNotificationType,
       title: string,
       message: string,
-      meta: Record<string, number>,
+      meta: Record<string, any>,
     ) =>
       this.billingNotifications
-        .notifyOnce({ userId, type, title, message, meta, sendEmail: true })
+        .notifyOnce({
+          userId,
+          type,
+          title,
+          message,
+          meta: { ...meta, planName },
+          emailKey: usageEmailKey(type, planName),
+        })
         .catch(() => {})
 
     const { dailyLimit, monthlyLimit } = limits
@@ -753,6 +766,10 @@ export class BillingService {
     deviceLimit: number,
     activeDeviceCount: number,
   ) {
+    const subscription = await this.subscriptionModel
+      .findOne({ user: new Types.ObjectId(String(userId)), isActive: true })
+      .populate('plan')
+    const planName = (subscription?.plan as Plan | undefined)?.name ?? 'free'
     await this.billingNotifications.notifyOnce({
       userId,
       type: BillingNotificationType.DEVICE_LIMIT_REACHED,
@@ -761,8 +778,12 @@ export class BillingService {
       meta: {
         deviceLimit,
         activeDeviceCount,
+        planName,
       },
-      sendEmail: true,
+      emailKey: usageEmailKey(
+        BillingNotificationType.DEVICE_LIMIT_REACHED,
+        planName,
+      ),
     })
   }
 
@@ -829,9 +850,12 @@ export class BillingService {
     console.log(`Deactivated subscriptions: ${result.modifiedCount}`)
 
     // Create or update the new subscription
+    // A running subscription has no end cause.
+    const running = status === 'active' && !cancelAtPeriodEnd
     const updateResult = await this.subscriptionModel.updateOne(
       { user: userObjectId, plan: plan._id },
       {
+        ...(running && { $unset: { churnCause: 1 } }),
         isActive: true,
         currentPeriodStart,
         currentPeriodEnd,
@@ -913,19 +937,122 @@ export class BillingService {
     }
   }
 
+  /** Stores when the current payment retry period started, and clears it once paid. */
+  async syncPastDue({
+    polarSubscriptionId,
+    status,
+    pastDueAt,
+    eventAt,
+  }: {
+    polarSubscriptionId?: string
+    status?: string
+    pastDueAt?: Date | string
+    eventAt: Date
+  }) {
+    if (!polarSubscriptionId) return
+    if (status !== 'past_due' && status !== 'active') return
+    // Events can arrive out of order; only a newer status change is applied.
+    const newer = {
+      polarSubscriptionId,
+      $or: [{ statusEventAt: null }, { statusEventAt: { $lt: eventAt } }],
+    }
+    if (status === 'active') {
+      await this.subscriptionModel.updateMany(newer, {
+        $set: { statusEventAt: eventAt },
+        $unset: { pastDueAt: 1 },
+      })
+      return
+    }
+    if (pastDueAt) {
+      await this.subscriptionModel.updateMany(
+        { ...newer, isActive: true },
+        { $set: { pastDueAt: new Date(pastDueAt), statusEventAt: eventAt } },
+      )
+      return
+    }
+    // Keeps the first start of the retry period.
+    await this.subscriptionModel.updateMany(
+      { ...newer, isActive: true, pastDueAt: null },
+      { $set: { pastDueAt: eventAt, statusEventAt: eventAt } },
+    )
+    await this.subscriptionModel.updateMany(
+      { ...newer, isActive: true },
+      { $set: { statusEventAt: eventAt } },
+    )
+  }
+
+  /** payment_failed when the provider ended the plan right after a failed renewal. */
+  async churnCause({
+    polarSubscriptionId,
+    status,
+    cancelAtPeriodEnd,
+    endsAt,
+    eventAt,
+  }: {
+    polarSubscriptionId?: string
+    status?: string
+    cancelAtPeriodEnd?: boolean
+    endsAt?: Date | string | null
+    eventAt: Date
+  }): Promise<'customer' | 'payment_failed'> {
+    const ends = endsAt ? new Date(endsAt).getTime() : NaN
+    const endsNow =
+      status === 'canceled' &&
+      cancelAtPeriodEnd === false &&
+      Math.abs(ends - eventAt.getTime()) <= 3 * 60 * 60 * 1000
+    if (!endsNow || !polarSubscriptionId) return 'customer'
+
+    const pastDue = await this.subscriptionModel.exists({
+      polarSubscriptionId,
+      pastDueAt: { $ne: null },
+    })
+    if (pastDue) return 'payment_failed'
+
+    const recentPastDue = await this.polarWebhookPayloadModel.exists({
+      'payload.data.id': polarSubscriptionId,
+      'payload.data.status': 'past_due',
+      createdAt: { $gte: new Date(eventAt.getTime() - 35 * 24 * 60 * 60 * 1000) },
+    })
+    return recentPastDue ? 'payment_failed' : 'customer'
+  }
+
+  async uncancelSubscription({
+    polarSubscriptionId,
+  }: {
+    polarSubscriptionId?: string
+  }) {
+    if (!polarSubscriptionId) return
+    await this.subscriptionModel.updateMany(
+      { polarSubscriptionId, isActive: true },
+      { $set: { cancelAtPeriodEnd: false }, $unset: { churnCause: 1 } },
+    )
+  }
+
   async cancelSubscription({
     userId,
     polarProductId,
     cancelAtPeriodEnd,
     currentPeriodEnd,
     status,
+    churnCause,
+    polarSubscriptionId,
   }: {
     userId: string
     polarProductId?: string
     cancelAtPeriodEnd?: boolean
     currentPeriodEnd?: Date
     status?: string
+    churnCause?: 'customer' | 'payment_failed'
+    polarSubscriptionId?: string
   }) {
+    // Not limited to active rows: the revoke event can arrive first.
+    if (churnCause && polarSubscriptionId) {
+      await this.subscriptionModel.updateMany(
+        { polarSubscriptionId },
+        { $set: { churnCause } },
+      )
+    }
+
     const userObjectId = new Types.ObjectId(userId)
 
     const plan = await this.planModel.findOne({
@@ -1054,67 +1181,57 @@ export class BillingService {
         // Otherwise, continue with limit checks using effective limits
       }
 
-      let hasReachedLimit = false
-      let message = ''
-
       const processedSmsToday = await this.smsModel.countDocuments({
         user: user._id,
-        createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        createdAt: { $gte: dailyWindowStart(new Date()) },
       })
       const processedSmsLastMonth = await this.smsModel.countDocuments({
         user: user._id,
         createdAt: {
-          $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+          $gte: monthlyWindowStart(new Date()),
         },
       })
 
-      let dailyExceeded = false
-      let monthlyExceeded = false
-      let bulkExceeded = false
+      const { dailyLimit, monthlyLimit, bulkSendLimit } = effectiveLimits
+      const dailyFinite = dailyLimit !== -1
+      const monthlyFinite = monthlyLimit !== -1
+      // Paid plans may run a little past their nominal 30-day limit.
+      const monthlyCeiling =
+        monthlyFinite && plan.name !== 'free'
+          ? Math.floor(monthlyLimit * PAID_MONTHLY_LIMIT_MULTIPLIER)
+          : monthlyLimit
 
-      if (['send_sms', 'receive_sms', 'bulk_send_sms'].includes(action)) {
-        const dailyFinite = effectiveLimits.dailyLimit !== -1
-        const monthlyFinite = effectiveLimits.monthlyLimit !== -1
-
-        // exceeded checks
-        dailyExceeded =
-          dailyFinite && processedSmsToday + value > effectiveLimits.dailyLimit
-        monthlyExceeded =
-          monthlyFinite &&
-          processedSmsLastMonth + value > effectiveLimits.monthlyLimit
-        bulkExceeded =
-          effectiveLimits.bulkSendLimit !== -1 &&
-          value > effectiveLimits.bulkSendLimit
-
-        if (dailyExceeded) {
-          hasReachedLimit = true
-          message = `Your account has used all ${effectiveLimits.dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight, or upgrade your plan to keep sending now.`
-        }
-
-        if (monthlyExceeded) {
-          hasReachedLimit = true
-          message = `Your account has used its ${effectiveLimits.monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`
-        }
-
-        if (bulkExceeded) {
-          hasReachedLimit = true
-          message = `This batch has ${value} recipients, and your plan allows ${effectiveLimits.bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`
-        }
+      // Checked in this order: batch size, then 30 days, then today.
+      // A batch larger than the room left in a window counts as a hit on that window.
+      const monthlyRoom = monthlyFinite ? monthlyCeiling - processedSmsLastMonth : Infinity
+      const dailyRoom = dailyFinite ? dailyLimit - processedSmsToday : Infinity
+      let tripped: 'bulk' | 'monthly' | 'daily' | null = null
+      let reached = false
+      if (bulkSendLimit !== -1 && value > bulkSendLimit) {
+        tripped = 'bulk'
+        reached = true
+      } else if (monthlyFinite && monthlyRoom <= 0) {
+        tripped = 'monthly'
+        reached = true
+      } else if (dailyFinite && dailyRoom <= 0) {
+        tripped = 'daily'
+        reached = true
+      } else if (value > Math.min(monthlyRoom, dailyRoom)) {
+        tripped = dailyRoom <= monthlyRoom ? 'daily' : 'monthly'
       }
 
-      if (hasReachedLimit) {
-        if (
-          plan.name !== 'free' &&
-          monthlyExceeded &&
-          !dailyExceeded &&
-          !bulkExceeded &&
-          processedSmsLastMonth + value <=
-            Math.floor(
-              effectiveLimits.monthlyLimit * PAID_MONTHLY_LIMIT_MULTIPLIER,
-            )
-        ) {
-          return { overLimit: false }
-        }
+      if (tripped) {
+        const room = tripped === 'daily' ? dailyRoom : monthlyRoom
+        const roomText = `${pluralize(room, 'message', 'messages')} left ${
+          tripped === 'daily' ? 'today' : 'in its 30-day allowance'
+        }`
+        const message = !reached
+          ? `This batch had ${value} recipients and your account has ${roomText}. Nothing was sent.`
+          : {
+              bulk: `This batch has ${value} recipients, and your plan allows ${bulkSendLimit} per batch. Nothing was sent. Split it into smaller batches or upgrade your plan.`,
+              monthly: `Your account has used its ${monthlyLimit} messages for the last 30 days. Sent and received messages both count. Sending starts again as older messages pass 30 days, or upgrade your plan to keep sending now.`,
+              daily: `Your account has used all ${dailyLimit} messages your plan allows today. Sent and received messages both count. Sending starts again at midnight UTC, or upgrade your plan to keep sending now.`,
+            }[tripped]
 
         const storeReceive =
           action === 'receive_sms' && this.receivesOverLimitAllowed()
@@ -1130,51 +1247,59 @@ export class BillingService {
               value,
               message,
               hasReachedLimit: true,
-              dailyLimit: effectiveLimits.dailyLimit,
-              dailyRemaining: effectiveLimits.dailyLimit - processedSmsToday,
-              monthlyRemaining:
-                effectiveLimits.monthlyLimit - processedSmsLastMonth,
-              bulkSendLimit: effectiveLimits.bulkSendLimit,
-              monthlyLimit: effectiveLimits.monthlyLimit,
+              tripped,
+              reached,
+              dailyLimit,
+              dailyRemaining: dailyLimit - processedSmsToday,
+              monthlyRemaining: monthlyLimit - processedSmsLastMonth,
+              bulkSendLimit,
+              monthlyLimit,
             }),
           )
         }
 
-        let type: BillingNotificationType
-        let titleForEmail = ''
-        if (dailyExceeded) {
-          type = BillingNotificationType.DAILY_LIMIT_REACHED
-          titleForEmail = "You've reached today's message limit"
-        } else if (monthlyExceeded) {
-          type = BillingNotificationType.MONTHLY_LIMIT_REACHED
-          titleForEmail = "You've reached your monthly message limit"
-        } else if (bulkExceeded) {
-          type = BillingNotificationType.BULK_SMS_LIMIT_REACHED
-          titleForEmail = 'Your batch was too big for your plan'
-        }
-        if (type) {
-          const notification = this.billingNotifications.notifyOnce({
-            userId: user._id,
-            type,
-            title: titleForEmail || 'Usage limit notice',
-            message,
-            meta: {
-              processedSmsToday,
-              processedSmsLastMonth,
-              attempted: value,
-              dailyLimit: effectiveLimits.dailyLimit,
-              monthlyLimit: effectiveLimits.monthlyLimit,
-              bulkSendLimit: effectiveLimits.bulkSendLimit,
-              receivesStored: this.receivesOverLimitAllowed(),
-            },
-            sendEmail: true,
+        const type = {
+          bulk: BillingNotificationType.BULK_SMS_LIMIT_REACHED,
+          monthly: BillingNotificationType.MONTHLY_LIMIT_REACHED,
+          daily: BillingNotificationType.DAILY_LIMIT_REACHED,
+        }[tripped]
+        const title = !reached
+          ? 'Your batch did not fit'
+          : {
+              bulk: 'Your batch was too big for your plan',
+              monthly: "You've reached your monthly message limit",
+              daily: "You've reached today's message limit",
+            }[tripped]
+        const emailKey = reached
+          ? usageEmailKey(type, plan.name)
+          : usageEmailKey(BillingNotificationType.BULK_SMS_LIMIT_REACHED, plan.name)
+        // A failed notice must never let an over-limit action through.
+        const notification = this.billingNotifications.notifyOnce({
+          userId: user._id,
+          type,
+          title,
+          message,
+          meta: {
+            processedSmsToday,
+            processedSmsLastMonth,
+            attempted: value,
+            dailyLimit,
+            monthlyLimit,
+            bulkSendLimit,
+            planName: plan.name,
+            limitTripped: tripped,
+            ...(!reached && { roomWindow: tripped, roomLeft: room }),
+          },
+          emailKey,
+          recordHit: tripped !== 'bulk',
+        })
+        const logged = notification.catch((error) => {
+          console.error('canPerformAction: failed to record a limit notice', {
+            userId,
+            error: error?.message ?? error,
           })
-          if (storeReceive) {
-            notification.catch(() => {})
-          } else {
-            await notification
-          }
-        }
+        })
+        if (!storeReceive) await logged
 
         if (storeReceive) {
           return { overLimit: true }
@@ -1184,27 +1309,25 @@ export class BillingService {
           {
             message: message,
             hasReachedLimit: true,
-            dailyLimit: effectiveLimits.dailyLimit,
-            dailyRemaining: effectiveLimits.dailyLimit - processedSmsToday,
-            monthlyRemaining:
-              effectiveLimits.monthlyLimit - processedSmsLastMonth,
-            bulkSendLimit: effectiveLimits.bulkSendLimit,
-            monthlyLimit: effectiveLimits.monthlyLimit,
+            dailyLimit,
+            dailyRemaining: dailyLimit - processedSmsToday,
+            monthlyRemaining: monthlyLimit - processedSmsLastMonth,
+            bulkSendLimit,
+            monthlyLimit,
           },
           HttpStatus.TOO_MANY_REQUESTS,
         )
       }
 
-      if (['send_sms', 'receive_sms', 'bulk_send_sms'].includes(action)) {
-        this.notifyApproachingLimits(
-          user._id,
-          {
-            today: processedSmsToday + value,
-            last30Days: processedSmsLastMonth + value,
-          },
-          effectiveLimits,
-        )
-      }
+      this.notifyApproachingLimits(
+        user._id,
+        plan.name,
+        {
+          today: processedSmsToday + value,
+          last30Days: processedSmsLastMonth + value,
+        },
+        effectiveLimits,
+      )
 
       return { overLimit: false }
     } catch (error) {
@@ -1237,13 +1360,13 @@ export class BillingService {
 
     const processedSmsToday = await this.smsModel.countDocuments({
       user: new Types.ObjectId(userId),
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+      createdAt: { $gte: dailyWindowStart(new Date()) },
     })
 
     const processedSmsLastMonth = await this.smsModel.countDocuments({
       user: new Types.ObjectId(userId),
       createdAt: {
-        $gte: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+        $gte: monthlyWindowStart(new Date()),
       },
     })
 
@@ -1302,6 +1425,59 @@ export class BillingService {
       productId,
       productName,
     })
+  }
+
+  private linkId(token: unknown, purpose: string): string | null {
+    const secret = emailLinkSecret()
+    if (!secret) return null
+    return verifyLink(secret, token, purpose, Math.floor(Date.now() / 1000))
+  }
+
+  /** Where a signed card update link leads: the customer portal, or the billing page. */
+  async cardUpdateRedirect(token: unknown): Promise<string> {
+    const fallback = billingUrl()
+    const polarSubscriptionId = this.linkId(token, 'card')
+    if (!polarSubscriptionId) return fallback
+    try {
+      const subscription = await this.subscriptionModel.findOne({
+        polarSubscriptionId,
+        polarCustomerId: { $nin: [null, ''] },
+      })
+      if (!subscription?.polarCustomerId) return fallback
+      const session = await this.polarApi.customerSessions.create({
+        customerId: subscription.polarCustomerId,
+        returnUrl: fallback,
+      })
+      const url = session?.customerPortalUrl
+      return typeof url === 'string' && url.startsWith('https://') ? url : fallback
+    } catch (error) {
+      console.error('failed to open the customer portal from an email link', error?.message)
+      return fallback
+    }
+  }
+
+  /** Where a signed checkout link leads: the open checkout, or a new one for the same plan. */
+  async checkoutResumeRedirect(token: unknown): Promise<string> {
+    const checkoutSessionId = this.linkId(token, 'checkout-resume')
+    if (!checkoutSessionId) return billingUrl()
+    let session: CheckoutSessionDocument | null = null
+    try {
+      session = await this.checkoutSessionModel.findOne({ checkoutSessionId })
+    } catch (error) {
+      console.error('failed to load a checkout from an email link', error?.message)
+    }
+    if (
+      session &&
+      !session.isCompleted &&
+      !session.isAbandoned &&
+      session.expiresAt?.getTime() > Date.now() &&
+      session.checkoutUrl?.startsWith('https://')
+    ) {
+      return session.checkoutUrl
+    }
+    const plan = encodeURIComponent(session?.planName || 'pro')
+    const interval = session?.billingInterval === 'yearly' ? 'yearly' : 'monthly'
+    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}`
   }
 
   /**

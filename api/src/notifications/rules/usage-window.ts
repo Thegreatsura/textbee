@@ -12,14 +12,14 @@
 //   - The monthly window SLIDES. It is "one month back from this instant", not
 //     the calendar month, so it cannot be tracked by an incrementing counter.
 //     That is why these counts are not denormalised onto the user.
-//   - The daily window is server-local midnight, not UTC.
+//   - The daily window starts at midnight UTC, whatever the server time zone.
 //
 // If billing's definition ever changes, change it here in the same commit, or
 // the quota warnings will describe a wall that does not exist.
 
 export function dailyWindowStart(now: Date): Date {
   const start = new Date(now.getTime())
-  start.setHours(0, 0, 0, 0)
+  start.setUTCHours(0, 0, 0, 0)
   return start
 }
 

@@ -4,6 +4,15 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Model, Types } from 'mongoose'
 import { layoutContext, renderTemplate } from './render-template'
 import { SentEmail, SentEmailDocument } from './schemas/sent-email.schema'
+import { User, UserDocument } from '../users/schemas/user.schema'
+import {
+  EmailSuppression,
+  EmailSuppressionDocument,
+} from './schemas/email-suppression.schema'
+import { EmailTemplatesService } from './email-templates.service'
+import { safeFirstName, TemplateVars } from './email-render'
+import { EmailCategory, SkipReason, skipReason } from './email-eligibility'
+import { unsubscribeUrl } from './email-links'
 
 export interface MailLogOptions {
   userId?: Types.ObjectId | string
@@ -14,6 +23,21 @@ export interface MailLogOptions {
 }
 
 type SendResult = { sentAt: Date; info?: any; error?: string }
+
+export interface TemplatedEmail {
+  key: string
+  userId: Types.ObjectId | string
+  /** Defaults to the user's address. */
+  to?: string
+  vars?: TemplateVars
+  meta?: Record<string, any>
+  /** Variables kept out of the stored copy, such as one-time links. */
+  redactVars?: string[]
+}
+
+export type TemplatedResult = 'sent' | 'failed' | 'skipped'
+
+const REDACTED = '[redacted]'
 
 /** One bare address, so a display name cannot leak through the mask. */
 const BARE_ADDRESS = /^[^\s<>@,"]+@[^\s<>@,"]+$/
@@ -60,7 +84,137 @@ export class MailService {
     private readonly mailerService: MailerService,
     @InjectModel(SentEmail.name)
     private readonly sentEmailModel: Model<SentEmailDocument>,
+    private readonly emailTemplates: EmailTemplatesService,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
+    @InjectModel(EmailSuppression.name)
+    private readonly suppressionModel: Model<EmailSuppressionDocument>,
   ) {}
+
+  private senderAddresses(sender: string): { from?: string; replyTo?: string } {
+    if (sender === 'notifications') {
+      const defaults = this.emailTemplates.sender('notifications')
+      return {
+        from: process.env.MAIL_FROM_NOTIFICATIONS || defaults?.from,
+        replyTo: process.env.MAIL_REPLY_TO_NOTIFICATIONS || defaults?.replyTo,
+      }
+    }
+    return { replyTo: process.env.MAIL_REPLY_TO || undefined }
+  }
+
+  /** Sends one bundled template after the eligibility and suppression checks. */
+  async sendTemplated({
+    key,
+    userId,
+    to,
+    vars = {},
+    meta = {},
+    redactVars = [],
+  }: TemplatedEmail): Promise<TemplatedResult> {
+    const template = this.emailTemplates.getDefault(key)
+    if (!template) throw new Error(`Unknown email template: ${key}`)
+    const category = template.stream as EmailCategory
+    const log = { userId, category, type: key, meta }
+
+    const user = await this.userModel.findById(userId).lean()
+    const address = (to ?? user?.email)?.trim()
+    const suppressed = address
+      ? !!(await this.suppressionModel.exists({ email: address.toLowerCase() }))
+      : false
+    const reason = skipReason(user, suppressed)
+    if (reason) {
+      await this.saveSkip(address, reason, log)
+      return 'skipped'
+    }
+
+    const fullVars: TemplateVars = {
+      firstName: safeFirstName(user.name),
+      ...vars,
+      year: new Date().getUTCFullYear(),
+      unsubscribeUrl: unsubscribeUrl(String(userId)),
+    }
+
+    let resolved: Awaited<ReturnType<EmailTemplatesService['render']>>
+    try {
+      resolved = await this.emailTemplates.render(key, fullVars)
+    } catch (e) {
+      this.logger.error(`Failed to render "${key}" email: ${e?.message}`)
+      await this.saveResult(
+        { to: address, subject: undefined },
+        { sentAt: new Date(), error: `render: ${e?.message ?? e}` },
+        { ...log, meta: { ...meta, templateVersion: 0 } },
+        () => null,
+      )
+      return 'failed'
+    }
+    if (!resolved.enabled) {
+      await this.saveSkip(address, 'disabled', log)
+      return 'skipped'
+    }
+
+    const { subject, html, text } = resolved.document
+    const headers: Record<string, string> = {
+      'X-SES-MESSAGE-TAGS': `template=${key}`,
+    }
+    if (process.env.SES_CONFIGURATION_SET_NOTICES) {
+      headers['X-SES-CONFIGURATION-SET'] = process.env.SES_CONFIGURATION_SET_NOTICES
+    }
+    if (template.listUnsubscribeHeader) {
+      headers['List-Unsubscribe'] = `<${fullVars.unsubscribeUrl}>`
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+    }
+
+    const { from, replyTo } = this.senderAddresses(template.sender)
+    const options: ISendMailOptions = { to: address, subject, html, text, headers }
+    if (from) options.from = from
+    if (replyTo) options.replyTo = replyTo
+
+    const result: SendResult = { sentAt: new Date() }
+    try {
+      result.info = await this.mailerService.sendMail(options)
+    } catch (e) {
+      result.error = e?.message ?? String(e)
+      this.logger.error(
+        `Failed to send "${key}" email to ${redactRecipient(address)}: ${e?.message}`,
+      )
+    }
+
+    const hidden: TemplateVars = { unsubscribeUrl: REDACTED }
+    for (const name of redactVars) hidden[name] = REDACTED
+    const version = resolved.version
+    await this.saveResult(
+      options,
+      result,
+      { ...log, meta: { ...meta, templateVersion: version } },
+      () => null,
+      async () =>
+        (await this.emailTemplates.render(key, { ...fullVars, ...hidden }))
+          .document?.html ?? null,
+    )
+    return result.error === undefined ? 'sent' : 'failed'
+  }
+
+  private async saveSkip(
+    address: string | undefined,
+    reason: SkipReason,
+    log: MailLogOptions,
+  ) {
+    try {
+      await this.sentEmailModel.create({
+        source: 'api',
+        category: log.category,
+        type: log.type,
+        user: log.userId,
+        to: address ? [address] : [],
+        status: 'skipped',
+        error: reason,
+        meta: log.meta ?? {},
+        sentAt: new Date(),
+      })
+    } catch (e) {
+      this.logger.error(`Failed to save email result: ${e?.message}`)
+    }
+  }
 
   async sendEmail({ to, subject, html, from }, log?: MailLogOptions) {
     const sendMailOptions: ISendMailOptions = {
@@ -133,11 +287,12 @@ export class MailService {
     { sentAt, info, error }: SendResult,
     log: MailLogOptions | undefined,
     renderHtml: () => string | null,
+    renderHtmlAsync?: () => Promise<string | null>,
   ) {
     try {
       let html: string | null = null
       try {
-        html = renderHtml()
+        html = renderHtmlAsync ? await renderHtmlAsync() : renderHtml()
       } catch (e) {
         this.logger.warn(`Failed to render stored email body: ${e?.message}`)
       }

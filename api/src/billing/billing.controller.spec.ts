@@ -14,6 +14,9 @@ describe('BillingController - handlePolarWebhook', () => {
     cancelSubscription: jest.fn(),
     revokeSubscription: jest.fn(),
     syncCheckoutSessionStatus: jest.fn(),
+    syncPastDue: jest.fn(),
+    churnCause: jest.fn(),
+    uncancelSubscription: jest.fn(),
   }
   const mockBillingNotifications = {
     listForUser: jest.fn(),
@@ -75,6 +78,9 @@ describe('BillingController - handlePolarWebhook', () => {
     mockBillingService.cancelSubscription.mockResolvedValue({ success: true })
     mockBillingService.revokeSubscription.mockResolvedValue({ success: true })
     mockBillingService.syncCheckoutSessionStatus.mockResolvedValue(undefined)
+    mockBillingService.syncPastDue.mockResolvedValue(undefined)
+    mockBillingService.churnCause.mockResolvedValue('customer')
+    mockBillingService.uncancelSubscription.mockResolvedValue(undefined)
   })
 
   it('validates and stores every incoming payload', async () => {
@@ -124,6 +130,8 @@ describe('BillingController - handlePolarWebhook', () => {
       cancelAtPeriodEnd: true,
       currentPeriodEnd: '2026-07-17T00:00:00.000Z',
       status: 'active',
+      polarSubscriptionId: 'sub_123',
+      churnCause: 'customer',
     })
     // A scheduled cancellation must not route to the downgrade or switchPlan.
     expect(mockBillingService.revokeSubscription).not.toHaveBeenCalled()
@@ -193,5 +201,72 @@ describe('BillingController - handlePolarWebhook', () => {
     expect(mockBillingService.revokeSubscription).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user_ext_1' }),
     )
+  })
+
+  it('passes the cancel fields and event time to the end cause rule', async () => {
+    const payload: any = makePayload('subscription.canceled', {
+      status: 'canceled',
+      endsAt: '2026-07-01T10:00:00.000Z',
+    })
+    payload.timestamp = '2026-07-01T09:00:00.000Z'
+    mockBillingService.churnCause.mockResolvedValue('payment_failed')
+
+    await handle(payload)
+
+    expect(mockBillingService.churnCause).toHaveBeenCalledWith({
+      polarSubscriptionId: 'sub_123',
+      status: 'canceled',
+      cancelAtPeriodEnd: false,
+      endsAt: '2026-07-01T10:00:00.000Z',
+      eventAt: new Date('2026-07-01T09:00:00.000Z'),
+    })
+    expect(mockBillingService.cancelSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ churnCause: 'payment_failed' }),
+    )
+  })
+
+  it.each(['subscription.updated', 'subscription.past_due'])(
+    'records the retry period start on %s',
+    async (type) => {
+      await handle(makePayload(type, { status: 'past_due' }))
+
+      expect(mockBillingService.syncPastDue).toHaveBeenCalledWith(
+        expect.objectContaining({ polarSubscriptionId: 'sub_123', status: 'past_due' }),
+      )
+    },
+  )
+
+  it('orders status changes by the provider modification time', async () => {
+    const payload: any = makePayload('subscription.updated', {
+      status: 'past_due',
+      modifiedAt: '2026-07-01T08:00:00.000Z',
+    })
+    payload.timestamp = '2026-07-01T09:00:00.000Z'
+
+    await handle(payload)
+
+    expect(mockBillingService.syncPastDue).toHaveBeenCalledWith(
+      expect.objectContaining({ eventAt: new Date('2026-07-01T08:00:00.000Z') }),
+    )
+  })
+
+  it('falls back to the webhook time without a modification time', async () => {
+    const payload: any = makePayload('subscription.past_due', { status: 'past_due' })
+    payload.timestamp = '2026-07-01T09:00:00.000Z'
+
+    await handle(payload)
+
+    expect(mockBillingService.syncPastDue).toHaveBeenCalledWith(
+      expect.objectContaining({ eventAt: new Date('2026-07-01T09:00:00.000Z') }),
+    )
+  })
+
+  it('clears a scheduled cancellation on subscription.uncanceled', async () => {
+    await handle(makePayload('subscription.uncanceled'))
+
+    expect(mockBillingService.uncancelSubscription).toHaveBeenCalledWith({
+      polarSubscriptionId: 'sub_123',
+    })
+    expect(mockBillingService.cancelSubscription).not.toHaveBeenCalled()
   })
 })

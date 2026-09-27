@@ -15,7 +15,7 @@ const chain = (result: any) => {
 const build = (devices: any[] = [], apiKeyCount = 0) => {
   const userModel: any = {
     updateOne: jest.fn().mockResolvedValue(undefined),
-    bulkWrite: jest.fn().mockResolvedValue(undefined),
+    bulkWrite: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     countDocuments: jest.fn().mockResolvedValue(0),
     find: jest.fn().mockImplementation(() => chain([])),
   }
@@ -60,6 +60,8 @@ describe('UserRollupService.recomputeForUser', () => {
       'rollup.apiKeyCount': 3,
       'rollup.totalSentSms': 42,
     })
+    // A derived write must not masquerade as a change to the account.
+    expect(t.userModel.updateOne.mock.calls[0][2]).toEqual({ timestamps: false })
     expect(t.apiKeyModel.countDocuments).toHaveBeenCalledWith({
       user: USER_ID,
       revokedAt: null,
@@ -164,6 +166,18 @@ describe('UserRollupService.backfillMilestones', () => {
     // $min, not $set: re-running must never move a milestone forward, and a
     // genuine earlier date must survive.
     expect(update.$min).toEqual({ 'milestones.firstSmsAt': firstSms })
+  })
+
+  it('reports what changed, not what was attempted', async () => {
+    const t = build()
+    t.userModel.find
+      .mockImplementationOnce(() => chain([{ _id: USER_ID, milestones: {} }]))
+      .mockImplementationOnce(() => chain([]))
+    t.smsModel.findOne.mockImplementation(() => chain({ createdAt: new Date() }))
+    // A re-run issues the same $min and changes nothing.
+    t.userModel.bulkWrite.mockResolvedValue({ modifiedCount: 0 })
+
+    expect(await t.service.backfillMilestones({ batchSize: 1 })).toBe(0)
   })
 
   it('skips an account with nothing to derive', async () => {

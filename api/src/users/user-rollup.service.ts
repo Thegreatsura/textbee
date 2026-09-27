@@ -36,7 +36,14 @@ export class UserRollupService {
   async recomputeForUser(userId: Types.ObjectId | string): Promise<void> {
     const id = new Types.ObjectId(String(userId))
     const facts = await this.factsFor(id)
-    await this.userModel.updateOne({ _id: id }, { $set: this.toUpdate(facts) })
+    // timestamps off: the rollup is derived telemetry, and bumping updatedAt
+    // would make a maintenance write indistinguishable from a real change to
+    // the account.
+    await this.userModel.updateOne(
+      { _id: id },
+      { $set: this.toUpdate(facts) },
+      { timestamps: false },
+    )
   }
 
   /**
@@ -150,6 +157,7 @@ export class UserRollupService {
           updateOne: {
             filter: { _id: row._id },
             update: { $set: this.toUpdate(facts) },
+            timestamps: false,
           },
         })
       }
@@ -172,6 +180,8 @@ export class UserRollupService {
    *
    * Written with $min so a real earlier date is never replaced by a later
    * derived one, and so re-running cannot move a date forward.
+   *
+   * Returns how many accounts actually changed, so a second run reports zero.
    */
   async backfillMilestones(options?: { batchSize?: number }): Promise<number> {
     const batchSize = options?.batchSize ?? 500
@@ -200,13 +210,20 @@ export class UserRollupService {
           updateOne: {
             filter: { _id: row._id },
             update: { $min: update },
+            // Also makes modifiedCount mean something: with timestamps on,
+            // updatedAt changes on every pass and every account counts as
+            // modified even when no milestone moved.
+            timestamps: false,
           },
         })
       }
 
       if (operations.length) {
-        await this.userModel.bulkWrite(operations)
-        processed += operations.length
+        // The modified count, not the attempted count. Every $min is issued
+        // whether or not it changes anything, so reporting attempts would tell a
+        // re-run it had written dates it merely re-confirmed.
+        const result = await this.userModel.bulkWrite(operations)
+        processed += result.modifiedCount ?? 0
       }
       lastId = page[page.length - 1]._id as Types.ObjectId
     }

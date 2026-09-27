@@ -10,7 +10,7 @@ import {
   sanitizeUserText,
   TemplateVars,
 } from '../../mail/email-render'
-import { billingUrl, upgradeUrl } from '../../mail/email-links'
+import { billingUrl, scaleUpgradeUrl, upgradeUrl } from '../../mail/email-links'
 import {
   SentEmail,
   SentEmailDocument,
@@ -43,6 +43,18 @@ const LABEL_TODAY = 'Messages used today'
 
 const left = (limit: number, used: number) =>
   formatCount(Math.max(0, Number(limit) - Number(used)))
+
+// Plan prices are stored in cents; a missing price leaves its value unset so the send fails visibly.
+const money = (cents: unknown): string | undefined =>
+  typeof cents === 'number' && cents > 0 ? `$${(cents / 100).toFixed(2)}` : undefined
+
+const priceVars = (prefix: string, plan: { monthlyPrice?: number; yearlyPrice?: number }) => ({
+  [`${prefix}Price`]: money(plan.monthlyPrice),
+  [`${prefix}YearlyPrice`]: money(plan.yearlyPrice),
+  [`${prefix}YearlyMonthly`]: money(
+    typeof plan.yearlyPrice === 'number' ? Math.round(plan.yearlyPrice / 12) : undefined,
+  ),
+})
 
 @Processor('billing-notifications')
 export class BillingNotificationsProcessor {
@@ -142,6 +154,7 @@ export class BillingNotificationsProcessor {
     const vars: TemplateVars = {
       billingUrl: billingUrl(),
       upgradeUrl: upgradeUrl(),
+      scaleUpgradeUrl: scaleUpgradeUrl(),
       headroomPercent: '10%',
       planName: planLabel(meta.planName),
     }
@@ -184,7 +197,7 @@ export class BillingNotificationsProcessor {
 
     if (key.startsWith('U2')) vars.resetDate = await this.resetDate(user, now)
     if (key === 'U6') vars.deviceName = await this.deviceName(user)
-    if (['U2', 'U2_paid', 'U4', 'U6'].includes(key)) {
+    if (['U1', 'U2', 'U2_paid', 'U3', 'U4', 'U6'].includes(key)) {
       const plans = await this.planModel.find({ name: { $in: ['pro', 'scale'] } }).lean()
       const pro = plans.find((p) => p.name === 'pro')
       const scale = plans.find((p) => p.name === 'scale')
@@ -192,10 +205,12 @@ export class BillingNotificationsProcessor {
       if (pro) {
         vars.proMonthlyLimit = formatCount(pro.monthlyLimit)
         vars.proDeviceLimit = formatCount(pro.deviceLimit ?? -1)
+        Object.assign(vars, priceVars('pro', pro))
       }
       if (scale) {
         vars.scaleMonthlyLimit = formatCount(scale.monthlyLimit)
         vars.scaleDeviceLimit = formatCount(scale.deviceLimit ?? -1)
+        Object.assign(vars, priceVars('scale', scale))
       }
     }
     return vars

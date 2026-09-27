@@ -123,12 +123,17 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You are close to your 30-day limit",
-      "preheader": "{{used}} of {{limit}} messages used in the last 30 days.",
-      "body": "# You are close to your 30-day message limit\n\nHi {{firstName}},\n\nYou have used {{used}} of your {{limit}} messages in the last 30 days. Sent and received messages both count. You have {{left}} left.\n\n{{usageBar}}\n\nThe count covers a rolling 30 days, not a calendar month. Each message leaves the count 30 days after it was sent or received, so you get some room back every day.\n\nPaid plans have a bigger 30-day allowance and no daily limit: [compare plans]({{billingUrl}})",
+      "subject": "Only {{left}} left in your 30-day allowance",
+      "preheader": "When it runs out, textbee rejects your messages. Upgrade before it stops.",
+      "body": "# Your 30-day allowance is almost used\n\nHi {{firstName}},\n\nYour account used {{used}} of its {{limit}} messages in the last 30 days. When the last {{left}} are used, textbee rejects every message your app sends, and room comes back only as older messages pass 30 days.\n\n{{usageBar}}\n\nUpgrade now so sending does not stop. Pro gives you {{proMonthlyLimit}} messages per rolling 30 days, no daily limit, and up to {{proDeviceLimit}} phones.\n\n**[Upgrade to Pro]({{upgradeUrl}})**\n\n{{proPrice}} a month, or {{proYearlyPrice}} a year ({{proYearlyMonthly}} a month). Cancel any time from the billing page.",
       "variables": {
         "firstName": "Sam",
-        "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
+        "proMonthlyLimit": "5,000",
+        "proDeviceLimit": "5",
+        "proPrice": "$X.XX",
+        "proYearlyPrice": "$XX.XX",
+        "proYearlyMonthly": "$X.XX",
+        "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "used": "241",
         "limit": "300",
         "left": "59",
@@ -138,7 +143,7 @@
       "trigger": "80% of the 30-day allowance, from the send and receive path only (never page loads)",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "c8f7a2e37861fac3"
+      "defaultHash": "b2003c99c17f52a4"
     },
     {
       "key": "U1_paid",
@@ -149,9 +154,9 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You are close to your 30-day limit",
-      "preheader": "{{used}} of {{limit}} messages used in the last 30 days.",
-      "body": "# You are close to your 30-day message limit\n\nHi {{firstName}},\n\nYour {{planName}} plan has used {{used}} of its {{limit}} messages in the last 30 days. You have {{left}} left, plus the extra {{headroomPercent}} we allow on paid plans.\n\n{{usageBar}}\n\nThe count covers a rolling 30 days, not a calendar month. Each message leaves the count 30 days after it was sent or received, so you get some room back every day.\n\nIf you need more room, you can [compare plans]({{billingUrl}}), or reply to this email. We will set up a custom plan.",
+      "subject": "Only {{left}} left in your 30-day allowance",
+      "preheader": "When it runs out, textbee rejects your messages. Move up before it stops.",
+      "body": "# Your 30-day allowance is almost used\n\nHi {{firstName}},\n\nYour {{planName}} plan used {{used}} of its {{limit}} messages in the last 30 days. When the last {{left}} and the extra {{headroomPercent}} we allow on paid plans are used, textbee rejects every message your app sends.\n\n{{usageBar}}\n\nMove to a bigger plan now so sending does not stop.\n\n**[See bigger plans]({{billingUrl}})**\n\nIf you need more than our largest plan, reply to this email. We will set up a custom plan for your volume.",
       "variables": {
         "firstName": "Sam",
         "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
@@ -166,7 +171,7 @@
       "trigger": "80% of the 30-day allowance, send and receive path only",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "289eecf1496c6b5c"
+      "defaultHash": "808230852160a2af"
     },
     {
       "key": "U2",
@@ -177,13 +182,16 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You have used your {{limit}} messages",
-      "preheader": "Sending is paused. The next slot opens on {{resetDate}}.",
-      "body": "# You have used your {{limit}} messages\n\nHi {{firstName}},\n\nYour account has used all {{limit}} messages of its rolling 30-day allowance, so sending is paused. Sent and received messages both count.\n\n{{usageBar}}\n\nYou do not need to do anything for sending to resume. Each message leaves the count 30 days after it was sent or received. The next slot opens on {{resetDate}}.\n\nTo keep sending now, you can [upgrade to Pro]({{upgradeUrl}}). Pro gives you {{proMonthlyLimit}} messages per rolling 30 days, no daily limit, and up to {{proDeviceLimit}} phones. It starts as soon as the payment is complete.\n\nYou will not get this email again in the next 30 days. Your dashboard shows your live count.",
+      "subject": "Sending stopped: {{limit}}-message limit reached",
+      "preheader": "Messages sent now are rejected. Upgrade to Pro to resume right away.",
+      "body": "# Sending has stopped on your account\n\nHi {{firstName}},\n\nYour account used all {{limit}} messages in its rolling 30-day allowance. textbee now rejects every message your app sends.\n\n{{usageBar}}\n\nPro raises your allowance from {{limit}} to {{proMonthlyLimit}} messages per rolling 30 days, removes the daily limit, and covers up to {{proDeviceLimit}} phones. Sending resumes as soon as the payment is complete.\n\n**[Upgrade to Pro and resume sending]({{upgradeUrl}})**\n\n{{proPrice}} a month, or {{proYearlyPrice}} a year ({{proYearlyMonthly}} a month). Cancel any time from the billing page.\n\nWithout an upgrade, room comes back slowly as older messages pass 30 days. The next message slot opens on {{resetDate}}.",
       "variables": {
         "firstName": "Sam",
         "proMonthlyLimit": "5,000",
         "proDeviceLimit": "5",
+        "proPrice": "$X.XX",
+        "proYearlyPrice": "$XX.XX",
+        "proYearlyMonthly": "$X.XX",
         "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "used": "300",
         "limit": "300",
@@ -194,7 +202,7 @@
       "trigger": "A send or receive is blocked because the count is at the 30-day limit (not a batch that does not fit)",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "6f7cb5cfa58f3db0"
+      "defaultHash": "49d880e57116bf2d"
     },
     {
       "key": "U2_paid",
@@ -205,14 +213,17 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You have used your {{limit}} messages",
-      "preheader": "Sending is paused until older messages leave the 30-day count.",
-      "body": "# You have used your {{limit}} messages\n\nHi {{firstName}},\n\nYour {{planName}} plan has used its {{limit}} messages for the last 30 days, plus the extra {{headroomPercent}} we allow on paid plans. Sending is paused until older messages leave the 30-day count. The next slot opens on {{resetDate}}.\n\n{{usageBar}}\n\nScale gives you {{scaleMonthlyLimit}} messages and up to {{scaleDeviceLimit}} phones: [compare plans]({{billingUrl}}). If you need more than that, you can reply to this email. We will set up a custom plan.",
+      "subject": "Sending stopped: {{limit}}-message limit reached",
+      "preheader": "Messages sent now are rejected. Move to Scale to resume right away.",
+      "body": "# Sending has stopped on your account\n\nHi {{firstName}},\n\nYour {{planName}} plan used its {{limit}} messages for the last 30 days, plus the extra {{headroomPercent}} we allow on paid plans. textbee now rejects every message your app sends.\n\n{{usageBar}}\n\nScale gives you {{scaleMonthlyLimit}} messages per rolling 30 days and up to {{scaleDeviceLimit}} phones. Sending resumes as soon as the payment is complete.\n\n**[Move to Scale and resume sending]({{scaleUpgradeUrl}})**\n\n{{scalePrice}} a month, or {{scaleYearlyPrice}} a year ({{scaleYearlyMonthly}} a month). If you need more than Scale, reply to this email and we will set up a custom plan.\n\nWithout an upgrade, room comes back slowly as older messages pass 30 days. The next message slot opens on {{resetDate}}.",
       "variables": {
         "firstName": "Sam",
         "scaleMonthlyLimit": "25,000",
         "scaleDeviceLimit": "15",
-        "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
+        "scalePrice": "$XX.XX",
+        "scaleYearlyPrice": "$XXX.XX",
+        "scaleYearlyMonthly": "$XX.XX",
+        "scaleUpgradeUrl": "https://app.textbee.dev/checkout/scale?billingInterval=monthly",
         "planName": "Pro",
         "used": "5,500",
         "limit": "5,000",
@@ -224,7 +235,7 @@
       "trigger": "Same as U2",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "3452e760562e05ac"
+      "defaultHash": "c6c815a9ae736125"
     },
     {
       "key": "U2_top",
@@ -235,9 +246,9 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You have used your {{limit}} messages",
-      "preheader": "Sending is paused until older messages leave the 30-day count.",
-      "body": "# You have used your {{limit}} messages\n\nHi {{firstName}},\n\nYour {{planName}} plan has used its {{limit}} messages for the last 30 days, plus the extra {{headroomPercent}} we allow on paid plans. Sending is paused until older messages leave the 30-day count. The next slot opens on {{resetDate}}.\n\n{{usageBar}}\n\nIf you need more, you can reply to this email. We will set up a plan that fits your volume.",
+      "subject": "Sending stopped: {{limit}}-message limit reached",
+      "preheader": "Reply to this email and we will set up a bigger plan today.",
+      "body": "# Sending has stopped on your account\n\nHi {{firstName}},\n\nYour {{planName}} plan used its {{limit}} messages for the last 30 days, plus the extra {{headroomPercent}} we allow on paid plans. textbee now rejects every message your app sends.\n\nReply to this email and we will set up a bigger plan for your volume, so sending can resume.\n\n{{usageBar}}\n\nWithout a bigger plan, room comes back slowly as older messages pass 30 days. The next message slot opens on {{resetDate}}.",
       "variables": {
         "firstName": "Sam",
         "planName": "Scale",
@@ -251,7 +262,7 @@
       "trigger": "Same as U2",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "b19bd998b73b04a3"
+      "defaultHash": "f98c87d74ebe6d9b"
     },
     {
       "key": "U3",
@@ -262,23 +273,27 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "You are close to today's limit",
-      "preheader": "{{used}} of {{limit}} messages used today. {{left}} left.",
-      "body": "# You are close to today's message limit\n\nHi {{firstName}},\n\nYou have used {{used}} of your {{limit}} messages for today. Sent and received messages both count. You have {{left}} left.\n\n{{usageBar}}\n\nYour daily count resets at midnight UTC{{#localMidnight}} ({{localMidnight}} where you are){{/localMidnight}}.\n\nPro has no daily limit: [compare plans]({{billingUrl}})",
+      "subject": "Only {{left}} left of today's {{limit}} messages",
+      "preheader": "After that, textbee rejects your messages until midnight UTC.",
+      "body": "# You are about to hit today's limit\n\nHi {{firstName}},\n\nYour account used {{used}} of its {{limit}} messages today. After {{left}} more, textbee stops sending until midnight UTC, and every message your app sends in the meantime is rejected.\n\n{{usageBar}}\n\nPro has no daily limit. Upgrade now and sending never stops at {{limit}} again.\n\n**[Upgrade to Pro]({{upgradeUrl}})**\n\nPro: {{proMonthlyLimit}} messages per rolling 30 days, no daily limit, up to {{proDeviceLimit}} phones. {{proPrice}} a month, or {{proYearlyPrice}} a year ({{proYearlyMonthly}} a month).",
       "variables": {
         "firstName": "Sam",
-        "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
+        "proMonthlyLimit": "5,000",
+        "proDeviceLimit": "5",
+        "proPrice": "$X.XX",
+        "proYearlyPrice": "$XX.XX",
+        "proYearlyMonthly": "$X.XX",
+        "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "used": "42",
         "limit": "50",
         "left": "8",
-        "localMidnight": "02:00",
         "usageLabel": "Messages used today"
       },
       "audience": "Free plan",
       "trigger": "80% of the daily limit, send and receive path only",
       "cap": "once per 7 days",
-      "notes": "localMidnight is set only for countries with a single time zone; otherwise the bracket is left out.",
-      "defaultHash": "9f7ddda0ffd9b1c1"
+      "notes": "",
+      "defaultHash": "11a8297992e2756a"
     },
     {
       "key": "U4",
@@ -289,13 +304,16 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "Today's {{limit}} messages are used",
-      "preheader": "Sending resumes at midnight UTC.",
-      "body": "# Today's {{limit}} messages are used\n\nHi {{firstName}},\n\nYour account sent or received its {{limit}} messages for today. Sending is paused until midnight UTC{{#localMidnight}} ({{localMidnight}} where you are){{/localMidnight}}.\n\n{{usageBar}}\n\nThe daily limit applies to the free plan. [Pro has no daily limit]({{upgradeUrl}}). It gives you {{proMonthlyLimit}} messages per rolling 30 days, sent whenever you need them, on up to {{proDeviceLimit}} phones.\n\nYou will get this email at most once a week. Your dashboard shows your live count.",
+      "subject": "Sending stopped: daily limit reached",
+      "preheader": "Messages sent now are rejected until midnight UTC. Pro has no daily limit.",
+      "body": "# Sending has stopped for today\n\nHi {{firstName}},\n\nYour account used all {{limit}} of today's messages. textbee now rejects every message your app sends, until midnight UTC{{#localMidnight}} ({{localMidnight}} where you are){{/localMidnight}}.\n\n{{usageBar}}\n\nUpgrade to Pro and sending starts again as soon as the payment is complete, with no daily limit.\n\n**[Upgrade to Pro and resume sending]({{upgradeUrl}})**\n\nWhat Pro gives you:\n\n- no daily limit\n- {{proMonthlyLimit}} messages per rolling 30 days\n- up to {{proDeviceLimit}} phones\n\n{{proPrice}} a month, or {{proYearlyPrice}} a year ({{proYearlyMonthly}} a month). Cancel any time from the billing page.\n\nSent and received messages both count toward the limit.",
       "variables": {
         "firstName": "Sam",
         "proMonthlyLimit": "5,000",
         "proDeviceLimit": "5",
+        "proPrice": "$X.XX",
+        "proYearlyPrice": "$XX.XX",
+        "proYearlyMonthly": "$X.XX",
         "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "used": "50",
         "limit": "50",
@@ -306,7 +324,7 @@
       "trigger": "A send or receive is blocked because today's count is at the daily limit (not a batch that does not fit)",
       "cap": "once per 7 days, at most 3 per 90 days",
       "notes": "",
-      "defaultHash": "96a5f28ec7759629"
+      "defaultHash": "47364d75d4232eb2"
     },
     {
       "key": "U5",
@@ -319,10 +337,10 @@
       "listUnsubscribeHeader": false,
       "subject": "Your batch was not sent",
       "preheader": "Nothing was sent. Here is what fits.",
-      "body": "# Your batch was not sent\n\nHi {{firstName}},\n\n{{#bulkLimit}}Your batch had {{attempted}} recipients, and your plan allows up to {{bulkLimit}} per batch. Nothing was sent.\n\nYou can send the same list in batches of {{bulkLimit}} or fewer. Smaller batches cost nothing extra. They also do not slow delivery, because your phone sends one message at a time.{{/bulkLimit}}{{#roomLeft}}Your batch had {{attempted}} recipients, but your account has {{roomLeft}} {{roomWindow}}. Nothing was sent.\n\nYou can send a smaller batch now, or send the full batch after {{roomResetNote}}.{{/roomLeft}}\n\nPaid plans allow bigger batches and a bigger allowance: [compare plans]({{billingUrl}})",
+      "body": "# Your batch was not sent\n\nHi {{firstName}},\n\n{{#bulkLimit}}Your batch had {{attempted}} recipients, and your plan allows up to {{bulkLimit}} per batch. Nothing was sent.\n\nYou can send the same list in batches of {{bulkLimit}} or fewer. Smaller batches cost nothing extra. They also do not slow delivery, because your phone sends one message at a time.{{/bulkLimit}}{{#roomLeft}}Your batch had {{attempted}} recipients, but your account has {{roomLeft}} {{roomWindow}}. Nothing was sent.\n\nYou can send a smaller batch now, or send the full batch after {{roomResetNote}}.{{/roomLeft}}\n\nPro has no batch limit and no daily limit, so the whole list goes out in one request.\n\n**[Upgrade to Pro]({{upgradeUrl}})**",
       "variables": {
         "firstName": "Sam",
-        "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
+        "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "attempted": "120",
         "bulkLimit": "50",
         "roomLeft": "",
@@ -333,7 +351,7 @@
       "trigger": "A batch is refused: larger than the batch limit, or larger than the room left today or in the last 30 days",
       "cap": "once per 7 days",
       "notes": "Two versions in one template. Batch-size refusal sets bulkLimit and leaves roomLeft empty. A batch that does not fit the room left sets roomLeft (for example \"1 message\"), roomWindow (\"left today\" or \"left in your 30-day allowance\") and roomResetNote (\"midnight UTC\" or \"older messages leave the 30-day count\"), and leaves bulkLimit empty. A refused batch that does not fit also counts as a limit hit for the follow-up emails.",
-      "defaultHash": "86a9765835af03f2"
+      "defaultHash": "eeebcd69b8555445"
     },
     {
       "key": "U6",
@@ -344,20 +362,24 @@
       "footer": "notice",
       "shell": true,
       "listUnsubscribeHeader": false,
-      "subject": "The free plan covers one phone",
-      "preheader": "Replace it, or connect up to {{proDeviceLimit}} phones on Pro.",
-      "body": "# The free plan covers one phone\n\nHi {{firstName}},\n\nYou tried to add or turn on another phone. The free plan covers one active phone, and {{deviceName}} already uses it.\n\nYou have two options:\n\n- Replace it: turn off {{deviceName}} on the dashboard, then register the new phone.\n- Keep both: [Pro]({{upgradeUrl}}) covers up to {{proDeviceLimit}} phones. You choose which phone sends each message, so you can spread a large list across phones.",
+      "subject": "To use a second phone, upgrade to Pro",
+      "preheader": "The free plan covers one phone. Pro covers up to {{proDeviceLimit}}.",
+      "body": "# Your second phone was not added\n\nHi {{firstName}},\n\nThe free plan covers one active phone, and {{deviceName}} already uses it. Pro covers up to {{proDeviceLimit}} phones, so you can send from all of them, with no daily limit and {{proMonthlyLimit}} messages per rolling 30 days.\n\n**[Upgrade to Pro]({{upgradeUrl}})**\n\n{{proPrice}} a month, or {{proYearlyPrice}} a year ({{proYearlyMonthly}} a month).\n\nTo keep the free plan instead, turn off {{deviceName}} on the dashboard, then register the new phone.",
       "variables": {
         "firstName": "Sam",
-        "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
+        "proMonthlyLimit": "5,000",
         "proDeviceLimit": "5",
+        "proPrice": "$X.XX",
+        "proYearlyPrice": "$XX.XX",
+        "proYearlyMonthly": "$X.XX",
+        "upgradeUrl": "https://app.textbee.dev/checkout/pro?billingInterval=monthly",
         "deviceName": "Pixel 6a"
       },
       "audience": "Free plan",
       "trigger": "Adding or enabling a phone above the device limit",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "56af124a818e9457"
+      "defaultHash": "e9cb8d75e644f110"
     },
     {
       "key": "U6_paid",
@@ -369,8 +391,8 @@
       "shell": true,
       "listUnsubscribeHeader": false,
       "subject": "All your phone slots are in use",
-      "preheader": "Turn off a phone you no longer use, or move to a bigger plan.",
-      "body": "# All your phone slots are in use\n\nHi {{firstName}},\n\nYour {{planName}} plan covers {{deviceLimit}} active phones, and all of them are in use. To free a slot, turn off or remove a phone you no longer use on the dashboard.\n\nIf you need more phones, you can [compare plans]({{billingUrl}}), or reply to this email. We will set up a custom plan.",
+      "preheader": "Move to a bigger plan to add more phones.",
+      "body": "# Your new phone was not added\n\nHi {{firstName}},\n\nYour {{planName}} plan covers {{deviceLimit}} active phones, and all of them are in use. A bigger plan covers more phones, so you can add this one and spread sending across all of them.\n\n**[See bigger plans]({{billingUrl}})**\n\nIf you need more phones than our largest plan covers, reply to this email and we will set up a custom plan. To stay on your plan instead, turn off a phone you no longer use on the dashboard.",
       "variables": {
         "firstName": "Sam",
         "billingUrl": "https://app.textbee.dev/dashboard/account/billing",
@@ -381,7 +403,7 @@
       "trigger": "Adding or enabling a phone above the device limit",
       "cap": "once per 30 days",
       "notes": "",
-      "defaultHash": "9c4fd785f1bcd63c"
+      "defaultHash": "89f94f2450402329"
     }
   ]
 }

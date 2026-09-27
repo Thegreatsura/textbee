@@ -80,6 +80,7 @@ describe('EmailTemplatesService', () => {
 
     const r = await service.render('U5', {
       ...T3_VARS,
+      upgradeUrl: 'https://app.test/u',
       attempted: '5',
       bulkLimit: null,
       roomLeft: '1 message',
@@ -179,6 +180,7 @@ describe('U5 versions', () => {
     year: '2026',
     unsubscribeUrl: 'u',
     billingUrl: 'https://app.test/b',
+    upgradeUrl: 'https://app.test/u',
     attempted: '5',
   }
 

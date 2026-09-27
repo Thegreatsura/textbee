@@ -16,6 +16,9 @@ export const billingUrl = () => `${appPublicUrl()}/dashboard/account/billing`
 export const upgradeUrl = () =>
   `${appPublicUrl()}/checkout/pro?billingInterval=monthly`
 
+export const scaleUpgradeUrl = () =>
+  `${appPublicUrl()}/checkout/scale?billingInterval=monthly`
+
 /** Signed one-click link; without a secret it points at the account page. */
 export const unsubscribeUrl = (userId: string): string => {
   const secret = emailLinkSecret()

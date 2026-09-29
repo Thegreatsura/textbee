@@ -22,7 +22,7 @@ describe('BillingService - signed email links', () => {
       {} as any,
     )
     const create = jest.fn().mockResolvedValue({
-      customerPortalUrl: 'https://polar.test/portal/abc',
+      customer_portal_url: 'https://polar.test/portal/abc',
     })
     ;(service as any).polarApi = { customerSessions: { create } }
     return { service, subscriptionModel, checkoutSessionModel, create }
@@ -52,7 +52,7 @@ describe('BillingService - signed email links', () => {
       expect(subscriptionModel.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ polarSubscriptionId: 'sub_1' }),
       )
-      expect(create).toHaveBeenCalledWith({ customerId: 'cus_1', returnUrl: BILLING })
+      expect(create).toHaveBeenCalledWith({ customer_id: 'cus_1', return_url: BILLING })
     })
 
     it.each([

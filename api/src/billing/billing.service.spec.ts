@@ -1,5 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { getModelToken } from '@nestjs/mongoose'
+import { createHmac } from 'crypto'
+import { errors } from '@polar-sh/sdk/2026-10'
 import { Types } from 'mongoose'
 import { BillingService } from './billing.service'
 import { Plan } from './schemas/plan.schema'
@@ -1351,7 +1353,7 @@ describe('BillingService - new checkout session', () => {
         create: jest.fn().mockResolvedValue({
           id: 'co_2',
           url: 'https://pay.test/co_2',
-          expiresAt: '2026-09-28T00:00:00Z',
+          expires_at: '2026-09-28T00:00:00Z',
         }),
       },
       discounts: { get: jest.fn() },
@@ -1364,6 +1366,16 @@ describe('BillingService - new checkout session', () => {
       req: { ip: '127.0.0.1', headers: {} },
     })
 
+    expect((service as any).polarApi.checkouts.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        products: ['prod_m', 'prod_y'],
+        external_customer_id: '507f1f77bcf86cd799439011',
+        customer_email: 'a@example.com',
+        customer_ip_address: '127.0.0.1',
+        success_url: expect.stringContaining('checkout-success=1'),
+      }),
+    )
+
     const [filter, update, options] = checkoutSessionModel.updateOne.mock.calls[0]
     expect(filter).toEqual({ user: expect.any(Types.ObjectId) })
     expect(update.$set).toMatchObject({
@@ -1372,7 +1384,221 @@ describe('BillingService - new checkout session', () => {
       isAbandoned: false,
     })
     expect(update.$set.sessionStartedAt).toBeInstanceOf(Date)
+    expect(update.$set.expiresAt).toEqual(new Date('2026-09-28T00:00:00Z'))
     expect(update.$unset).toEqual({ completedAt: 1 })
     expect(options).toEqual({ upsert: true })
+  })
+})
+
+describe('BillingService - Polar SDK calls', () => {
+  const env = { ...process.env }
+  const userId = new Types.ObjectId('507f1f77bcf86cd799439011')
+
+  const build = ({ plan = null as any, current = null as any } = {}) => {
+    const subscriptionModel = {
+      findOne: jest.fn(() => ({ populate: jest.fn().mockResolvedValue(current) })),
+      updateOne: jest.fn().mockReturnValue({ catch: jest.fn() }),
+    }
+    const checkoutSessionModel = {
+      updateOne: jest.fn().mockReturnValue({ catch: jest.fn() }),
+    }
+    const service = new BillingService(
+      { findOne: jest.fn().mockResolvedValue(plan) } as any,
+      subscriptionModel as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      checkoutSessionModel as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    )
+    return { service, subscriptionModel }
+  }
+
+  afterEach(() => {
+    process.env = env
+    jest.restoreAllMocks()
+  })
+
+  describe('webhook validation', () => {
+    const secret = 'whsec_test_secret'
+
+    const signed = (event: Record<string, any>, key = secret) => {
+      const body = Buffer.from(JSON.stringify(event))
+      const id = 'msg_1'
+      const timestamp = Math.floor(Date.now() / 1000).toString()
+      // The previous SDK signed with the UTF-8 bytes of the whole secret
+      const signature = createHmac('sha256', Buffer.from(key, 'utf8'))
+        .update(`${id}.${timestamp}.${body.toString()}`)
+        .digest('base64')
+      return {
+        body,
+        headers: {
+          'webhook-id': id,
+          'webhook-timestamp': timestamp,
+          'webhook-signature': `v1,${signature}`,
+        },
+      }
+    }
+
+    beforeEach(() => {
+      process.env = { ...env, POLAR_WEBHOOK_SECRET: secret }
+      jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    })
+
+    it('returns the raw event for a valid signature', async () => {
+      const { service } = build()
+      const event = {
+        type: 'subscription.updated',
+        timestamp: '2026-09-29T00:00:00Z',
+        data: { id: 'sub_1', cancel_at_period_end: true },
+      }
+      const { body, headers } = signed(event)
+
+      await expect(service.validatePolarWebhookPayload(body, headers)).resolves.toEqual(event)
+    })
+
+    it('returns null for a signed event type the SDK does not know', async () => {
+      const { service } = build()
+      const { body, headers } = signed({ type: 'something.new', data: {} })
+
+      await expect(service.validatePolarWebhookPayload(body, headers)).resolves.toBeNull()
+    })
+
+    it('rejects a payload signed with another secret', async () => {
+      const { service } = build()
+      const { body, headers } = signed({ type: 'subscription.updated', data: {} }, 'whsec_other')
+
+      await expect(service.validatePolarWebhookPayload(body, headers)).rejects.toThrow(
+        'Invalid webhook payload',
+      )
+    })
+  })
+
+  describe('plan change', () => {
+    const plan = { name: 'pro', polarMonthlyProductId: 'prod_pro_m', polarYearlyProductId: 'prod_pro_y' }
+    const current = {
+      _id: 'local_sub',
+      plan: { name: 'starter' },
+      recurringInterval: 'month',
+      polarSubscriptionId: 'sub_1',
+    }
+    const polarSubscription = {
+      id: 'sub_1',
+      status: 'active',
+      product_id: 'prod_starter_m',
+      customer_id: 'cus_1',
+      cancel_at_period_end: true,
+    }
+    const updated = {
+      ...polarSubscription,
+      product_id: 'prod_pro_m',
+      cancel_at_period_end: false,
+      current_period_start: '2026-09-01T00:00:00Z',
+      current_period_end: '2026-10-01T00:00:00Z',
+      started_at: '2026-08-01T00:00:00Z',
+      created_at: '2026-07-31T00:00:00Z',
+      canceled_at: null,
+      amount: 1499,
+      currency: 'usd',
+      recurring_interval: 'month',
+    }
+
+    it('updates the subscription by id and stores dates as Date values', async () => {
+      const { service } = build({ plan, current })
+      const update = jest.fn().mockResolvedValue(updated)
+      ;(service as any).polarApi = {
+        subscriptions: { get: jest.fn().mockResolvedValue(polarSubscription), update },
+      }
+      const switchPlan = jest.spyOn(service, 'switchPlan').mockResolvedValue({} as any)
+
+      await service.changePlan({
+        user: { _id: userId },
+        payload: { planName: 'pro', billingInterval: 'monthly' },
+      })
+
+      expect((service as any).polarApi.subscriptions.get).toHaveBeenCalledWith('sub_1')
+      expect(update).toHaveBeenNthCalledWith(1, 'sub_1', { cancel_at_period_end: false })
+      expect(update).toHaveBeenNthCalledWith(2, 'sub_1', { product_id: 'prod_pro_m' })
+      expect(switchPlan).toHaveBeenCalledWith({
+        userId: userId.toString(),
+        newPlanPolarProductId: 'prod_pro_m',
+        currentPeriodStart: new Date('2026-09-01T00:00:00Z'),
+        currentPeriodEnd: new Date('2026-10-01T00:00:00Z'),
+        subscriptionStartDate: new Date('2026-08-01T00:00:00Z'),
+        subscriptionEndDate: null,
+        status: 'active',
+        amount: 1499,
+        currency: 'usd',
+        recurringInterval: 'month',
+        polarSubscriptionId: 'sub_1',
+        polarCustomerId: 'cus_1',
+        cancelAtPeriodEnd: false,
+      })
+    })
+
+    it('flags a scheduled cancellation on the plan change screen', async () => {
+      const { service } = build({ plan, current })
+      ;(service as any).polarApi = {
+        subscriptions: { get: jest.fn().mockResolvedValue(polarSubscription) },
+      }
+
+      const result: any = await service.getCheckoutUrl({
+        user: { _id: userId },
+        payload: { planName: 'pro', billingInterval: 'monthly' },
+        req: { headers: {} },
+      })
+
+      expect(result.planChange.cancelAtPeriodEnd).toBe(true)
+    })
+
+    it('maps a failed prorated charge to PAYMENT_ISSUE', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const { service } = build({ plan, current })
+      ;(service as any).polarApi = {
+        subscriptions: {
+          get: jest.fn().mockResolvedValue({ ...polarSubscription, cancel_at_period_end: false }),
+          update: jest.fn().mockRejectedValue(new errors.SubscriptionsUpdate402Error(402, {} as any)),
+        },
+      }
+
+      await expect(
+        service.changePlan({
+          user: { _id: userId },
+          payload: { planName: 'pro', billingInterval: 'monthly' },
+        }),
+      ).rejects.toMatchObject({ response: { code: 'PAYMENT_ISSUE' } })
+    })
+
+    it('finds the subscription by external customer id when the stored id fails', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const { service, subscriptionModel } = build({ plan, current })
+      const list = jest.fn().mockResolvedValue({ items: [polarSubscription], pagination: {} })
+      ;(service as any).polarApi = {
+        subscriptions: {
+          get: jest.fn().mockRejectedValue(new Error('not found')),
+          list,
+          update: jest.fn().mockResolvedValue(updated),
+        },
+      }
+      jest.spyOn(service, 'switchPlan').mockResolvedValue({} as any)
+
+      await service.changePlan({
+        user: { _id: userId },
+        payload: { planName: 'pro', billingInterval: 'monthly' },
+      })
+
+      expect(list).toHaveBeenCalledWith({
+        external_customer_id: userId.toString(),
+        active: true,
+        limit: 1,
+      })
+      expect(subscriptionModel.updateOne).toHaveBeenCalledWith(
+        { _id: 'local_sub' },
+        { polarSubscriptionId: 'sub_1', polarCustomerId: 'cus_1' },
+      )
+    })
   })
 })

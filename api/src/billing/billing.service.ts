@@ -11,14 +11,18 @@ import {
   Subscription,
   SubscriptionDocument,
 } from './schemas/subscription.schema'
-import { Polar } from '@polar-sh/sdk'
+import {
+  createPolar,
+  webhooks,
+  type models,
+  type Polar,
+} from '@polar-sh/sdk/2026-10'
 import { User, UserDocument } from '../users/schemas/user.schema'
 import { UsersService } from '../users/users.service'
 import { AnalyticsService } from '../analytics/analytics.service'
 import { CheckoutResponseDTO, PlanDTO } from './billing.dto'
 import { SMSDocument } from '../gateway/schemas/sms.schema'
 import { SMS } from '../gateway/schemas/sms.schema'
-import { validateEvent } from '@polar-sh/sdk/webhooks'
 import {
   PolarWebhookPayload,
   PolarWebhookPayloadDocument,
@@ -49,9 +53,13 @@ import {
 // the same effective allowance, and two copies of this number would drift.
 export const PAID_MONTHLY_LIMIT_MULTIPLIER = 1.1
 
+// Polar returns timestamps as ISO strings
+export const toDate = (value?: string | null): Date | null | undefined =>
+  value == null ? (value as null | undefined) : new Date(value)
+
 @Injectable()
 export class BillingService {
-  private polarApi
+  private polarApi: Polar
 
   constructor(
     @InjectModel(Plan.name) private planModel: Model<PlanDocument>,
@@ -67,9 +75,9 @@ export class BillingService {
     private readonly usersService: UsersService,
     private readonly analyticsService: AnalyticsService,
   ) {
-    this.polarApi = new Polar({
+    this.polarApi = createPolar({
       accessToken: process.env.POLAR_ACCESS_TOKEN ?? '',
-      server:
+      environment:
         process.env.POLAR_SERVER === 'production' ? 'production' : 'sandbox',
     })
   }
@@ -210,7 +218,7 @@ export class BillingService {
           isUpgrade:
             (planChange.selectedPlan.monthlyPrice ?? 0) >
             (currentPlan.monthlyPrice ?? 0),
-          cancelAtPeriodEnd: !!planChange.polarSubscription.cancelAtPeriodEnd,
+          cancelAtPeriodEnd: !!planChange.polarSubscription.cancel_at_period_end,
         },
       }
     }
@@ -252,14 +260,12 @@ export class BillingService {
       // on who started this checkout.
       const clientAddress = resolveClientAddress(req)
 
-      const checkoutOptions: any = {
-        // productId: selectedPlan.polarProductId, // deprecated
+      const checkoutOptions: models.CheckoutCreate = {
         products: orderedProductIds,
-        successUrl: `${process.env.FRONTEND_URL}/dashboard/account?checkout-success=1&checkout_id={CHECKOUT_ID}`,
-        cancelUrl: `${process.env.FRONTEND_URL}/dashboard/account?checkout-cancel=1&checkout_id={CHECKOUT_ID}`,
-        customerEmail: user.email,
-        customerName: user.name,
-        customerIpAddress: clientAddress.ip,
+        success_url: `${process.env.FRONTEND_URL}/dashboard/account?checkout-success=1&checkout_id={CHECKOUT_ID}`,
+        customer_email: user.email,
+        customer_name: user.name,
+        customer_ip_address: clientAddress.ip,
         metadata: {
           userId: user._id?.toString(),
           ...(user.signupSource && { signupSource: user.signupSource }),
@@ -267,17 +273,15 @@ export class BillingService {
             utmCampaign: user.attribution.first.campaign,
           }),
         },
-        externalCustomerId: user._id?.toString(),
+        external_customer_id: user._id?.toString(),
       }
 
       try {
         let discount = null;
         if (discountId) {
-          discount = await this.polarApi.discounts.get({
-            id: discountId,
-          })
+          discount = await this.polarApi.discounts.get(discountId)
           if (discount) {
-            checkoutOptions.discountId = discount.id
+            checkoutOptions.discount_id = discount.id
           }
         }
       } catch (error) {
@@ -303,7 +307,7 @@ export class BillingService {
               checkoutUrl: checkout.url,
               planName: payload.planName,
               billingInterval,
-              expiresAt: new Date(checkout.expiresAt),
+              expiresAt: new Date(checkout.expires_at),
               payload: checkout,
               sessionStartedAt: new Date(),
               isCompleted: false,
@@ -349,7 +353,7 @@ export class BillingService {
     selectedPlan: PlanDocument
     isPlanChange: boolean
     currentSubscription?: SubscriptionDocument
-    polarSubscription?: any
+    polarSubscription?: models.Subscription
     targetProductId?: string
   }> {
     // a missing plan name is a client bug, not an unpurchasable plan
@@ -416,12 +420,12 @@ export class BillingService {
       return { selectedPlan, isPlanChange: false, currentSubscription }
     }
 
-    let polarSubscription = null
+    let polarSubscription: models.Subscription | null = null
     if (currentSubscription.polarSubscriptionId) {
       try {
-        polarSubscription = await this.polarApi.subscriptions.get({
-          id: currentSubscription.polarSubscriptionId,
-        })
+        polarSubscription = await this.polarApi.subscriptions.get(
+          currentSubscription.polarSubscriptionId,
+        )
       } catch (error) {
         console.error('failed to fetch polar subscription by stored id', error)
       }
@@ -432,11 +436,11 @@ export class BillingService {
     if (!polarSubscription || polarSubscription.status === 'canceled') {
       try {
         const page = await this.polarApi.subscriptions.list({
-          externalCustomerId: user._id.toString(),
+          external_customer_id: user._id.toString(),
           active: true,
           limit: 1,
         })
-        polarSubscription = page?.result?.items?.[0] ?? null
+        polarSubscription = page?.items?.[0] ?? null
 
         if (polarSubscription) {
           this.subscriptionModel
@@ -444,7 +448,7 @@ export class BillingService {
               { _id: currentSubscription._id },
               {
                 polarSubscriptionId: polarSubscription.id,
-                polarCustomerId: polarSubscription.customerId,
+                polarCustomerId: polarSubscription.customer_id,
               },
             )
             .catch((error) => {
@@ -477,7 +481,7 @@ export class BillingService {
     }
 
     // Catches drift between our DB and Polar
-    if (polarSubscription.productId === targetProductId) {
+    if (polarSubscription.product_id === targetProductId) {
       throw new BadRequestException({
         message: `You are already on ${planName} plan, please contact billing@textbee.dev to get a custom plan`,
         code: 'ALREADY_ON_PLAN',
@@ -523,35 +527,34 @@ export class BillingService {
     try {
       // A product update on a subscription scheduled for cancellation is
       // rejected by Polar; changing plans clearly signals intent to stay
-      if (polarSubscription.cancelAtPeriodEnd) {
-        await this.polarApi.subscriptions.update({
-          id: polarSubscription.id,
-          subscriptionUpdate: { cancelAtPeriodEnd: false },
+      if (polarSubscription.cancel_at_period_end) {
+        await this.polarApi.subscriptions.update(polarSubscription.id, {
+          cancel_at_period_end: false,
         })
       }
 
       // prorationBehavior omitted on purpose: use the Polar org default
-      const updated = await this.polarApi.subscriptions.update({
-        id: polarSubscription.id,
-        subscriptionUpdate: { productId: targetProductId },
-      })
+      const updated = await this.polarApi.subscriptions.update(
+        polarSubscription.id,
+        { product_id: targetProductId },
+      )
 
       // Update local state right away so the dashboard reflects the change;
       // the subscription.updated webhook that follows is an idempotent no-op
       await this.switchPlan({
         userId: user._id.toString(),
-        newPlanPolarProductId: updated.productId ?? targetProductId,
-        currentPeriodStart: updated.currentPeriodStart,
-        currentPeriodEnd: updated.currentPeriodEnd,
-        subscriptionStartDate: updated.startedAt ?? updated.createdAt,
-        subscriptionEndDate: updated.canceledAt,
+        newPlanPolarProductId: updated.product_id ?? targetProductId,
+        currentPeriodStart: toDate(updated.current_period_start),
+        currentPeriodEnd: toDate(updated.current_period_end),
+        subscriptionStartDate: toDate(updated.started_at ?? updated.created_at),
+        subscriptionEndDate: toDate(updated.canceled_at),
         status: updated.status,
         amount: updated.amount,
         currency: updated.currency,
-        recurringInterval: updated.recurringInterval,
+        recurringInterval: updated.recurring_interval,
         polarSubscriptionId: updated.id,
-        polarCustomerId: updated.customerId,
-        cancelAtPeriodEnd: updated.cancelAtPeriodEnd,
+        polarCustomerId: updated.customer_id,
+        cancelAtPeriodEnd: updated.cancel_at_period_end,
       })
 
       // An open cached checkout for the old plan must not be reusable anymore
@@ -1395,13 +1398,18 @@ export class BillingService {
       'webhook-signature': headers['webhook-signature'] ?? '',
     }
     try {
-      const webhookPayload = validateEvent(
+      const webhookPayload = await webhooks.validateEvent(
         payload,
         webhookHeaders,
-        process.env.POLAR_WEBHOOK_SECRET,
+        process.env.POLAR_WEBHOOK_SECRET ?? '',
       )
       return webhookPayload
     } catch (error) {
+      // Signed but newer than this SDK knows; acknowledge so Polar stops retrying
+      if (error instanceof webhooks.PolarWebhookUnknownTypeError) {
+        console.log('ignoring unknown polar webhook event type', error.eventType)
+        return null
+      }
       console.log('failed to validate polar webhook payload')
       console.error(error)
       throw new Error('Invalid webhook payload')
@@ -1409,12 +1417,12 @@ export class BillingService {
   }
 
   async storePolarWebhookPayload(payload: any) {
-    const userId = payload.data?.metadata?.userId || payload.data?.userId
+    const userId = payload.data?.metadata?.userId || payload.data?.user_id
     const eventType = payload.type
-    const name = payload.data?.customer?.name || payload.data?.customerName
-    const email = payload.data?.customer?.email || payload.data?.customerEmail
-    const productId = payload.data?.product?.id || payload.data?.productId
-    const productName = payload.data?.product?.name || payload.data?.productName
+    const name = payload.data?.customer?.name || payload.data?.customer_name
+    const email = payload.data?.customer?.email || payload.data?.customer_email
+    const productId = payload.data?.product?.id || payload.data?.product_id
+    const productName = payload.data?.product?.name || payload.data?.product_name
 
     await this.polarWebhookPayloadModel.create({
       userId,
@@ -1445,10 +1453,10 @@ export class BillingService {
       })
       if (!subscription?.polarCustomerId) return fallback
       const session = await this.polarApi.customerSessions.create({
-        customerId: subscription.polarCustomerId,
-        returnUrl: fallback,
+        customer_id: subscription.polarCustomerId,
+        return_url: fallback,
       })
-      const url = session?.customerPortalUrl
+      const url = session?.customer_portal_url
       return typeof url === 'string' && url.startsWith('https://') ? url : fallback
     } catch (error) {
       console.error('failed to open the customer portal from an email link', error?.message)

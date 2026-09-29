@@ -9,7 +9,7 @@ import {
   Res,
 } from '@nestjs/common'
 import { Response } from 'express'
-import { BillingService } from './billing.service'
+import { BillingService, toDate } from './billing.service'
 import { AuthGuard } from 'src/auth/guards/auth.guard'
 import {
   ApiTags,
@@ -181,6 +181,7 @@ export class BillingController {
       data,
       req.headers,
     )
+    if (!payload) return
 
     // store the payload in the database
     await this.billingService.storePolarWebhookPayload(payload)
@@ -191,8 +192,8 @@ export class BillingController {
       this.billingService.syncPastDue({
         polarSubscriptionId: event?.id,
         status: event?.status,
-        pastDueAt: event?.pastDueAt ?? event?.past_due_at,
-        eventAt: event?.modifiedAt ? new Date(event.modifiedAt) : eventAt,
+        pastDueAt: event?.past_due_at,
+        eventAt: event?.modified_at ? new Date(event.modified_at) : eventAt,
       })
 
     // Handle Polar.sh webhook events
@@ -203,20 +204,20 @@ export class BillingController {
         console.log('polar webhook event', payload.type)
         console.log(payload)
         await this.billingService.switchPlan({
-          userId: (payload.data?.metadata?.userId ||
-            payload.data?.customer?.externalId) as string,
-          newPlanPolarProductId: payload.data?.product?.id,
-          currentPeriodStart: payload.data?.currentPeriodStart,
-          currentPeriodEnd: payload.data?.currentPeriodEnd,
-          status: payload.data?.status,
-          subscriptionStartDate: payload.data?.createdAt,
-          subscriptionEndDate: payload.data?.canceledAt,
-          amount: payload.data?.amount,
-          currency: payload.data?.currency,
-          recurringInterval: payload.data?.recurringInterval,
-          polarSubscriptionId: payload.data?.id,
-          polarCustomerId: payload.data?.customerId,
-          cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
+          userId: (event?.metadata?.userId ||
+            event?.customer?.external_id) as string,
+          newPlanPolarProductId: event?.product?.id,
+          currentPeriodStart: toDate(event?.current_period_start),
+          currentPeriodEnd: toDate(event?.current_period_end),
+          status: event?.status,
+          subscriptionStartDate: toDate(event?.created_at),
+          subscriptionEndDate: toDate(event?.canceled_at),
+          amount: event?.amount,
+          currency: event?.currency,
+          recurringInterval: event?.recurring_interval,
+          polarSubscriptionId: event?.id,
+          polarCustomerId: event?.customer_id,
+          cancelAtPeriodEnd: event?.cancel_at_period_end,
         })
         await pastDue()
         break
@@ -241,18 +242,18 @@ export class BillingController {
         // Record the intent without downgrading; the actual downgrade happens
         // on "subscription.revoked".
         await this.billingService.cancelSubscription({
-          userId: (payload.data?.metadata?.userId ||
-            payload.data?.customer?.externalId) as string,
-          polarProductId: payload.data?.product?.id,
-          cancelAtPeriodEnd: payload.data?.cancelAtPeriodEnd,
-          currentPeriodEnd: payload.data?.currentPeriodEnd,
-          status: payload.data?.status,
+          userId: (event?.metadata?.userId ||
+            event?.customer?.external_id) as string,
+          polarProductId: event?.product?.id,
+          cancelAtPeriodEnd: event?.cancel_at_period_end,
+          currentPeriodEnd: toDate(event?.current_period_end),
+          status: event?.status,
           polarSubscriptionId: event?.id,
           churnCause: await this.billingService.churnCause({
             polarSubscriptionId: event?.id,
             status: event?.status,
-            cancelAtPeriodEnd: event?.cancelAtPeriodEnd,
-            endsAt: event?.endsAt ?? event?.endedAt,
+            cancelAtPeriodEnd: event?.cancel_at_period_end,
+            endsAt: event?.ends_at ?? event?.ended_at,
             eventAt,
           }),
         })
@@ -264,9 +265,9 @@ export class BillingController {
         console.log(payload)
         // Access should actually end now, so perform the real downgrade.
         await this.billingService.revokeSubscription({
-          userId: (payload.data?.metadata?.userId ||
-            payload.data?.customer?.externalId) as string,
-          polarProductId: payload.data?.product?.id,
+          userId: (event?.metadata?.userId ||
+            event?.customer?.external_id) as string,
+          polarProductId: event?.product?.id,
         })
         break
 
@@ -274,8 +275,8 @@ export class BillingController {
         // Polar already sends these; they were being dropped here, which is
         // why isCompleted was never written.
         await this.billingService.syncCheckoutSessionStatus({
-          checkoutSessionId: payload.data?.id,
-          status: payload.data?.status,
+          checkoutSessionId: event?.id,
+          status: event?.status,
         })
         break
 

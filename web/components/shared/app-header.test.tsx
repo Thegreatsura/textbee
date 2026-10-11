@@ -1,12 +1,13 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Session } from 'next-auth'
 import AppHeader from './app-header'
 import { OPEN_SEARCH_EVENT } from '@/lib/constants'
 
+const pathname = vi.fn(() => '/dashboard')
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-  usePathname: () => '/dashboard',
+  usePathname: () => pathname(),
 }))
 
 const useSession = vi.fn()
@@ -62,5 +63,17 @@ describe('AppHeader mobile search', () => {
 
     expect(onOpen).toHaveBeenCalledTimes(1)
     window.removeEventListener(OPEN_SEARCH_EVENT, onOpen)
+  })
+})
+
+describe('AppHeader on auth pages', () => {
+  beforeEach(() => useSession.mockReset())
+  afterEach(() => pathname.mockReturnValue('/dashboard'))
+
+  it.each(['/login', '/register'])('renders nothing on %s', (path) => {
+    pathname.mockReturnValue(path)
+    useSession.mockReturnValue({ data: null, status: 'unauthenticated' })
+    const { container } = render(<AppHeader session={null} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

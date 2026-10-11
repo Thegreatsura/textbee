@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef, useState } from 'react'
 import { Routes } from '@/config/routes'
 import { toast } from '@/hooks/use-toast'
 import {
@@ -9,6 +10,7 @@ import {
 } from '@react-oauth/google'
 import { getSession, signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { useTheme } from 'next-themes'
 import { readAttribution } from '@/lib/analytics/attribution'
 import { track } from '@/lib/analytics/track'
 
@@ -33,6 +35,26 @@ function GoogleLoginButton() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect')
+  const { resolvedTheme } = useTheme()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [buttonWidth, setButtonWidth] = useState<number>()
+
+  // Google renders the button at a fixed pixel width between 200 and 400.
+  // Small changes are ignored because each new width re-runs One Tap.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const measure = () => {
+      const width = Math.min(400, Math.max(200, el.offsetWidth))
+      setButtonWidth((prev) =>
+        prev && Math.abs(prev - width) < 8 ? prev : width
+      )
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
 
   const onGoogleLoginSuccess = async (
     credentialResponse: CredentialResponse
@@ -79,17 +101,26 @@ function GoogleLoginButton() {
       variant: 'destructive',
     })
   }
+  // Wait for the theme and width so the button and One Tap render only once.
+  // A light color-scheme stops the iframe painting a white box in dark mode.
   return (
-    <GoogleLogin
-      onSuccess={onGoogleLoginSuccess}
-      onError={onGoogleLoginError}
-      useOneTap={true}
-      width={'100%'}
-      size='large'
-      shape='pill'
-      locale='en'
-      theme='outline'
-      text='continue_with'
-    />
+    <div
+      ref={containerRef}
+      className='flex min-h-10 w-full justify-center [color-scheme:light]'
+    >
+      {resolvedTheme && buttonWidth && (
+        <GoogleLogin
+          onSuccess={onGoogleLoginSuccess}
+          onError={onGoogleLoginError}
+          useOneTap={true}
+          width={buttonWidth}
+          size='large'
+          shape='rectangular'
+          locale='en'
+          theme={resolvedTheme === 'dark' ? 'filled_black' : 'outline'}
+          text='continue_with'
+        />
+      )}
+    </div>
   )
 }

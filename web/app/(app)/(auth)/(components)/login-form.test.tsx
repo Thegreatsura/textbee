@@ -38,7 +38,7 @@ vi.mock('@/lib/turnstile', () => ({
 async function fillAndSubmit() {
   await userEvent.type(screen.getByLabelText('Email'), 'user@example.com')
   await userEvent.type(screen.getByLabelText('Password'), 'secret123')
-  await userEvent.click(screen.getByRole('button', { name: /sign in/i }))
+  await userEvent.click(screen.getByRole('button', { name: /^log in$/i }))
 }
 
 describe('LoginForm', () => {

@@ -1,13 +1,17 @@
 'use client'
 
 import { useEffect } from 'react'
+import Link from 'next/link'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import PasswordInput from './password-input'
+import { authButtonClass, authFieldClass } from './auth-styles'
 
 import {
   Form,
@@ -111,7 +115,11 @@ export default function LoginForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+      <form
+        noValidate
+        onSubmit={form.handleSubmit(onSubmit)}
+        className='space-y-4'
+      >
         <FormField
           control={form.control}
           name='email'
@@ -120,7 +128,10 @@ export default function LoginForm() {
               <FormLabel>Email</FormLabel>
               <FormControl>
                 <Input
-                  placeholder='m@example.com'
+                  type='email'
+                  autoComplete='email'
+                  placeholder='you@company.com'
+                  className={authFieldClass}
                   {...field}
                 />
               </FormControl>
@@ -133,10 +144,20 @@ export default function LoginForm() {
           name='password'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Password</FormLabel>
+              <div className='flex items-center justify-between gap-3'>
+                <FormLabel>Password</FormLabel>
+                <Link
+                  href={Routes.resetPassword}
+                  className='text-sm font-medium text-primary underline-offset-4 hover:underline'
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <FormControl>
-                <Input
-                  type='password'
+                <PasswordInput
+                  autoComplete='current-password'
+                  placeholder='Enter your password'
+                  className={authFieldClass}
                   {...field}
                 />
               </FormControl>
@@ -165,17 +186,17 @@ export default function LoginForm() {
           </p>
         )}
         <Button
-          className='w-full'
+          className={authButtonClass}
           type='submit'
           disabled={form.formState.isSubmitting}
         >
           {form.formState.isSubmitting ? (
             <>
-              {/* <Icons.spinner className="mr-2 h-4 w-4 animate-spin" /> */}
-              Signing in...
+              <Loader2 className='animate-spin' aria-hidden />
+              Logging in...
             </>
           ) : (
-            'Sign In'
+            'Log in'
           )}
         </Button>
       </form>

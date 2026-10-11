@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import PasswordInput from './password-input'
+import { authButtonClass, authFieldClass } from './auth-styles'
 
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -136,15 +140,24 @@ export default function RegisterForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-4'>
+      <form
+        noValidate
+        onSubmit={form.handleSubmit(onSubmit)}
+        className='space-y-4'
+      >
         <FormField
           control={form.control}
           name='name'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Full Name</FormLabel>
+              <FormLabel>Full name</FormLabel>
               <FormControl>
-                <Input placeholder='John Doe' {...field} />
+                <Input
+                  autoComplete='name'
+                  placeholder='Jane Cooper'
+                  className={authFieldClass}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -157,7 +170,13 @@ export default function RegisterForm() {
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder='m@example.com' {...field} />
+                <Input
+                  type='email'
+                  autoComplete='email'
+                  placeholder='you@company.com'
+                  className={authFieldClass}
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -170,8 +189,14 @@ export default function RegisterForm() {
             <FormItem>
               <FormLabel>Password</FormLabel>
               <FormControl>
-                <Input type='password' {...field} />
+                <PasswordInput
+                  autoComplete='new-password'
+                  placeholder='Create a password'
+                  className={authFieldClass}
+                  {...field}
+                />
               </FormControl>
+              <FormDescription>At least 8 characters.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -181,10 +206,42 @@ export default function RegisterForm() {
           name='phone'
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Phone (optional)</FormLabel>
+              <FormLabel>
+                Phone{' '}
+                <span className='font-normal text-muted-foreground'>
+                  (optional)
+                </span>
+              </FormLabel>
               <FormControl>
-                <Input placeholder='+1 (555) 000-0000' {...field} />
+                <Input
+                  type='tel'
+                  autoComplete='tel'
+                  placeholder='+1 202 555 0123'
+                  className={authFieldClass}
+                  {...field}
+                />
               </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name='marketingOptIn'
+          render={({ field }) => (
+            <FormItem>
+              <div className='flex items-start gap-3 space-y-0'>
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className='mt-0.5'
+                  />
+                </FormControl>
+                <FormLabel className='text-sm font-normal leading-5 text-muted-foreground'>
+                  Email me about new features and offers
+                </FormLabel>
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -209,39 +266,18 @@ export default function RegisterForm() {
             {form.formState.errors.root.message}
           </p>
         )}
-
-        <FormField
-          control={form.control}
-          name='marketingOptIn'
-          render={({ field }) => (
-            <FormItem>
-              <div className='flex items-center space-x-3 space-y-0'>
-                <FormControl>
-                  <Checkbox
-                    checked={field.value}
-                    onCheckedChange={field.onChange}
-                  />
-                </FormControl>
-                <FormLabel className='text-sm'>
-                  I want to receive updates about new features and promotions
-                </FormLabel>
-              </div>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         <Button
-          className='w-full'
+          className={authButtonClass}
           type='submit'
           disabled={form.formState.isSubmitting}
         >
           {form.formState.isSubmitting ? (
             <>
-              {/* <Icons.spinner className="mr-2 h-4 w-4 animate-spin" /> */}
+              <Loader2 className='animate-spin' aria-hidden />
               Creating account...
             </>
           ) : (
-            'Sign Up'
+            'Create account'
           )}
         </Button>
       </form>

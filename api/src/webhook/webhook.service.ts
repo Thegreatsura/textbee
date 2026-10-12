@@ -35,6 +35,7 @@ for (const [address, prefix] of [
   ['169.254.0.0', 16],
   ['172.16.0.0', 12],
   ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
   ['224.0.0.0', 3],
 ] as const) {
   blockedAddresses.addSubnet(address, prefix, 'ipv4')
@@ -43,6 +44,7 @@ for (const [address, prefix] of [
   ['::', 128],
   ['::1', 128],
   ['fe80::', 10],
+  ['fec0::', 10],
   ['fc00::', 7],
 ] as const) {
   blockedAddresses.addSubnet(address, prefix, 'ipv6')

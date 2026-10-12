@@ -110,6 +110,10 @@ describe('WebhookService', () => {
       'fe81::1',
       'febf:ffff::1',
       'fc00::1',
+      'fec0::1',
+      'feff:ffff::1',
+      '198.18.0.0',
+      '198.19.255.255',
     ])('blocks private, loopback or link-local address: %s', (ip) => {
       const { service } = build()
       expect(blocked(service, ip)).toBe(true)
@@ -120,7 +124,9 @@ describe('WebhookService', () => {
       '1.1.1.1',
       '93.184.216.34',
       '::ffff:808:808',
-      'fec0::1',
+      'fe7f::1',
+      '198.17.255.255',
+      '198.20.0.0',
       '2606:4700::1',
       'example.com',
     ])(

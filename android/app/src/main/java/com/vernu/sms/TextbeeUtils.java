@@ -38,6 +38,7 @@ public class TextbeeUtils {
 
         SubscriptionManager subscriptionManager = SubscriptionManager.from(context);
         List<SubscriptionInfo> sims = subscriptionManager.getActiveSubscriptionInfoList();
+        // getActiveSubscriptionInfoList() returns null when there is no active SIM.
         return sims != null ? sims : new ArrayList<>();
 
     }

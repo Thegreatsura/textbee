@@ -84,6 +84,8 @@ describe('WebhookService', () => {
       'http://[::ffff:127.0.0.1]/hook',
       'http://[fe81::1]/hook',
       'http://[febf::1]/hook',
+      'http://0.0.0.0/hook',
+      'http://224.0.0.1/hook',
     ])('rejects a private or loopback host: %s', (url) => {
       const { service } = build()
       expect(() => validate(service, url)).toThrow(HttpException)
@@ -272,7 +274,7 @@ describe('WebhookService', () => {
       expect((config as any).headers['X-Signature']).toBe(expected)
     })
 
-    it('delivers without following redirects and through the guarded agents', async () => {
+    it('follows redirects through the guarded agents', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
       webhookNotificationModel.findById.mockResolvedValue(notif)
@@ -282,7 +284,8 @@ describe('WebhookService', () => {
       await service.attemptWebhookDelivery('wn_1')
 
       const [, , config] = mockedAxios.post.mock.calls[0]
-      expect((config as any).maxRedirects).toBe(0)
+      expect((config as any).maxRedirects).toBe(5)
+      expect(typeof (config as any).beforeRedirect).toBe('function')
       expect((config as any).proxy).toBe(false)
       expect((config as any).httpAgent).toBe((service as any).deliveryHttpAgent)
       expect((config as any).httpsAgent).toBe((service as any).deliveryHttpsAgent)
@@ -295,6 +298,48 @@ describe('WebhookService', () => {
       expect(sig('a-signing-secret-of-enough-length')).not.toBe(
         sig('a-different-secret-of-enough-length'),
       )
+    })
+
+    it.each(['127.0.0.1', '::ffff:7f00:1', '10.0.0.5', 'localhost'])(
+      'refuses a redirect hop to %s',
+      async (hostname) => {
+        const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+        webhookNotificationModel.findById.mockResolvedValue(notification())
+        webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+        mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
+
+        await service.attemptWebhookDelivery('wn_1')
+
+        const [, , config] = mockedAxios.post.mock.calls[0]
+        expect(() => (config as any).beforeRedirect({ hostname })).toThrow()
+      },
+    )
+
+    it('allows a redirect hop to a public host', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      webhookNotificationModel.findById.mockResolvedValue(notification())
+      webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+      mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      const [, , config] = mockedAxios.post.mock.calls[0]
+      expect(() =>
+        (config as any).beforeRedirect({ hostname: 'script.googleusercontent.com' }),
+      ).not.toThrow()
+    })
+
+    it('classifies an unfollowed 3xx like a 4xx', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      const notif = notification()
+      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+      mockedAxios.post.mockRejectedValue({ response: { status: 302, data: '' } })
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      expect(notif.errorType).toBe('non-retryable')
+      expect(notif.httpStatusCode).toBe(302)
     })
 
     it('does not deliver to a stored URL whose host is a private IP literal', async () => {

@@ -80,6 +80,10 @@ describe('WebhookService', () => {
       'http://192.168.1.10/hook',
       'http://169.254.169.254/latest/meta-data', // cloud metadata IP
       'http://172.16.0.1/hook',
+      'http://[::ffff:7f00:1]/hook', // hex IPv4-mapped loopback
+      'http://[::ffff:127.0.0.1]/hook',
+      'http://[fe81::1]/hook',
+      'http://[febf::1]/hook',
     ])('rejects a private or loopback host: %s', (url) => {
       const { service } = build()
       expect(() => validate(service, url)).toThrow(HttpException)
@@ -101,12 +105,31 @@ describe('WebhookService', () => {
       'fe80::1',
       'fd00::1',
       '::ffff:127.0.0.1',
+      '::ffff:7f00:1',
+      '::ffff:a00:1',
+      'fe81::1',
+      'febf:ffff::1',
+      'fc00::1',
+      'fec0::1',
+      'feff:ffff::1',
+      '198.18.0.0',
+      '198.19.255.255',
     ])('blocks private, loopback or link-local address: %s', (ip) => {
       const { service } = build()
       expect(blocked(service, ip)).toBe(true)
     })
 
-    it.each(['8.8.8.8', '1.1.1.1', '93.184.216.34'])(
+    it.each([
+      '8.8.8.8',
+      '1.1.1.1',
+      '93.184.216.34',
+      '::ffff:808:808',
+      'fe7f::1',
+      '198.17.255.255',
+      '198.20.0.0',
+      '2606:4700::1',
+      'example.com',
+    ])(
       'allows a public address: %s',
       (ip) => {
         const { service } = build()
@@ -140,6 +163,26 @@ describe('WebhookService', () => {
           expect(err).toBeNull()
           expect(address).toBe('93.184.216.34')
           expect(family).toBe(4)
+          done()
+        },
+      )
+    })
+
+    it('returns address records when the caller asks for all addresses', (done) => {
+      const { service } = build()
+      resolveTo([
+        { address: '93.184.216.34', family: 4 },
+        { address: '2606:2800:220:1::1', family: 6 },
+      ])
+      ;(service as any).guardedLookup(
+        'example.com',
+        { all: true },
+        (err: any, addresses: { address: string; family: number }[]) => {
+          expect(err).toBeNull()
+          expect(addresses).toEqual([
+            { address: '93.184.216.34', family: 4 },
+            { address: '2606:2800:220:1::1', family: 6 },
+          ])
           done()
         },
       )
@@ -240,6 +283,7 @@ describe('WebhookService', () => {
 
       const [, , config] = mockedAxios.post.mock.calls[0]
       expect((config as any).maxRedirects).toBe(0)
+      expect((config as any).proxy).toBe(false)
       expect((config as any).httpAgent).toBe((service as any).deliveryHttpAgent)
       expect((config as any).httpsAgent).toBe((service as any).deliveryHttpsAgent)
     })
@@ -251,6 +295,20 @@ describe('WebhookService', () => {
       expect(sig('a-signing-secret-of-enough-length')).not.toBe(
         sig('a-different-secret-of-enough-length'),
       )
+    })
+
+    it('does not deliver to a stored URL whose host is a private IP literal', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      const notif = notification()
+      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookSubscriptionModel.findById.mockResolvedValue(
+        activeSubscription({ deliveryUrl: 'http://[::ffff:7f00:1]:3001/' }),
+      )
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      expect(mockedAxios.post).not.toHaveBeenCalled()
+      expect(notif.deliveredAt).toBeUndefined()
     })
 
     it('aborts delivery without calling axios when the subscription is inactive', async () => {

@@ -342,6 +342,46 @@ describe('WebhookService', () => {
       expect(notif.httpStatusCode).toBe(302)
     })
 
+    it.each([
+      [0, false],
+      [1, false],
+      [2, true],
+    ])(
+      'retries a 4xx until the 3rd attempt (attempts before: %i, aborted: %s)',
+      async (before, aborted) => {
+        const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+        const notif = { ...notification(), deliveryAttemptCount: before }
+        webhookNotificationModel.findById.mockResolvedValue(notif)
+        webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+        mockedAxios.post.mockRejectedValue({ response: { status: 404, data: 'nope' } })
+
+        await service.attemptWebhookDelivery('wn_1')
+
+        expect(notif.errorType).toBe('non-retryable')
+        expect(notif.deliveryAttemptCount).toBe(before + 1)
+        if (aborted) {
+          expect(notif.deliveryAttemptAbortedAt).toBeInstanceOf(Date)
+          expect(notif.nextDeliveryAttemptAt).toBeUndefined()
+        } else {
+          expect(notif.deliveryAttemptAbortedAt).toBeUndefined()
+          expect(notif.nextDeliveryAttemptAt).toBeInstanceOf(Date)
+        }
+      },
+    )
+
+    it('still aborts a 5xx after the 10th attempt', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      const notif = { ...notification(), deliveryAttemptCount: 9 }
+      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+      mockedAxios.post.mockRejectedValue({ response: { status: 503, data: '' } })
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      expect(notif.errorType).toBe('retryable')
+      expect(notif.deliveryAttemptAbortedAt).toBeInstanceOf(Date)
+    })
+
     it('does not deliver to a stored URL whose host is a private IP literal', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()

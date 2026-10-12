@@ -797,8 +797,8 @@ export class WebhookService {
       if (errorType === 'non-retryable' && webhookNotification.deliveryAttemptCount >= 3) {
         webhookNotification.deliveryAttemptAbortedAt = now
         webhookNotification.nextDeliveryAttemptAt = undefined
-      } else if (errorType === 'retryable' && webhookNotification.deliveryAttemptCount < 10) {
-        // For retryable errors, schedule next attempt
+      } else if (webhookNotification.deliveryAttemptCount < 10) {
+        // Retryable errors, and 4xx before the 3rd attempt, schedule the next attempt
         webhookNotification.nextDeliveryAttemptAt = this.getNextDeliveryAttemptAt(
           webhookNotification.deliveryAttemptCount,
         )

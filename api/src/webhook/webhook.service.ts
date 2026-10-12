@@ -14,7 +14,7 @@ import axios from 'axios'
 import * as http from 'http'
 import * as https from 'https'
 import { lookup as dnsLookup } from 'dns'
-import { LookupFunction } from 'net'
+import { BlockList, isIP, LookupFunction } from 'net'
 import { v4 as uuidv4 } from 'uuid'
 import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
@@ -25,6 +25,28 @@ import { WebhookQueueService } from './queue/webhook-queue.service'
 import { MailService } from '../mail/mail.service'
 import { firstName } from '../mail/first-name'
 import { UsersService } from '../users/users.service'
+
+const blockedAddresses = new BlockList()
+for (const [address, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+  ['224.0.0.0', 3],
+] as const) {
+  blockedAddresses.addSubnet(address, prefix, 'ipv4')
+}
+for (const [address, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['fe80::', 10],
+  ['fc00::', 7],
+] as const) {
+  blockedAddresses.addSubnet(address, prefix, 'ipv6')
+}
 
 /**
  * Endpoints can carry a token in the query or in userinfo, so the admin summary
@@ -462,10 +484,6 @@ export class WebhookService {
     }
   }
 
-  // Hostname-level check for the create/update path. IP literals are deferred to
-  // isBlockedIpAddress; real hostnames are re-checked against their resolved
-  // address at connection time by guardedLookup, so a name that points at a
-  // private IP is still refused.
   private isPrivateOrLoopbackHost(rawHost: string): boolean {
     if (!rawHost) return true
     const host = rawHost.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
@@ -481,50 +499,15 @@ export class WebhookService {
     return this.isBlockedIpAddress(host)
   }
 
-  // True when the literal is a private, loopback, link-local, carrier-grade-NAT
-  // or reserved address. Used both for IP literals in the URL and for addresses
-  // returned by DNS at connection time.
+  // Returns false for anything that is not an IP literal.
   private isBlockedIpAddress(rawIp: string): boolean {
-    if (!rawIp) return true
-    const host = rawIp.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
-
-    // IPv4 literal
-    const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-    if (ipv4Match) {
-      const octets = ipv4Match.slice(1).map((o) => parseInt(o, 10))
-      if (octets.some((o) => o < 0 || o > 255)) return true
-      const [a, b] = octets
-      if (a === 0) return true
-      if (a === 10) return true
-      if (a === 127) return true
-      if (a === 169 && b === 254) return true
-      if (a === 172 && b >= 16 && b <= 31) return true
-      if (a === 192 && b === 168) return true
-      // Carrier-grade NAT
-      if (a === 100 && b >= 64 && b <= 127) return true
-      // Multicast and reserved
-      if (a >= 224) return true
-      return false
-    }
-
-    // IPv6 literal (only obvious local ranges)
-    if (host.includes(':')) {
-      if (host === '::1' || host === '::') return true
-      if (host.startsWith('fe80')) return true
-      if (host.startsWith('fc') || host.startsWith('fd')) return true
-      // IPv4-mapped IPv6: unwrap and re-check the embedded IPv4
-      const mapped = host.match(/:((?:\d{1,3}\.){3}\d{1,3})$/)
-      if (mapped) return this.isBlockedIpAddress(mapped[1])
-    }
-
-    return false
+    const ip = rawIp.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
+    const family = isIP(ip)
+    if (family === 0) return false
+    return blockedAddresses.check(ip, family === 6 ? 'ipv6' : 'ipv4')
   }
 
-  // Connection-time guard shared by the delivery agents. Resolves the hostname
-  // and refuses the connection when any candidate address is private, so a URL
-  // whose DNS points at an internal host (directly or after a redirect, and
-  // even if the answer changes between validation and connection) cannot reach
-  // it. Honours the self-hosting opt-out.
+  // Checks every resolved address at connect time, including redirects.
   private readonly guardedLookup: LookupFunction = (
     hostname,
     options,
@@ -547,9 +530,9 @@ export class WebhookService {
           }
         }
       }
-      const first = list[0]
-      if (!first) return cb(new Error('Delivery URL did not resolve'))
-      cb(null, first.address, first.family)
+      if (list.length === 0) return cb(new Error('Delivery URL did not resolve'))
+      if (opts.all) return cb(null, list)
+      cb(null, list[0].address, list[0].family)
     })
   }
 
@@ -740,12 +723,16 @@ export class WebhookService {
     )
 
     try {
+      // IP-literal hosts skip the agent lookup, so re-check them here.
+      this.validateDeliveryUrl(deliveryUrl)
+
       const response = await axios.post(deliveryUrl, webhookNotification.payload, {
         headers: {
           'X-Signature': signature,
         },
         timeout: deliveryTimeoutMs,
         maxRedirects: 0,
+        proxy: false,
         httpAgent: this.deliveryHttpAgent,
         httpsAgent: this.deliveryHttpsAgent,
       })

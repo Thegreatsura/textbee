@@ -733,7 +733,13 @@ export class WebhookService {
           'X-Signature': signature,
         },
         timeout: deliveryTimeoutMs,
-        maxRedirects: 0,
+        maxRedirects: 5,
+        // Redirects to IP literals skip the agent lookup, so check each hop here.
+        beforeRedirect: (options: { hostname?: string }) => {
+          if (this.isPrivateOrLoopbackHost(options.hostname ?? '')) {
+            throw new Error('Delivery redirect points to a disallowed host')
+          }
+        },
         proxy: false,
         httpAgent: this.deliveryHttpAgent,
         httpsAgent: this.deliveryHttpsAgent,
@@ -769,10 +775,10 @@ export class WebhookService {
           ? e.response.data.substring(0, 1000)
           : JSON.stringify(e.response.data || {}).substring(0, 1000)
 
-        // 4xx errors are non-retryable, 5xx are retryable
-        if (e.response.status >= 400 && e.response.status < 500) {
+        // 3xx (redirect not followed) and 4xx are non-retryable, 5xx are retryable
+        if (e.response.status < 500) {
           errorType = 'non-retryable'
-        } else if (e.response.status >= 500) {
+        } else {
           errorType = 'retryable'
         }
       } else {

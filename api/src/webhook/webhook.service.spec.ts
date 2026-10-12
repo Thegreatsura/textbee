@@ -1,10 +1,13 @@
 import { HttpException } from '@nestjs/common'
 import * as crypto from 'crypto'
 import axios from 'axios'
+import * as dns from 'dns'
 import { WebhookService, redactDeliveryUrl } from './webhook.service'
 
 jest.mock('axios')
+jest.mock('dns')
 const mockedAxios = axios as jest.Mocked<typeof axios>
+const mockedDnsLookup = dns.lookup as unknown as jest.Mock
 
 const build = () => {
   const webhookSubscriptionModel: any = {
@@ -83,6 +86,78 @@ describe('WebhookService', () => {
     })
   })
 
+  describe('isBlockedIpAddress', () => {
+    const blocked = (service: WebhookService, ip: string) =>
+      (service as any).isBlockedIpAddress(ip)
+
+    it.each([
+      '10.0.0.5',
+      '127.0.0.1',
+      '169.254.169.254',
+      '172.16.0.1',
+      '192.168.1.10',
+      '100.64.0.1',
+      '::1',
+      'fe80::1',
+      'fd00::1',
+      '::ffff:127.0.0.1',
+    ])('blocks private, loopback or link-local address: %s', (ip) => {
+      const { service } = build()
+      expect(blocked(service, ip)).toBe(true)
+    })
+
+    it.each(['8.8.8.8', '1.1.1.1', '93.184.216.34'])(
+      'allows a public address: %s',
+      (ip) => {
+        const { service } = build()
+        expect(blocked(service, ip)).toBe(false)
+      },
+    )
+  })
+
+  describe('guardedLookup (connection-time DNS guard)', () => {
+    const resolveTo = (addresses: { address: string; family: number }[]) =>
+      mockedDnsLookup.mockImplementation((_host, _opts, cb) =>
+        cb(null, addresses),
+      )
+
+    it('refuses a connection when the hostname resolves to a private address', (done) => {
+      const { service } = build()
+      resolveTo([{ address: '10.99.0.50', family: 4 }])
+      ;(service as any).guardedLookup('internal.example.com', {}, (err: any) => {
+        expect(err).toBeInstanceOf(Error)
+        done()
+      })
+    })
+
+    it('allows a connection when the hostname resolves to a public address', (done) => {
+      const { service } = build()
+      resolveTo([{ address: '93.184.216.34', family: 4 }])
+      ;(service as any).guardedLookup(
+        'example.com',
+        {},
+        (err: any, address: string, family: number) => {
+          expect(err).toBeNull()
+          expect(address).toBe('93.184.216.34')
+          expect(family).toBe(4)
+          done()
+        },
+      )
+    })
+
+    it('refuses when any resolved address is private (rebinding across records)', (done) => {
+      const { service } = build()
+      resolveTo([
+        { address: '93.184.216.34', family: 4 },
+        { address: '127.0.0.1', family: 4 },
+      ])
+      ;(service as any).guardedLookup('mixed.example.com', {}, (err: any) => {
+        expect(err).toBeInstanceOf(Error)
+        done()
+      })
+    })
+  })
+
   describe('signing secret validation', () => {
     it('rejects a create with a secret shorter than 20 characters', async () => {
       const { service } = build()
@@ -152,6 +227,21 @@ describe('WebhookService', () => {
       expect(mockedAxios.post).toHaveBeenCalledTimes(1)
       const [, , config] = mockedAxios.post.mock.calls[0]
       expect((config as any).headers['X-Signature']).toBe(expected)
+    })
+
+    it('delivers without following redirects and through the guarded agents', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      const notif = notification()
+      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+      mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      const [, , config] = mockedAxios.post.mock.calls[0]
+      expect((config as any).maxRedirects).toBe(0)
+      expect((config as any).httpAgent).toBe((service as any).deliveryHttpAgent)
+      expect((config as any).httpsAgent).toBe((service as any).deliveryHttpsAgent)
     })
 
     it('produces a different signature when the secret differs', async () => {

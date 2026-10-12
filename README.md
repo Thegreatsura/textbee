@@ -119,11 +119,14 @@ curl -X GET "https://api.textbee.dev/api/v1/gateway/messages?direction=received"
 
 The official [textbee MCP server](https://github.com/textbee/textbee-mcp) lets Claude, Cursor, and any MCP-compatible client send and read SMS through your account. Three tools: `send_sms` (send to one or many recipients), `get_messages` (read replies and verification codes, check delivery status), and `list_devices`. Plan limits apply server-side like any other send.
 
-**claude.ai, Claude Desktop, and the Claude mobile apps** (nothing to install):
+**claude.ai, Claude Desktop, and the Claude mobile apps** (nothing to install, works on the Free plan):
 
-1. Open **Settings**, then **Connectors**, then **Add custom connector**.
-2. Enter the name `textbee` and the URL `https://mcp.textbee.dev/mcp`.
-3. Click **Add**, then **Connect**, and paste your API key on the textbee sign-in page.
+1. In claude.ai or Claude Desktop, open **Customize**, then **Connectors**, then **+ Add** and **Add custom connector**.
+2. Enter the name `textbee` and the URL `https://mcp.textbee.dev/mcp`, then click **Continue** twice.
+3. Choose **Sign in now** and, as the OAuth client, **Register automatically**. Click **Add**.
+4. Paste your API key on the textbee sign-in page and click **Connect**.
+
+The mobile apps use connectors added on the web or desktop. On Team and Enterprise plans, an owner adds the connector for the organization first.
 
 **Claude Code:**
 

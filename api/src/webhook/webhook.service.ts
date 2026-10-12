@@ -11,6 +11,10 @@ import {
   WebhookNotificationDocument,
 } from './schemas/webhook-notification.schema'
 import axios from 'axios'
+import * as http from 'http'
+import * as https from 'https'
+import { lookup as dnsLookup } from 'dns'
+import { LookupFunction } from 'net'
 import { v4 as uuidv4 } from 'uuid'
 import { Cron } from '@nestjs/schedule'
 import * as crypto from 'crypto'
@@ -458,9 +462,10 @@ export class WebhookService {
     }
   }
 
-  // Defense-in-depth SSRF check based on hostname/IP literal. Does not perform
-  // DNS resolution; the deny-list also catches the metadata IP commonly used
-  // in cloud SSRF attacks.
+  // Hostname-level check for the create/update path. IP literals are deferred to
+  // isBlockedIpAddress; real hostnames are re-checked against their resolved
+  // address at connection time by guardedLookup, so a name that points at a
+  // private IP is still refused.
   private isPrivateOrLoopbackHost(rawHost: string): boolean {
     if (!rawHost) return true
     const host = rawHost.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
@@ -472,6 +477,16 @@ export class WebhookService {
 
     if (host === 'localhost' || host.endsWith('.localhost')) return true
     if (host === 'broadcasthost') return true
+
+    return this.isBlockedIpAddress(host)
+  }
+
+  // True when the literal is a private, loopback, link-local, carrier-grade-NAT
+  // or reserved address. Used both for IP literals in the URL and for addresses
+  // returned by DNS at connection time.
+  private isBlockedIpAddress(rawIp: string): boolean {
+    if (!rawIp) return true
+    const host = rawIp.toLowerCase().replace(/^\[/, '').replace(/\]$/, '')
 
     // IPv4 literal
     const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
@@ -492,18 +507,58 @@ export class WebhookService {
       return false
     }
 
-    // IPv6 literal (very loose check; only block obvious local ranges)
+    // IPv6 literal (only obvious local ranges)
     if (host.includes(':')) {
       if (host === '::1' || host === '::') return true
-      if (host.startsWith('fe80:') || host.startsWith('fe80::')) return true
+      if (host.startsWith('fe80')) return true
       if (host.startsWith('fc') || host.startsWith('fd')) return true
-      // IPv4-mapped IPv6 loopback
-      if (host.includes('::ffff:127.') || host.includes('::ffff:0:127.'))
-        return true
+      // IPv4-mapped IPv6: unwrap and re-check the embedded IPv4
+      const mapped = host.match(/:((?:\d{1,3}\.){3}\d{1,3})$/)
+      if (mapped) return this.isBlockedIpAddress(mapped[1])
     }
 
     return false
   }
+
+  // Connection-time guard shared by the delivery agents. Resolves the hostname
+  // and refuses the connection when any candidate address is private, so a URL
+  // whose DNS points at an internal host (directly or after a redirect, and
+  // even if the answer changes between validation and connection) cannot reach
+  // it. Honours the self-hosting opt-out.
+  private readonly guardedLookup: LookupFunction = (
+    hostname,
+    options,
+    callback,
+  ) => {
+    const cb = (typeof options === 'function' ? options : callback) as (
+      ...args: any[]
+    ) => void
+    const opts = typeof options === 'object' && options ? options : {}
+
+    dnsLookup(hostname, { ...opts, all: true }, (err, addresses) => {
+      if (err) return cb(err)
+      const list = Array.isArray(addresses) ? addresses : [addresses]
+      if (process.env.WEBHOOK_ALLOW_PRIVATE_HOSTS !== 'true') {
+        for (const a of list) {
+          if (this.isBlockedIpAddress(a.address)) {
+            return cb(
+              new Error('Delivery URL resolves to a disallowed address'),
+            )
+          }
+        }
+      }
+      const first = list[0]
+      if (!first) return cb(new Error('Delivery URL did not resolve'))
+      cb(null, first.address, first.family)
+    })
+  }
+
+  private readonly deliveryHttpAgent = new http.Agent({
+    lookup: this.guardedLookup,
+  })
+  private readonly deliveryHttpsAgent = new https.Agent({
+    lookup: this.guardedLookup,
+  })
 
   async deliverNotification({ sms, user, event }) {
     if (!Object.values(WebhookEvent).includes(event)) {
@@ -690,6 +745,9 @@ export class WebhookService {
           'X-Signature': signature,
         },
         timeout: deliveryTimeoutMs,
+        maxRedirects: 0,
+        httpAgent: this.deliveryHttpAgent,
+        httpsAgent: this.deliveryHttpsAgent,
       })
 
       httpStatusCode = response.status

@@ -123,7 +123,7 @@ The official [textbee MCP server](https://github.com/textbee/textbee-mcp) lets C
 
 1. In claude.ai or Claude Desktop, open **Customize**, then **Connectors**, then **+ Add** and **Add custom connector**.
 2. Enter the name `textbee` and the URL `https://mcp.textbee.dev/mcp`, then click **Continue** twice.
-3. Choose **Sign in now** and, as the OAuth client, **Register automatically**. Click **Add**.
+3. Choose **Sign in now**, leave the OAuth client on the recommended option, and click **Add**.
 4. Paste your API key on the textbee sign-in page and click **Connect**.
 
 The mobile apps use connectors added on the web or desktop. On Team and Enterprise plans, an owner adds the connector for the organization first.

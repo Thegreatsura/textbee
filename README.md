@@ -117,7 +117,28 @@ curl -X GET "https://api.textbee.dev/api/v1/gateway/messages?direction=received"
 
 ### Use with AI agents (MCP)
 
-The official [textbee MCP server](https://github.com/textbee/textbee-mcp) lets Claude Desktop, Claude Code, Cursor, and any MCP-compatible client send and read SMS through your account. Your API key stays on your machine, and plan limits apply server-side like any other send.
+The official [textbee MCP server](https://github.com/textbee/textbee-mcp) lets Claude, Cursor, and any MCP-compatible client send and read SMS through your account. Three tools: `send_sms` (send to one or many recipients), `get_messages` (read replies and verification codes, check delivery status), and `list_devices`. Plan limits apply server-side like any other send.
+
+**claude.ai, Claude Desktop, and the Claude mobile apps** (nothing to install; the Free plan allows one custom connector):
+
+1. In claude.ai or Claude Desktop, open **Customize**, then **Connectors**, then **+ Add** and **Add custom connector**.
+2. Enter the name `textbee` and the URL `https://mcp.textbee.dev/mcp`, then click **Continue** twice.
+3. Choose **Sign in now** and, as the OAuth client, **Register automatically**. Click **Add**.
+4. Paste your API key on the textbee sign-in page and click **Connect**.
+
+The mobile apps use connectors added on the web or desktop. On Team and Enterprise plans, an owner adds the connector for the organization first.
+
+**Claude Code:**
+
+```bash
+# Hosted: run /mcp afterwards and choose Authenticate to sign in with your API key
+claude mcp add --transport http -s user textbee https://mcp.textbee.dev/mcp
+
+# Or local: the key stays on your machine
+claude mcp add textbee -s user -e TEXTBEE_API_KEY=YOUR_API_KEY -- npx -y @textbee/mcp
+```
+
+**Cursor and other MCP clients** (local server, the key stays on your machine):
 
 ```json
 {
@@ -131,7 +152,7 @@ The official [textbee MCP server](https://github.com/textbee/textbee-mcp) lets C
 }
 ```
 
-Three tools: `send_sms` (send to one or many recipients), `get_messages` (read replies and verification codes, check delivery status), and `list_devices`. Self-hosted instances work with `TEXTBEE_BASE_URL`. Details at [textbee.dev/mcp](https://textbee.dev/mcp?ref=gh-readme) and the [agent docs](https://textbee.dev/docs/agents/mcp?ref=gh-readme).
+With the hosted connector, textbee checks your key and does not store it. Self-hosted instances use the local server with `TEXTBEE_BASE_URL`. Full setup at [textbee.dev/mcp](https://textbee.dev/mcp?ref=gh-readme) and the [MCP docs](https://textbee.dev/docs/agents/mcp?ref=gh-readme).
 
 ## Use Cases
  

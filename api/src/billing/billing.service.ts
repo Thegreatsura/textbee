@@ -985,6 +985,7 @@ export class BillingService {
       await this.subscriptionModel.updateMany(
         {
           _id: current._id,
+          user,
           polarEndedAt: null,
           polarEventAt: current.polarEventAt ?? null,
         },

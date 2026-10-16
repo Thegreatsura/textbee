@@ -354,6 +354,19 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
     expect(rowsOf('sub_A').find((r) => same(r.plan, plan('pro')._id)).status).toBe('replaced')
   })
 
+  it('keeps the newer plan when an older event passed its checks before the newer one wrote', async () => {
+    await service.switchPlan(event())
+    const stale = await subs.find({ polarSubscriptionId: 'sub_A' })
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: t('2031-09-20T00:00:00Z') }))
+    jest.spyOn(subs, 'find').mockResolvedValueOnce(stale).mockResolvedValueOnce(stale)
+
+    await service.switchPlan(event({ modifiedAt: t('2031-09-19T00:00:00Z') }))
+
+    expect(activeRows()).toHaveLength(1)
+    expect(String(activeRows()[0].plan)).toBe(String(plan('scale')._id))
+    expect(rowsOf('sub_A').find((r) => same(r.plan, plan('pro')._id))).toMatchObject({ status: 'replaced', subscriptionEndDate: expect.any(Date) })
+  })
+
   it('marks the old plan replaced on a plan change of an outranked subscription', async () => {
     await service.switchPlan(event({ polarSubscriptionId: 'sub_new', newPlanPolarProductId: 'prod_scale_m', subscriptionStartDate: t('2031-06-13T00:00:00Z') }))
     await service.switchPlan(event({ polarSubscriptionId: 'sub_old', subscriptionStartDate: t('2030-02-15T00:00:00Z') }))

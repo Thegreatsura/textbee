@@ -976,17 +976,13 @@ export class BillingService {
         String(row._id) !== String(current._id) &&
         eventAt(row) > eventAt(current),
     )
-    if (newer) {
-      await this.subscriptionModel.updateMany(
-        { _id: current._id },
-        { $set: { isActive: false, status: REPLACED_STATUS } },
-      )
-      return { success: true, plan: plan.name, ignored: 'stale' as const }
-    }
-
     const replace = {
       $set: { isActive: false, status: REPLACED_STATUS, subscriptionEndDate: now },
       $unset: { churnCause: 1 },
+    }
+    if (newer) {
+      await this.subscriptionModel.updateMany({ _id: current._id }, replace)
+      return { success: true, plan: plan.name, ignored: 'stale' as const }
     }
     let deactivated = 0
     if (polarSubscriptionId) {
@@ -1019,7 +1015,15 @@ export class BillingService {
     }
 
     if (!outranked) {
-      const others = { user, isActive: true, _id: { $ne: current._id } }
+      // Rows of this subscription were handled above, by event time.
+      const others = {
+        user,
+        isActive: true,
+        _id: { $ne: current._id },
+        ...(polarSubscriptionId && {
+          polarSubscriptionId: { $ne: polarSubscriptionId },
+        }),
+      }
       // Rows without a Polar id are replaced. Another Polar subscription keeps
       // its status: Polar still bills it.
       const replaced = await this.subscriptionModel.updateMany(
@@ -1032,6 +1036,24 @@ export class BillingService {
       deactivated += (replaced?.modifiedCount ?? 0) + (result?.modifiedCount ?? 0)
     }
     console.log(`Deactivated subscriptions: ${deactivated}`)
+
+    // Two plan events of this subscription can still pass the checks above at
+    // the same time; the newest event keeps the row.
+    if (polarSubscriptionId) {
+      const live = await this.subscriptionModel.find({
+        polarSubscriptionId,
+        isActive: true,
+      })
+      if (live.length > 1) {
+        const [, ...stale] = [...live].sort(
+          (a: any, b: any) => eventAt(b) - eventAt(a),
+        )
+        await this.subscriptionModel.updateMany(
+          { _id: { $in: stale.map((row: any) => row._id) } },
+          replace,
+        )
+      }
+    }
 
     await this.reportFirstPayment({
       userId,

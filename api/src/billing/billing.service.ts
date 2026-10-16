@@ -981,7 +981,15 @@ export class BillingService {
       $unset: { churnCause: 1 },
     }
     if (newer) {
-      await this.subscriptionModel.updateMany({ _id: current._id }, replace)
+      // Only while the row still holds this event; a newer one may own it now.
+      await this.subscriptionModel.updateMany(
+        {
+          _id: current._id,
+          polarEndedAt: null,
+          polarEventAt: current.polarEventAt ?? null,
+        },
+        replace,
+      )
       return { success: true, plan: plan.name, ignored: 'stale' as const }
     }
     let deactivated = 0
@@ -989,6 +997,7 @@ export class BillingService {
       // The other plan rows of this subscription, never one a newer event wrote.
       const history = {
         polarSubscriptionId,
+        user,
         _id: { $ne: current._id },
         polarEndedAt: null,
         ...(current.polarEventAt && {
@@ -1042,11 +1051,15 @@ export class BillingService {
     if (polarSubscriptionId) {
       const live = await this.subscriptionModel.find({
         polarSubscriptionId,
+        user,
         isActive: true,
       })
       if (live.length > 1) {
+        // Rows without an event time rank last; a tie goes to this event's row.
+        const rank = (row: any) => row?.polarEventAt?.getTime?.() ?? 0
+        const mine = (row: any) => Number(String(row._id) === String(current._id))
         const [, ...stale] = [...live].sort(
-          (a: any, b: any) => eventAt(b) - eventAt(a),
+          (a: any, b: any) => rank(b) - rank(a) || mine(b) - mine(a),
         )
         await this.subscriptionModel.updateMany(
           { _id: { $in: stale.map((row: any) => row._id) } },

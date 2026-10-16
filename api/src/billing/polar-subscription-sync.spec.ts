@@ -367,6 +367,17 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
     expect(rowsOf('sub_A').find((r) => same(r.plan, plan('pro')._id))).toMatchObject({ status: 'replaced', subscriptionEndDate: expect.any(Date) })
   })
 
+  it('keeps the row of this event when two live rows have no event time', async () => {
+    subs.seed({ user: new Types.ObjectId(userId), plan: plan('pro')._id, isActive: true, status: 'active', polarSubscriptionId: 'sub_A', polarProductId: 'prod_pro_m' })
+    // A concurrent writer reactivates the Pro row right after the history step.
+    jest.spyOn(subs, 'updateMany').mockResolvedValueOnce({ modifiedCount: 0 })
+
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: null }))
+
+    expect(activeRows()).toHaveLength(1)
+    expect(String(activeRows()[0].plan)).toBe(String(plan('scale')._id))
+  })
+
   it('marks the old plan replaced on a plan change of an outranked subscription', async () => {
     await service.switchPlan(event({ polarSubscriptionId: 'sub_new', newPlanPolarProductId: 'prod_scale_m', subscriptionStartDate: t('2031-06-13T00:00:00Z') }))
     await service.switchPlan(event({ polarSubscriptionId: 'sub_old', subscriptionStartDate: t('2030-02-15T00:00:00Z') }))

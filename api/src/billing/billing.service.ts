@@ -43,7 +43,11 @@ import {
   periodAnchor,
 } from '../notifications/rules/usage-window'
 import { usageEmailKey } from './usage-emails'
-import { decideSync, ENDED_STATUSES } from './polar-subscription-sync'
+import {
+  decideSync,
+  ENDED_STATUSES,
+  REPLACED_STATUS,
+} from './polar-subscription-sync'
 import { formatDateTime, pluralize, verifyLink } from '../mail/email-render'
 import {
   appPublicUrl,
@@ -966,11 +970,30 @@ export class BillingService {
     }
 
     if (!outranked) {
-      const result = await this.subscriptionModel.updateMany(
-        { user, isActive: true, _id: { $ne: current._id } },
-        { $set: { isActive: false, subscriptionEndDate: now } },
+      const others = { user, isActive: true, _id: { $ne: current._id } }
+      // Rows of this subscription or set outside Polar are replaced. Another
+      // Polar subscription keeps its status: Polar still bills it.
+      const replaced = await this.subscriptionModel.updateMany(
+        {
+          ...others,
+          polarSubscriptionId: {
+            $in: polarSubscriptionId ? [null, polarSubscriptionId] : [null],
+          },
+        },
+        {
+          $set: {
+            isActive: false,
+            status: REPLACED_STATUS,
+            subscriptionEndDate: now,
+          },
+        },
       )
-      console.log(`Deactivated subscriptions: ${result?.modifiedCount ?? 0}`)
+      const result = await this.subscriptionModel.updateMany(others, {
+        $set: { isActive: false, subscriptionEndDate: now },
+      })
+      console.log(
+        `Deactivated subscriptions: ${(replaced?.modifiedCount ?? 0) + (result?.modifiedCount ?? 0)}`,
+      )
     }
 
     await this.reportFirstPayment({
@@ -1273,7 +1296,12 @@ export class BillingService {
       })
       // Only rows this sync wrote, which carry their product; older history
       // rows may hold plans set by hand long ago.
-    ).filter((row: any) => row.polarProductId && !ENDED_STATUSES.has(row.status))
+    ).filter(
+      (row: any) =>
+        row.polarProductId &&
+        !ENDED_STATUSES.has(row.status) &&
+        row.status !== REPLACED_STATUS,
+    )
     if (!live.length) return
     const at = (value: any) => value?.getTime?.() ?? 0
     // The newest started subscription, and its newest row (the current plan).

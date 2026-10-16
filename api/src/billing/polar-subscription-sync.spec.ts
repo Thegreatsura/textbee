@@ -25,7 +25,11 @@ function matches(row: Row, query: Row): boolean {
     ) {
       if ('$ne' in condition) return !same(value, condition.$ne)
       if ('$lte' in condition) return !isMissing(value) && value <= condition.$lte
-      if ('$in' in condition) return condition.$in.some((x: unknown) => same(value, x))
+      if ('$in' in condition) {
+        return condition.$in.some((x: unknown) =>
+          x === null ? isMissing(value) : same(value, x),
+        )
+      }
       if ('$nin' in condition) {
         return !condition.$nin.some((x: unknown) =>
           x === null ? isMissing(value) : same(value, x),
@@ -303,9 +307,50 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
 
     expect(activeRows()).toHaveLength(1)
     expect(String(activeRows()[0].plan)).toBe(String(plan('scale')._id))
+    expect(activeRows()[0].status).toBe('active')
     expect(rowsOf('sub_A')).toHaveLength(2)
     // The subscription start, and so the billing period, does not move.
     expect(activeRows()[0].subscriptionStartDate).toEqual(t('2031-08-13T04:12:41Z'))
+  })
+
+  it('marks the row a plan change leaves behind as replaced', async () => {
+    await service.switchPlan(event())
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: t('2031-09-20T00:00:00Z') }))
+
+    const pro = rowsOf('sub_A').find((r) => same(r.plan, plan('pro')._id))
+    expect(pro).toMatchObject({ isActive: false, status: 'replaced' })
+    expect(pro.subscriptionEndDate).toBeInstanceOf(Date)
+  })
+
+  it('keeps the replaced status on history when the subscription ends', async () => {
+    await service.switchPlan(event())
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: t('2031-09-20T00:00:00Z') }))
+    await service.switchPlan(revoked({ newPlanPolarProductId: 'prod_scale_m' }))
+
+    const status = (name: string) => rowsOf('sub_A').find((r) => same(r.plan, plan(name)._id)).status
+    expect(status('pro')).toBe('replaced')
+    expect(status('scale')).toBe('canceled')
+    expect(rowsOf('sub_A').every((r) => r.polarEndedAt)).toBe(true)
+  })
+
+  it('marks a row set outside Polar as replaced by a purchase', async () => {
+    subs.seed({ user: new Types.ObjectId(userId), plan: plan('custom0')._id, isActive: true, status: 'active' })
+
+    await service.switchPlan(event())
+
+    expect(subs.rows.find((r) => !r.polarSubscriptionId)).toMatchObject({ isActive: false, status: 'replaced' })
+  })
+
+  it('hands over to the current plan of the other subscription, not to its replaced row', async () => {
+    const old = { polarSubscriptionId: 'sub_old', subscriptionStartDate: t('2030-02-15T00:00:00Z'), modifiedAt: null }
+    await service.switchPlan(event(old))
+    await service.switchPlan(event({ ...old, newPlanPolarProductId: 'prod_scale_m' }))
+    await service.switchPlan(event({ polarSubscriptionId: 'sub_new', subscriptionStartDate: t('2031-06-13T00:00:00Z') }))
+    await service.switchPlan(revoked({ polarSubscriptionId: 'sub_new' }))
+
+    expect(activeRows()).toHaveLength(1)
+    expect(activeRows()[0].polarSubscriptionId).toBe('sub_old')
+    expect(String(activeRows()[0].plan)).toBe(String(plan('scale')._id))
   })
 
   it('ignores a late event that still carries the old product', async () => {
@@ -323,6 +368,8 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
 
     expect(rowsOf('sub_A')).toHaveLength(2)
     expect(String(activeRows()[0].plan)).toBe(String(plan('pro')._id))
+    expect(activeRows()[0]).toMatchObject({ status: 'active', subscriptionEndDate: null })
+    expect(rowsOf('sub_A').find((r) => !r.isActive).status).toBe('replaced')
   })
 
   it('changes monthly to yearly on the same row', async () => {
@@ -413,7 +460,8 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
 
     expect(activeRows()).toHaveLength(1)
     expect(activeRows()[0].polarSubscriptionId).toBe('sub_new')
-    expect(rowsOf('sub_old')[0].isActive).toBe(false)
+    // Polar still bills the older one, so it keeps the Polar status.
+    expect(rowsOf('sub_old')[0]).toMatchObject({ isActive: false, status: 'active' })
   })
 
   it('finds the user from the stored row when the event has none', async () => {

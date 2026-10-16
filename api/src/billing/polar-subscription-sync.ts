@@ -12,6 +12,13 @@
  */
 export const ENDED_STATUSES = new Set(['canceled', 'incomplete_expired'])
 
+/**
+ * Our own status, never sent by Polar: a newer row took over from this one,
+ * by a plan change on the same Polar subscription or by a purchase replacing
+ * a row set outside Polar. It ends the row, not the Polar subscription.
+ */
+export const REPLACED_STATUS = 'replaced'
+
 export type PolarSnapshot = {
   productId?: string | null
   status?: string | null

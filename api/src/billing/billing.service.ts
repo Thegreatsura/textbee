@@ -43,7 +43,11 @@ import {
   periodAnchor,
 } from '../notifications/rules/usage-window'
 import { usageEmailKey } from './usage-emails'
-import { decideSync, ENDED_STATUSES } from './polar-subscription-sync'
+import {
+  decideSync,
+  ENDED_STATUSES,
+  REPLACED_STATUS,
+} from './polar-subscription-sync'
 import { formatDateTime, pluralize, verifyLink } from '../mail/email-render'
 import {
   appPublicUrl,
@@ -949,11 +953,10 @@ export class BillingService {
 
     // A revoke handled at the same time can end another plan's row of this
     // subscription while this one was written; the end wins.
-    const ended = polarSubscriptionId
-      ? (await this.subscriptionModel.find({ polarSubscriptionId })).find(
-          (row: any) => row.polarEndedAt,
-        )
-      : undefined
+    const linked = polarSubscriptionId
+      ? await this.subscriptionModel.find({ polarSubscriptionId })
+      : []
+    const ended = linked.find((row: any) => row.polarEndedAt)
     if (ended) {
       await this.endPolarSubscription({
         user,
@@ -965,12 +968,91 @@ export class BillingService {
       return { success: true, plan: plan.name, ignored: 'ended' as const }
     }
 
-    if (!outranked) {
-      const result = await this.subscriptionModel.updateMany(
-        { user, isActive: true, _id: { $ne: current._id } },
-        { $set: { isActive: false, subscriptionEndDate: now } },
+    // A plan change of this subscription handled at the same time with a
+    // newer event wins; this row becomes its history.
+    const eventAt = (row: any) => row?.polarEventAt?.getTime?.() ?? -Infinity
+    const newer = linked.some(
+      (row: any) =>
+        String(row._id) !== String(current._id) &&
+        eventAt(row) > eventAt(current),
+    )
+    const replace = {
+      $set: { isActive: false, status: REPLACED_STATUS, subscriptionEndDate: now },
+      $unset: { churnCause: 1 },
+    }
+    if (newer) {
+      await this.subscriptionModel.updateMany({ _id: current._id }, replace)
+      return { success: true, plan: plan.name, ignored: 'stale' as const }
+    }
+    let deactivated = 0
+    if (polarSubscriptionId) {
+      // The other plan rows of this subscription, never one a newer event wrote.
+      const history = {
+        polarSubscriptionId,
+        _id: { $ne: current._id },
+        polarEndedAt: null,
+        ...(current.polarEventAt && {
+          $or: [
+            { polarEventAt: null },
+            { polarEventAt: { $lte: current.polarEventAt } },
+          ],
+        }),
+      }
+      const replaced = await this.subscriptionModel.updateMany(
+        { ...history, isActive: true },
+        replace,
       )
-      console.log(`Deactivated subscriptions: ${result?.modifiedCount ?? 0}`)
+      // Rows another subscription turned off earlier keep their end date.
+      await this.subscriptionModel.updateMany(
+        {
+          ...history,
+          isActive: false,
+          status: { $nin: [REPLACED_STATUS, ...ENDED_STATUSES] },
+        },
+        { $set: { status: REPLACED_STATUS }, $unset: { churnCause: 1 } },
+      )
+      deactivated += replaced?.modifiedCount ?? 0
+    }
+
+    if (!outranked) {
+      // Rows of this subscription were handled above, by event time.
+      const others = {
+        user,
+        isActive: true,
+        _id: { $ne: current._id },
+        ...(polarSubscriptionId && {
+          polarSubscriptionId: { $ne: polarSubscriptionId },
+        }),
+      }
+      // Rows without a Polar id are replaced. Another Polar subscription keeps
+      // its status: Polar still bills it.
+      const replaced = await this.subscriptionModel.updateMany(
+        { ...others, polarSubscriptionId: null },
+        replace,
+      )
+      const result = await this.subscriptionModel.updateMany(others, {
+        $set: { isActive: false, subscriptionEndDate: now },
+      })
+      deactivated += (replaced?.modifiedCount ?? 0) + (result?.modifiedCount ?? 0)
+    }
+    console.log(`Deactivated subscriptions: ${deactivated}`)
+
+    // Two plan events of this subscription can still pass the checks above at
+    // the same time; the newest event keeps the row.
+    if (polarSubscriptionId) {
+      const live = await this.subscriptionModel.find({
+        polarSubscriptionId,
+        isActive: true,
+      })
+      if (live.length > 1) {
+        const [, ...stale] = [...live].sort(
+          (a: any, b: any) => eventAt(b) - eventAt(a),
+        )
+        await this.subscriptionModel.updateMany(
+          { _id: { $in: stale.map((row: any) => row._id) } },
+          replace,
+        )
+      }
     }
 
     await this.reportFirstPayment({
@@ -1273,7 +1355,12 @@ export class BillingService {
       })
       // Only rows this sync wrote, which carry their product; older history
       // rows may hold plans set by hand long ago.
-    ).filter((row: any) => row.polarProductId && !ENDED_STATUSES.has(row.status))
+    ).filter(
+      (row: any) =>
+        row.polarProductId &&
+        !ENDED_STATUSES.has(row.status) &&
+        row.status !== REPLACED_STATUS,
+    )
     if (!live.length) return
     const at = (value: any) => value?.getTime?.() ?? 0
     // The newest started subscription, and its newest row (the current plan).

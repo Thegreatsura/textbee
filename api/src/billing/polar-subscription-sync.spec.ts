@@ -333,6 +333,38 @@ describe('BillingService.switchPlan - Polar event sequences', () => {
     expect(rowsOf('sub_A').every((r) => r.polarEndedAt)).toBe(true)
   })
 
+  it('clears the end cause of a row a plan change replaces', async () => {
+    await service.switchPlan(event({ cancelAtPeriodEnd: true }))
+    subs.rows[0].churnCause = 'customer'
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: t('2031-09-20T00:00:00Z') }))
+
+    expect(rowsOf('sub_A').find((r) => !r.isActive).churnCause).toBeUndefined()
+  })
+
+  it('keeps the newer plan when an older event of the same subscription races it', async () => {
+    await service.switchPlan(event())
+    const stale = await subs.find({ polarSubscriptionId: 'sub_A' })
+    await service.switchPlan(event({ newPlanPolarProductId: 'prod_scale_m', modifiedAt: t('2031-09-20T00:00:00Z') }))
+    jest.spyOn(subs, 'find').mockResolvedValueOnce(stale)
+
+    await service.switchPlan(event({ modifiedAt: t('2031-09-19T00:00:00Z') }))
+
+    expect(activeRows()).toHaveLength(1)
+    expect(String(activeRows()[0].plan)).toBe(String(plan('scale')._id))
+    expect(rowsOf('sub_A').find((r) => same(r.plan, plan('pro')._id)).status).toBe('replaced')
+  })
+
+  it('marks the old plan replaced on a plan change of an outranked subscription', async () => {
+    await service.switchPlan(event({ polarSubscriptionId: 'sub_new', newPlanPolarProductId: 'prod_scale_m', subscriptionStartDate: t('2031-06-13T00:00:00Z') }))
+    await service.switchPlan(event({ polarSubscriptionId: 'sub_old', subscriptionStartDate: t('2030-02-15T00:00:00Z') }))
+    await service.switchPlan(event({ polarSubscriptionId: 'sub_old', newPlanPolarProductId: 'prod_scale_y', subscriptionStartDate: t('2030-02-15T00:00:00Z'), modifiedAt: t('2031-09-20T00:00:00Z') }))
+
+    expect(activeRows()[0].polarSubscriptionId).toBe('sub_new')
+    const old = (name: string) => rowsOf('sub_old').find((r) => same(r.plan, plan(name)._id))
+    expect(old('pro')).toMatchObject({ isActive: false, status: 'replaced' })
+    expect(old('scale')).toMatchObject({ isActive: false, status: 'active' })
+  })
+
   it('marks a row set outside Polar as replaced by a purchase', async () => {
     subs.seed({ user: new Types.ObjectId(userId), plan: plan('custom0')._id, isActive: true, status: 'active' })
 

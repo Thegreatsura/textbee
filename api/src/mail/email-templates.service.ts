@@ -44,15 +44,29 @@ interface EmailDefaults {
 export interface ResolvedEmail {
   template: DefaultEmailTemplate
   enabled: boolean
-  // Override version whose copy was used, or 0 for the default copy.
+  // Override version whose copy was used, or 0 for the base or bundled copy.
   version: number
   document?: RenderedDocument
 }
 
 type Override = Pick<
   EmailTemplate,
-  'key' | 'subject' | 'preheader' | 'body' | 'enabled' | 'version'
+  | 'key'
+  | 'subject'
+  | 'preheader'
+  | 'body'
+  | 'baseSubject'
+  | 'basePreheader'
+  | 'baseBody'
+  | 'enabled'
+  | 'version'
 >
+
+interface Copy {
+  subject: string
+  preheader: string
+  body: string
+}
 
 export const CACHE_TTL_MS = 60 * 1000
 const COPY_FIELDS = ['subject', 'preheader', 'body'] as const
@@ -66,6 +80,10 @@ export const EMAIL_DEFAULTS: EmailDefaults = JSON.parse(
 
 const hasCopy = (row?: Override) =>
   !!row && COPY_FIELDS.some((f) => typeof row[f] === 'string')
+
+const hasBaseCopy = (row?: Override) =>
+  !!row &&
+  [row.baseSubject, row.basePreheader, row.baseBody].every((f) => typeof f === 'string')
 
 /** Placeholders an edited template may use. */
 export const allowedPlaceholders = (
@@ -88,6 +106,7 @@ const outside = (text: string, allowed: Set<string>) =>
 export class EmailTemplatesService {
   private readonly logger = new Logger(EmailTemplatesService.name)
   private cache?: { at: number; rows: Map<string, Override> }
+  private readonly baseMissingLogged = new Set<string>()
 
   constructor(
     @InjectModel(EmailTemplate.name)
@@ -108,7 +127,20 @@ export class EmailTemplatesService {
     }
     try {
       const rows = (await this.emailTemplateModel
-        .find({}, { key: 1, subject: 1, preheader: 1, body: 1, enabled: 1, version: 1 })
+        .find(
+          {},
+          {
+            key: 1,
+            subject: 1,
+            preheader: 1,
+            body: 1,
+            baseSubject: 1,
+            basePreheader: 1,
+            baseBody: 1,
+            enabled: 1,
+            version: 1,
+          },
+        )
         .lean()) as Override[]
       this.cache = { at: Date.now(), rows: new Map(rows.map((r) => [r.key, r])) }
     } catch (e) {
@@ -123,7 +155,10 @@ export class EmailTemplatesService {
     this.logger.warn(`email_template_override_failed key=${key} reason=${reason}`)
   }
 
-  /** Effective copy rendered with the given variables, falling back to the default on a bad edit. */
+  /**
+   * Effective copy rendered with the given variables: the admin edit, else the
+   * base copy, else the bundled copy. A copy that does not render is skipped.
+   */
   async render(key: string, vars: TemplateVars): Promise<ResolvedEmail> {
     const template = this.getDefault(key)
     if (!template) throw new Error(`Unknown email template: ${key}`)
@@ -141,51 +176,77 @@ export class EmailTemplatesService {
     const defaultFooter = EMAIL_DEFAULTS.footers.find((f) => f.key === footerKey)
     if (!defaultFooter) throw new Error(`Unknown email footer: ${footerKey}`)
 
-    let copy = { subject: template.subject, preheader: template.preheader, body: template.body }
-    let version = 0
-    if (hasCopy(row)) {
-      const edited = {
-        subject: row.subject ?? template.subject,
-        preheader: row.preheader ?? template.preheader,
-        body: row.body ?? template.body,
-      }
-      const text = `${edited.subject}\n${edited.preheader}\n${edited.body}`
-      const bad = outside(text, allowedPlaceholders(template, edited.body))
-      if (bad.length) {
-        this.overrideFailed(key, `placeholder ${bad.join(',')}`)
-      } else {
-        copy = edited
-        version = row.version ?? 0
-      }
-    }
-
-    let footer = defaultFooter.body
-    const footerRow = rows.get(footerKey)
-    if (typeof footerRow?.body === 'string') {
-      const bad = outside(footerRow.body, new Set(['year', 'unsubscribeUrl']))
-      if (bad.length) this.overrideFailed(footerKey, `placeholder ${bad.join(',')}`)
-      else footer = footerRow.body
-    }
-
-    const shellTemplate = { ...copy, shell: template.shell }
-    try {
-      return { template, enabled, version, document: renderDocument(shellTemplate, footer, vars) }
-    } catch (e) {
-      const edited = version > 0 || footer !== defaultFooter.body
-      if (!(e instanceof MissingVariableError) || !edited) throw e
-      this.overrideFailed(key, `missing ${e.variable}`)
-    }
-    const fallback = {
+    const bundled: Copy = {
       subject: template.subject,
       preheader: template.preheader,
       body: template.body,
-      shell: template.shell,
+    }
+    const candidates: Array<{ copy: Copy; version: number; label: string }> = []
+    if (hasCopy(row)) {
+      const base = hasBaseCopy(row) ? baseCopy(row) : bundled
+      candidates.push({
+        copy: {
+          subject: row.subject ?? base.subject,
+          preheader: row.preheader ?? base.preheader,
+          body: row.body ?? base.body,
+        },
+        version: row.version ?? 0,
+        label: 'edit',
+      })
+    }
+    if (hasBaseCopy(row)) {
+      candidates.push({ copy: baseCopy(row), version: 0, label: 'base' })
+    } else if (!this.baseMissingLogged.has(key)) {
+      this.baseMissingLogged.add(key)
+      this.logger.warn(`email_template_base_missing key=${key}`)
+    }
+    candidates.push({ copy: bundled, version: 0, label: 'bundled' })
+
+    const footerRow = rows.get(footerKey)
+    const footer =
+      [footerRow?.body, footerRow?.baseBody].find(
+        (body): body is string =>
+          typeof body === 'string' && this.validFooter(footerKey, body),
+      ) ?? defaultFooter.body
+
+    for (const { copy, version, label } of candidates) {
+      const text = `${copy.subject}\n${copy.preheader}\n${copy.body}`
+      const bad = outside(text, allowedPlaceholders(template, copy.body))
+      if (bad.length) {
+        this.overrideFailed(key, `${label} placeholder ${bad.join(',')}`)
+        continue
+      }
+      try {
+        const document = renderDocument({ ...copy, shell: template.shell }, footer, vars)
+        return { template, enabled, version, document }
+      } catch (e) {
+        if (!(e instanceof MissingVariableError)) throw e
+        this.overrideFailed(key, `${label} missing ${e.variable}`)
+      }
     }
     return {
       template,
       enabled,
       version: 0,
-      document: renderDocument(fallback, defaultFooter.body, vars),
+      document: renderDocument(
+        { ...bundled, shell: template.shell },
+        defaultFooter.body,
+        vars,
+      ),
     }
+  }
+
+  private validFooter(footerKey: string, body: string): boolean {
+    const bad = outside(body, new Set(['year', 'unsubscribeUrl']))
+    if (bad.length) this.overrideFailed(footerKey, `placeholder ${bad.join(',')}`)
+    return !bad.length
+  }
+}
+
+function baseCopy(row: Override): Copy {
+  return {
+    subject: row.baseSubject ?? '',
+    preheader: row.basePreheader ?? '',
+    body: row.baseBody ?? '',
   }
 }

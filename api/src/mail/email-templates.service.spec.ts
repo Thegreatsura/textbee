@@ -26,7 +26,7 @@ describe('EmailTemplatesService', () => {
     expect(r.version).toBe(0)
     expect(r.document.subject).toBe('Your textbee password was changed')
     expect(r.document.text).toContain('Hi Ada,')
-    expect(r.document.html).toContain('Nuver Labs LLC')
+    expect(r.document.text).toContain('This is a notice about your textbee account.')
   })
 
   it('uses override fields that are present and keeps the rest', async () => {
@@ -38,7 +38,7 @@ describe('EmailTemplatesService', () => {
 
     expect(r.version).toBe(4)
     expect(r.document.subject).toBe('Password updated, Ada')
-    expect(r.document.text).toContain('Your textbee password has been changed')
+    expect(r.document.text).toContain('The password on your textbee account was changed.')
   })
 
   it('falls back to the default when an override uses an unknown placeholder', async () => {
@@ -108,7 +108,9 @@ describe('EmailTemplatesService', () => {
       billingUrl: 'https://app.test/b',
     })
 
-    expect(warn).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('email_template_override_failed'),
+    )
     expect(r.version).toBe(5)
     expect(r.document.text).toContain('Messages in the last 30 days: 241 of 300')
   })
@@ -147,8 +149,100 @@ describe('EmailTemplatesService', () => {
 
     const bad = build([{ key: 'footer_notice', body: 'Footer {{firstName}}', version: 2 }])
     const r = await bad.service.render('T3', T3_VARS)
-    expect(r.document.text).toContain('Nuver Labs LLC')
+    expect(r.document.text).toContain('This is a notice about your textbee account.')
     expect(bad.warn).toHaveBeenCalled()
+  })
+
+  it('renders the base copy when the row has one', async () => {
+    const { service } = build([
+      {
+        key: 'T3',
+        baseSubject: 'Base subject for {{firstName}}',
+        basePreheader: 'Base preheader',
+        baseBody: 'Base body',
+        version: 0,
+      },
+      { key: 'footer_notice', baseBody: 'Base footer {{year}}', version: 0 },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+
+    expect(r.version).toBe(0)
+    expect(r.document.subject).toBe('Base subject for Ada')
+    expect(r.document.text).toContain('Base body')
+    expect(r.document.text).toContain('Base footer 2026')
+  })
+
+  it('fills fields an edit leaves out from the base copy', async () => {
+    const { service } = build([
+      {
+        key: 'T3',
+        subject: 'Edited subject',
+        baseSubject: 'Base subject',
+        basePreheader: 'Base preheader',
+        baseBody: 'Base body',
+        version: 3,
+      },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+
+    expect(r.version).toBe(3)
+    expect(r.document.subject).toBe('Edited subject')
+    expect(r.document.text).toContain('Base body')
+  })
+
+  it('uses the base copy when the edit does not render', async () => {
+    const { service, warn } = build([
+      {
+        key: 'T3',
+        body: 'Hi {{nickname}}',
+        baseSubject: 'Base subject',
+        basePreheader: '',
+        baseBody: 'Base body',
+        version: 2,
+      },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+
+    expect(r.version).toBe(0)
+    expect(r.document.text).toContain('Base body')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('edit placeholder nickname'))
+  })
+
+  it('uses the bundled copy when the base copy does not render', async () => {
+    const { service, warn } = build([
+      { key: 'T3', baseSubject: 'S', basePreheader: '', baseBody: 'Hi {{nickname}}', version: 0 },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+
+    expect(r.document.subject).toBe('Your textbee password was changed')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('base placeholder nickname'))
+  })
+
+  it('prefers a footer edit over the base footer', async () => {
+    const { service } = build([
+      { key: 'footer_notice', body: 'Edited footer', baseBody: 'Base footer', version: 2 },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+
+    expect(r.document.text).toContain('Edited footer')
+    expect(r.document.text).not.toContain('Base footer')
+  })
+
+  it('warns once per key when the base copy is missing', async () => {
+    const { service, warn } = build([
+      { key: 'T3', baseSubject: 'S', baseBody: 'No preheader', version: 0 },
+    ])
+
+    const r = await service.render('T3', T3_VARS)
+    await service.render('T3', T3_VARS)
+
+    expect(r.document.subject).toBe('Your textbee password was changed')
+    expect(warn.mock.calls.filter(([m]) => m === 'email_template_base_missing key=T3')).toHaveLength(1)
   })
 
   it('reads the overrides once per cache window', async () => {
@@ -197,7 +291,7 @@ describe('U5 versions', () => {
 
     expect(r.document.subject).toBe('Your batch was not sent')
     expect(r.document.text).toContain('1 message left today')
-    expect(r.document.text).toContain('send the full batch after midnight UTC')
+    expect(r.document.text).toContain('You can send it after midnight UTC.')
     expect(r.document.text).not.toContain('per batch')
   })
 

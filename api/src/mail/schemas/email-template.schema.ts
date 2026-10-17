@@ -37,7 +37,7 @@ const EmailTemplateHistoryEntrySchema = SchemaFactory.createForClass(
   EmailTemplateHistoryEntry,
 )
 
-// Admin overrides of the bundled email copy. No row means the default applies.
+// Admin overrides and base copy for the bundled emails. No row means the bundled copy applies.
 @Schema({ collection: 'emailtemplates' })
 export class EmailTemplate {
   @Prop({ type: String, required: true, unique: true })
@@ -51,6 +51,16 @@ export class EmailTemplate {
 
   @Prop({ type: String })
   body?: string
+
+  // Default copy written by the admin app; the bundled copy applies when absent.
+  @Prop({ type: String })
+  baseSubject?: string
+
+  @Prop({ type: String })
+  basePreheader?: string
+
+  @Prop({ type: String })
+  baseBody?: string
 
   @Prop({ type: Boolean })
   enabled?: boolean

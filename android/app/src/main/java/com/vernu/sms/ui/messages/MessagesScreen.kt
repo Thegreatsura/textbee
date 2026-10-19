@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.Intent
 import android.os.Build
+import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.vernu.sms.AppConstants
 import com.vernu.sms.BuildConfig
@@ -33,6 +34,7 @@ import com.vernu.sms.helpers.DeviceLog
 import com.vernu.sms.helpers.LogEntry
 import com.vernu.sms.helpers.SharedPreferenceHelper
 import com.vernu.sms.ui.theme.StatusColors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -270,8 +272,15 @@ private suspend fun shareDiagnostics(context: android.content.Context) {
         "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}\n" +
         "device $deviceId\n" +
         "exported ${eventTimeFormat.format(java.util.Date())}"
-    val file = withContext(Dispatchers.IO) { DeviceLog.export(context, header) }
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val uri = try {
+        val file = withContext(Dispatchers.IO) { DeviceLog.export(context, header) }
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not export diagnostics", Toast.LENGTH_SHORT).show()
+        return
+    }
     context.startActivity(
         Intent.createChooser(
             Intent(Intent.ACTION_SEND).apply {

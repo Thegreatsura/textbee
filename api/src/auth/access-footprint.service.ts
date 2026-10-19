@@ -43,6 +43,14 @@ const DUPLICATE_KEY = 11000
  * window returns before any query. A first sighting costs one upsert plus one
  * update of the account's summary.
  */
+const FOOTPRINT_PLACE_FIELDS = [
+  'region',
+  'regionCode',
+  'city',
+  'timezone',
+  'asn',
+] as const
+
 @Injectable()
 export class AccessFootprintService {
   private readonly logger = new Logger(AccessFootprintService.name)
@@ -143,6 +151,17 @@ export class AccessFootprintService {
       addressesSeen >= MAX_ORIGINS_PER_CHANNEL &&
       (await this.channelCount(userId, channel)) >= MAX_ORIGINS_PER_CHANNEL
 
+    // Written as a set, so a newer reading never keeps an older city.
+    const placeSet: Record<string, string | number> = {}
+    const placeUnset: Record<string, ''> = {}
+    if (Object.keys(location).length) {
+      for (const field of FOOTPRINT_PLACE_FIELDS) {
+        const value = location[field]
+        if (value !== undefined) placeSet[field] = value
+        else placeUnset[field] = ''
+      }
+    }
+
     const result = await this.footprintModel.updateOne(
       { user: userId, channel, ip },
       {
@@ -150,14 +169,11 @@ export class AccessFootprintService {
         $set: {
           lastSeenAt: now,
           ...(country && { country }),
-          ...(location.region && { region: location.region }),
-          ...(location.regionCode && { regionCode: location.regionCode }),
-          ...(location.city && { city: location.city }),
-          ...(location.timezone && { timezone: location.timezone }),
-          ...(location.asn && { asn: location.asn }),
+          ...placeSet,
           ...(client && { client }),
           ...(apiKeyId && { apiKey: apiKeyId }),
         },
+        ...(Object.keys(placeUnset).length && { $unset: placeUnset }),
       },
       // At the ceiling a known origin still refreshes; a new one is not added.
       { upsert: !atCeiling },

@@ -152,6 +152,15 @@ export function cleanCountry(value: unknown): string | undefined {
   return UNPLACED_REGIONS.has(code) ? undefined : code
 }
 
+/** Header values arrive as latin1, so raw UTF-8 bytes show up as mojibake. */
+function repairUtf8(text: string): string {
+  if (!/[\u0080-\u00ff]/.test(text) || /[^\u0000-\u00ff]/.test(text)) {
+    return text
+  }
+  const decoded = Buffer.from(text, 'latin1').toString('utf8')
+  return decoded.includes('\ufffd') ? text : decoded
+}
+
 /** A region or city name, bounded and decoded, or nothing. */
 export function cleanPlaceName(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -163,7 +172,7 @@ export function cleanPlaceName(value: unknown): string | undefined {
       // Not percent encoded after all.
     }
   }
-  text = text.replace(CONTROL_CHARACTERS, '').trim()
+  text = repairUtf8(text).replace(CONTROL_CHARACTERS, '').trim()
   return text ? text.slice(0, MAX_PLACE_NAME) : undefined
 }
 

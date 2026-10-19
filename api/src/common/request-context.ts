@@ -67,11 +67,11 @@ export function resolveRequestContext(
   // gaps. For a call made straight to the API there is no proxy and the edge
   // is the only source.
   const edge = resolveClientAddress(req)
-  // Taken whole from one source, so a city never pairs with another place's region.
-  const forwardedLocation = cleanLocation(client)
-  const location = Object.keys(forwardedLocation).length
-    ? forwardedLocation
-    : cleanLocation(edge)
+  // Taken whole from one source. When the dashboard forwarded anything, the
+  // edge describes the dashboard server, not the visitor.
+  const forwarded =
+    client !== null && typeof client === 'object' && Object.keys(client).length
+  const location = forwarded ? cleanLocation(client) : cleanLocation(edge)
 
   return {
     ...location,

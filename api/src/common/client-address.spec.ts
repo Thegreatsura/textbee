@@ -196,6 +196,12 @@ describe('location cleaners', () => {
     expect(cleanPlaceName('São Paulo')).toBe('São Paulo')
   })
 
+  it('repairs UTF-8 that arrived as latin1', () => {
+    const mangled = Buffer.from('Zürich', 'utf8').toString('latin1')
+    expect(cleanPlaceName(mangled)).toBe('Zürich')
+    expect(cleanPlaceName('Zürich')).toBe('Zürich')
+  })
+
   it('keeps a name with a stray percent sign as it is', () => {
     expect(cleanPlaceName('100% Town')).toBe('100% Town')
   })

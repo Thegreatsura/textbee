@@ -140,6 +140,29 @@ describe('AccessFootprintService', () => {
     expect(summary.$set['access.lastLocation'].at).toBeInstanceOf(Date)
   })
 
+  it('clears place fields the newer reading does not carry', async () => {
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    service.record({
+      request: buildRequest({
+        headers: {
+          'cf-connecting-ip': '203.0.113.9',
+          'cf-ipcountry': 'US',
+          'cf-region': 'Texas',
+        },
+      }),
+    })
+    await flush()
+
+    const [, update] = footprintModel.updateOne.mock.calls[0]
+    expect(update.$set.region).toBe('Texas')
+    expect(update.$unset).toEqual({
+      regionCode: '',
+      city: '',
+      timezone: '',
+      asn: '',
+    })
+  })
+
   it('keeps the last location for the dashboard only', async () => {
     process.env.TRUSTED_PROXY = 'cloudflare'
     service.record({
@@ -164,6 +187,7 @@ describe('AccessFootprintService', () => {
     const [, update] = footprintModel.updateOne.mock.calls[0]
     expect(update.$set).not.toHaveProperty('country')
     expect(Object.values(update.$set)).not.toContain(undefined)
+    expect(update).not.toHaveProperty('$unset')
 
     const [, summary] = userModel.updateOne.mock.calls[0]
     expect(summary.$addToSet).toEqual({ 'access.channels': 'api' })

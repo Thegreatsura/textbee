@@ -193,6 +193,17 @@ describe('resolveRequestContext', () => {
       })
     })
 
+    it('takes no edge location when the dashboard forwarded a context', () => {
+      process.env.TRUSTED_PROXY = 'cloudflare'
+      const context = resolveRequestContext(
+        { ip: '203.0.113.4', country: 'US' },
+        edgeReq,
+      )
+      expect(context.city).toBeUndefined()
+      expect(context.timezone).toBeUndefined()
+      expect(context.country).toBe('US')
+    })
+
     it('drops forwarded values that do not clean', () => {
       const context = resolveRequestContext(
         { timezone: 'Not/AZone', asn: 'AS1', city: {} },

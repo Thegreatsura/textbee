@@ -34,6 +34,22 @@ export class AccessFootprint {
   @Prop({ type: String })
   country?: string
 
+  @Prop({ type: String })
+  region?: string
+
+  @Prop({ type: String })
+  regionCode?: string
+
+  @Prop({ type: String })
+  city?: string
+
+  @Prop({ type: String })
+  timezone?: string
+
+  // Autonomous system number of the caller's network.
+  @Prop({ type: Number })
+  asn?: number
+
   // Bounded family label for the caller, for example textbee-js or curl.
   @Prop({ type: String })
   client?: string

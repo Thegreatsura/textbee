@@ -128,3 +128,31 @@ describe('clientContextFromHeaders with a region', () => {
     })
   })
 })
+
+describe('clientContextFromHeaders with a location', () => {
+  it('forwards the edge location fields', () => {
+    expect(
+      clientContextFromHeaders({
+        'cf-ipcountry': 'US',
+        'cf-region': 'Texas',
+        'cf-region-code': 'TX',
+        'cf-ipcity': 'Austin',
+        'cf-ipcontinent': 'NA',
+        'cf-timezone': 'America/Chicago',
+        'x-client-asn': '7018',
+      })
+    ).toEqual({
+      country: 'US',
+      region: 'Texas',
+      regionCode: 'TX',
+      city: 'Austin',
+      continent: 'NA',
+      timezone: 'America/Chicago',
+      asn: 7018,
+    })
+  })
+
+  it('drops a network number that is not a number', () => {
+    expect(clientContextFromHeaders({ 'x-client-asn': 'AS7018' })).toBeUndefined()
+  })
+})

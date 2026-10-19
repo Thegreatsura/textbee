@@ -23,6 +23,8 @@ import {
 import { MailService } from '../mail/mail.service'
 import { TurnstileService } from '../common/turnstile.service'
 import { escapeRegExp } from '../common/escape-regexp'
+import { pickLocation } from '../common/client-address'
+import { RequestContext } from '../common/request-context'
 import { RequestResetPasswordInputDTO, ResetPasswordInputDTO } from './auth.dto'
 import { AccessFootprintService } from './access-footprint.service'
 import {
@@ -63,10 +65,7 @@ export class AuthService {
     private readonly analyticsService: AnalyticsService,
   ) {}
 
-  async login(
-    userData: any,
-    requestContext?: { ip?: string; userAgent?: string; country?: string },
-  ) {
+  async login(userData: any, requestContext?: RequestContext) {
     await this.turnstileService.verify(userData.turnstileToken)
 
     const user = await this.usersService.findOneWithPassword({
@@ -134,12 +133,7 @@ export class AuthService {
 
   async loginWithGoogle(
     idToken: string,
-    signupContext?: {
-      attribution?: unknown
-      ip?: string
-      userAgent?: string
-      country?: string
-    },
+    signupContext?: RequestContext & { attribution?: unknown },
   ) {
     const response = await axios.get(
       `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
@@ -163,6 +157,7 @@ export class AuthService {
         attribution: sanitizeAttribution(signupContext?.attribution),
         userAgent: signupContext?.userAgent,
         country: signupContext?.country,
+        location: pickLocation(signupContext),
       })
     }
 
@@ -189,10 +184,7 @@ export class AuthService {
     await user.save()
 
     if (isNewUser) {
-      this.analyticsService.userRegistered(user as any, {
-        ip: signupContext?.ip,
-        userAgent: signupContext?.userAgent,
-      })
+      this.analyticsService.userRegistered(user as any, signupContext)
     }
 
     const payload = { email: user.email, sub: user._id }
@@ -203,10 +195,7 @@ export class AuthService {
     }
   }
 
-  async register(
-    userData: any,
-    requestContext?: { ip?: string; userAgent?: string; country?: string },
-  ) {
+  async register(userData: any, requestContext?: RequestContext) {
     await this.turnstileService.verify(userData.turnstileToken)
 
     const existingUser = await this.usersService.findOne({
@@ -235,6 +224,7 @@ export class AuthService {
       attribution: sanitizeAttribution(userData.attribution),
       userAgent: requestContext?.userAgent,
       country: requestContext?.country,
+      location: pickLocation(requestContext),
     })
 
     user.lastLoginAt = new Date()

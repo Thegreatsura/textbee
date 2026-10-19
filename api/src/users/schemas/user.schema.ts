@@ -100,6 +100,35 @@ export class UserMilestones {
 
 const UserMilestonesSchema = SchemaFactory.createForClass(UserMilestones)
 
+@Schema({ _id: false })
+export class UserLocation {
+  @Prop({ type: String })
+  country?: string
+
+  @Prop({ type: String })
+  region?: string
+
+  @Prop({ type: String })
+  regionCode?: string
+
+  @Prop({ type: String })
+  city?: string
+
+  @Prop({ type: String })
+  continent?: string
+
+  @Prop({ type: String })
+  timezone?: string
+
+  @Prop({ type: Number })
+  asn?: number
+
+  @Prop({ type: Date })
+  at?: Date
+}
+
+const UserLocationSchema = SchemaFactory.createForClass(UserLocation)
+
 // Lifetime summary of where an account has been used from. The rows behind it
 // live in their own collection, one per distinct origin, and expire; these
 // sets do not, so a report can still say which regions an account has ever
@@ -116,6 +145,10 @@ export class UserAccess {
   // one is written, so one account cannot grow the collection without bound.
   @Prop({ type: Number, default: 0 })
   addressesSeen: number
+
+  // Where the dashboard was last used from.
+  @Prop({ type: UserLocationSchema })
+  lastLocation?: UserLocation
 
   @Prop({ type: Date })
   updatedAt?: Date
@@ -271,6 +304,9 @@ export class User {
   // edge network reported one.
   @Prop({ type: String })
   signupCountry?: string
+
+  @Prop({ type: UserLocationSchema })
+  signupLocation?: UserLocation
 
   @Prop({ type: UserAccessSchema, default: () => ({}) })
   access?: UserAccess

@@ -47,4 +47,13 @@ describe('localMidnight', () => {
     expect(localMidnight('US', now)).toBeUndefined()
     expect(localMidnight(undefined, now)).toBeUndefined()
   })
+
+  it('uses the time zone when one is known', () => {
+    expect(localMidnight('US', now, 'America/Chicago')).toBe('18:00')
+    expect(localMidnight('IN', now, 'America/New_York')).toBe('19:00')
+  })
+
+  it('falls back to the country when the time zone is invalid', () => {
+    expect(localMidnight('IN', now, 'Not/AZone')).toBe('05:30')
+  })
 })

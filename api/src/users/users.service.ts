@@ -9,6 +9,7 @@ import {
 } from './onboarding.constants'
 import { AttributionInput, normalizeSignupSource } from './attribution'
 import { classifyDevice, describeClient } from '../common/user-agent'
+import { ClientLocation } from '../common/client-address'
 
 export type UserMilestoneField =
   | 'firstDeviceAt'
@@ -44,6 +45,7 @@ export class UsersService {
     attribution,
     userAgent,
     country,
+    location,
   }: {
     name: string
     email: string
@@ -53,6 +55,7 @@ export class UsersService {
     attribution?: AttributionInput
     userAgent?: string
     country?: string
+    location?: ClientLocation
   }) {
     if (await this.findOne({ email })) {
       throw new HttpException(
@@ -74,6 +77,9 @@ export class UsersService {
       signupSource: normalizeSignupSource(attribution),
       signupDevice: classifyDevice(userAgent),
       signupCountry: country,
+      ...(location && {
+        signupLocation: { ...(country && { country }), ...location },
+      }),
       ...(client && { client: { signup: client, last: client } }),
     })
     return await newUser.save()

@@ -1,4 +1,5 @@
 import { BillingNotificationType } from './schemas/billing-notification.schema'
+import { cleanTimezone } from '../common/client-address'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
@@ -72,9 +73,14 @@ const SINGLE_ZONE: Record<string, string> = {
   ZA: 'Africa/Johannesburg',
 }
 
-/** Local time of the next midnight UTC as "HH:MM", or undefined for multi-zone countries. */
-export const localMidnight = (country: string | undefined, now: Date): string | undefined => {
-  const zone = country ? SINGLE_ZONE[country.toUpperCase()] : undefined
+/** Local time of the next midnight UTC as "HH:MM", or undefined when the zone is unknown. */
+export const localMidnight = (
+  country: string | undefined,
+  now: Date,
+  timezone?: string,
+): string | undefined => {
+  const zone =
+    cleanTimezone(timezone) ?? (country ? SINGLE_ZONE[country.toUpperCase()] : undefined)
   if (!zone) return undefined
   const midnight = new Date(now.getTime())
   midnight.setUTCHours(24, 0, 0, 0)

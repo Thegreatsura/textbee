@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Model } from 'mongoose'
 import { User, UserDocument } from '../users/schemas/user.schema'
 import {
+  ClientLocation,
   canonicalAddress,
   resolveClientAddress,
 } from '../common/client-address'
@@ -78,7 +79,7 @@ export class AccessFootprintService {
     if (request.accessTracked) return
     request.accessTracked = true
 
-    const { ip: rawIp, country } = resolveClientAddress(request)
+    const { ip: rawIp, country, ...location } = resolveClientAddress(request)
     const ip = canonicalAddress(rawIp)
     if (!ip) return
 
@@ -103,6 +104,7 @@ export class AccessFootprintService {
       channel,
       ip,
       country,
+      location,
       client,
       apiKeyId: request.apiKey?._id,
       addressesSeen: request.user?.access?.addressesSeen ?? 0,
@@ -122,6 +124,7 @@ export class AccessFootprintService {
     channel,
     ip,
     country,
+    location = {},
     client,
     apiKeyId,
     addressesSeen,
@@ -130,6 +133,7 @@ export class AccessFootprintService {
     channel: AccessChannel
     ip: string
     country?: string
+    location?: ClientLocation
     client?: string
     apiKeyId?: any
     addressesSeen: number
@@ -146,6 +150,11 @@ export class AccessFootprintService {
         $set: {
           lastSeenAt: now,
           ...(country && { country }),
+          ...(location.region && { region: location.region }),
+          ...(location.regionCode && { regionCode: location.regionCode }),
+          ...(location.city && { city: location.city }),
+          ...(location.timezone && { timezone: location.timezone }),
+          ...(location.asn && { asn: location.asn }),
           ...(client && { client }),
           ...(apiKeyId && { apiKey: apiKeyId }),
         },
@@ -175,7 +184,17 @@ export class AccessFootprintService {
           'access.channels': channel,
           ...(country && { 'access.countries': country }),
         },
-        $set: { 'access.updatedAt': now },
+        $set: {
+          'access.updatedAt': now,
+          ...(channel === 'web' &&
+            (country || location.city || location.timezone) && {
+              'access.lastLocation': {
+                ...(country && { country }),
+                ...location,
+                at: now,
+              },
+            }),
+        },
       },
     )
   }

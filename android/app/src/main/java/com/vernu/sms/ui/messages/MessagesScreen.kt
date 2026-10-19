@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.vernu.sms.AppConstants
@@ -278,6 +279,7 @@ private suspend fun shareDiagnostics(context: android.content.Context) {
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        Log.w("MessagesScreen", "Diagnostics export failed", e)
         Toast.makeText(context, "Could not export diagnostics", Toast.LENGTH_SHORT).show()
         return
     }

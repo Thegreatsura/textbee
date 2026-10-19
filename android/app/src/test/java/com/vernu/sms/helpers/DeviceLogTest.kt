@@ -18,9 +18,24 @@ class DeviceLogTest {
     @Test
     fun keepsOnlyTheNewestEntries() {
         val many = (1..DeviceLog.MAX_ENTRIES + 20).map { LogEntry(it.toLong(), "e", "", null) }
-        val kept = DeviceLog.trim(many)
+        val kept = DeviceLog.trim(many, nowMs = DeviceLog.MAX_ENTRIES.toLong())
         assertEquals(DeviceLog.MAX_ENTRIES, kept.size)
         assertEquals(21L, kept.first().timeMs)
+    }
+
+    @Test
+    fun dropsEntriesOlderThanTheMaxAge() {
+        val now = DeviceLog.MAX_AGE_MS * 2
+        val entries = listOf(now - DeviceLog.MAX_AGE_MS - 1, now - DeviceLog.MAX_AGE_MS, now)
+            .map { LogEntry(it, "e", "", null) }
+        val kept = DeviceLog.trim(entries, nowMs = now)
+        assertEquals(listOf(now - DeviceLog.MAX_AGE_MS, now), kept.map { it.timeMs })
+    }
+
+    @Test
+    fun keepsTheListWhenNothingIsTrimmed() {
+        val entries = listOf(LogEntry(10L, "e", "", null), LogEntry(20L, "e", "", null))
+        assertEquals(entries, DeviceLog.trim(entries, nowMs = 20L))
     }
 
     @Test

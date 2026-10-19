@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import android.content.Intent
 import android.os.Build
+import androidx.core.content.FileProvider
 import com.vernu.sms.AppConstants
 import com.vernu.sms.BuildConfig
 import com.vernu.sms.dtos.SmsMessage
@@ -33,6 +34,7 @@ import com.vernu.sms.helpers.LogEntry
 import com.vernu.sms.helpers.SharedPreferenceHelper
 import com.vernu.sms.ui.theme.StatusColors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -49,6 +51,7 @@ fun MessagesScreen(
     val context = LocalContext.current
     val events by DeviceLog.entries.collectAsState()
     var menuOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) { DeviceLog.load(context) }
@@ -80,7 +83,7 @@ fun MessagesScreen(
                             text = { Text("Export diagnostics") },
                             onClick = {
                                 menuOpen = false
-                                shareDiagnostics(context)
+                                scope.launch { shareDiagnostics(context) }
                             }
                         )
                     }
@@ -259,7 +262,7 @@ private fun EventsList(events: List<LogEntry>) {
 }
 
 // Plain text, redacted at write time: no message bodies, masked numbers, no API key
-private fun shareDiagnostics(context: android.content.Context) {
+private suspend fun shareDiagnostics(context: android.content.Context) {
     val deviceId = SharedPreferenceHelper.getSharedPreferenceString(
         context, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, ""
     ) ?: ""
@@ -267,13 +270,15 @@ private fun shareDiagnostics(context: android.content.Context) {
         "${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}\n" +
         "device $deviceId\n" +
         "exported ${eventTimeFormat.format(java.util.Date())}"
-    val text = DeviceLog.export(context, header)
+    val file = withContext(Dispatchers.IO) { DeviceLog.export(context, header) }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
     context.startActivity(
         Intent.createChooser(
             Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_SUBJECT, "textbee diagnostics")
-                putExtra(Intent.EXTRA_TEXT, text)
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
             "Export diagnostics"
         )

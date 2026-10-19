@@ -17,9 +17,11 @@ data class LogEntry(val timeMs: Long, val event: String, val detail: String, val
 // key, and long digit runs are masked before they are written.
 object DeviceLog {
     private const val TAG = "DeviceLog"
-    const val MAX_ENTRIES = 500
+    const val MAX_ENTRIES = 20_000
+    const val MAX_AGE_MS = 14L * 24 * 60 * 60 * 1000
     private const val FILE_NAME = "device-log.txt"
-    private const val REWRITE_EVERY = 100
+    private const val EXPORT_FILE_NAME = "diagnostics/textbee-diagnostics.txt"
+    private const val REWRITE_EVERY = 2_000
 
     private val lock = Any()
     private val _entries = MutableStateFlow<List<LogEntry>>(emptyList())
@@ -36,8 +38,12 @@ object DeviceLog {
             if (digits.length >= 7) "…" + digits.takeLast(4) else m.value
         }
 
-    fun trim(list: List<LogEntry>): List<LogEntry> =
-        if (list.size <= MAX_ENTRIES) list else list.takeLast(MAX_ENTRIES)
+    fun trim(list: List<LogEntry>, nowMs: Long = System.currentTimeMillis()): List<LogEntry> {
+        val cutoff = nowMs - MAX_AGE_MS
+        val firstFresh = list.indexOfFirst { it.timeMs >= cutoff }.takeIf { it >= 0 } ?: list.size
+        val start = maxOf(firstFresh, list.size - MAX_ENTRIES)
+        return if (start <= 0) list else list.subList(start, list.size).toList()
+    }
 
     fun formatLine(e: LogEntry): String =
         listOf(e.timeMs.toString(), e.event, e.smsId ?: "", e.detail.replace('\t', ' ').replace('\n', ' '))
@@ -75,12 +81,17 @@ object DeviceLog {
         _entries.value
     }
 
-    fun export(context: Context, header: String): String {
+    // Written to a file because the full log is too large for an Intent extra
+    fun export(context: Context, header: String): File {
         val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-        val lines = load(context).map { e ->
-            "${fmt.format(Date(e.timeMs))}  ${e.event}${e.smsId?.let { "  [$it]" } ?: ""}  ${e.detail}"
+        val out = File(context.cacheDir, EXPORT_FILE_NAME).apply { parentFile?.mkdirs() }
+        out.bufferedWriter().use { w ->
+            w.write(header + "\n\n")
+            load(context).forEach { e ->
+                w.write("${fmt.format(Date(e.timeMs))}  ${e.event}${e.smsId?.let { "  [$it]" } ?: ""}  ${e.detail}\n")
+            }
         }
-        return header + "\n\n" + lines.joinToString("\n")
+        return out
     }
 
     private fun file(context: Context) = File(context.filesDir, FILE_NAME)

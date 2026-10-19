@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose'
 import { Model } from 'mongoose'
 import { User, UserDocument } from '../users/schemas/user.schema'
 import {
+  ClientLocation,
   canonicalAddress,
   resolveClientAddress,
 } from '../common/client-address'
@@ -42,6 +43,14 @@ const DUPLICATE_KEY = 11000
  * window returns before any query. A first sighting costs one upsert plus one
  * update of the account's summary.
  */
+const FOOTPRINT_PLACE_FIELDS = [
+  'region',
+  'regionCode',
+  'city',
+  'timezone',
+  'asn',
+] as const
+
 @Injectable()
 export class AccessFootprintService {
   private readonly logger = new Logger(AccessFootprintService.name)
@@ -78,7 +87,7 @@ export class AccessFootprintService {
     if (request.accessTracked) return
     request.accessTracked = true
 
-    const { ip: rawIp, country } = resolveClientAddress(request)
+    const { ip: rawIp, country, ...location } = resolveClientAddress(request)
     const ip = canonicalAddress(rawIp)
     if (!ip) return
 
@@ -103,6 +112,7 @@ export class AccessFootprintService {
       channel,
       ip,
       country,
+      location,
       client,
       apiKeyId: request.apiKey?._id,
       addressesSeen: request.user?.access?.addressesSeen ?? 0,
@@ -122,6 +132,7 @@ export class AccessFootprintService {
     channel,
     ip,
     country,
+    location = {},
     client,
     apiKeyId,
     addressesSeen,
@@ -130,6 +141,7 @@ export class AccessFootprintService {
     channel: AccessChannel
     ip: string
     country?: string
+    location?: ClientLocation
     client?: string
     apiKeyId?: any
     addressesSeen: number
@@ -139,6 +151,17 @@ export class AccessFootprintService {
       addressesSeen >= MAX_ORIGINS_PER_CHANNEL &&
       (await this.channelCount(userId, channel)) >= MAX_ORIGINS_PER_CHANNEL
 
+    // Written as a set, so a newer reading never keeps an older city.
+    const placeSet: Record<string, string | number> = {}
+    const placeUnset: Record<string, ''> = {}
+    if (Object.keys(location).length) {
+      for (const field of FOOTPRINT_PLACE_FIELDS) {
+        const value = location[field]
+        if (value !== undefined) placeSet[field] = value
+        else placeUnset[field] = ''
+      }
+    }
+
     const result = await this.footprintModel.updateOne(
       { user: userId, channel, ip },
       {
@@ -146,9 +169,11 @@ export class AccessFootprintService {
         $set: {
           lastSeenAt: now,
           ...(country && { country }),
+          ...placeSet,
           ...(client && { client }),
           ...(apiKeyId && { apiKey: apiKeyId }),
         },
+        ...(Object.keys(placeUnset).length && { $unset: placeUnset }),
       },
       // At the ceiling a known origin still refreshes; a new one is not added.
       { upsert: !atCeiling },
@@ -175,7 +200,17 @@ export class AccessFootprintService {
           'access.channels': channel,
           ...(country && { 'access.countries': country }),
         },
-        $set: { 'access.updatedAt': now },
+        $set: {
+          'access.updatedAt': now,
+          ...(channel === 'web' &&
+            (country || location.city || location.timezone) && {
+              'access.lastLocation': {
+                ...(country && { country }),
+                ...location,
+                at: now,
+              },
+            }),
+        },
       },
     )
   }

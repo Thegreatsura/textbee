@@ -137,6 +137,17 @@ describe('MetaCapiService', () => {
     )
   })
 
+  it('hashes the city and state in the normalised form', async () => {
+    await service.send({
+      name: 'CompleteRegistration',
+      user: { userId: 'user-1', city: 'São Paulo', regionCode: 'SP' },
+    })
+    const userData = lastBody().data[0].user_data
+    const sha = (v: string) => createHash('sha256').update(v).digest('hex')
+    expect(userData.ct).toBe(sha('saopaulo'))
+    expect(userData.st).toBe(sha('sp'))
+  })
+
   it('sends no region when none was resolved', async () => {
     await service.send({ name: 'CompleteRegistration', user: { userId: 'u' } })
     expect(lastBody().data[0].user_data.country).toBeUndefined()

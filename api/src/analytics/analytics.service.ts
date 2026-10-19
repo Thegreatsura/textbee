@@ -20,6 +20,8 @@ export type RequestContext = {
   ip?: string
   userAgent?: string
   country?: string
+  city?: string
+  regionCode?: string
 }
 
 @Injectable()
@@ -55,6 +57,8 @@ export class AnalyticsService {
       ip: context?.ip,
       userAgent: context?.userAgent,
       country: context?.country,
+      city: context?.city,
+      regionCode: context?.regionCode,
       fbclid: touch?.fbclid,
       fbclidAt: touch?.at,
       fbp: user.attribution?.fbp,

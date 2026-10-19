@@ -8,7 +8,12 @@
 // payload cannot grow a document or forge a log line.
 
 import { isIP } from 'net'
-import { cleanCountry, resolveClientAddress } from './client-address'
+import {
+  ClientLocation,
+  cleanCountry,
+  cleanLocation,
+  resolveClientAddress,
+} from './client-address'
 
 const MAX_USER_AGENT = 512
 
@@ -20,13 +25,19 @@ export type ClientContextInput = {
   userAgent?: unknown
   ip?: unknown
   country?: unknown
+  region?: unknown
+  regionCode?: unknown
+  city?: unknown
+  continent?: unknown
+  timezone?: unknown
+  asn?: unknown
 }
 
 export type RequestContext = {
   ip?: string
   userAgent?: string
   country?: string
-}
+} & ClientLocation
 
 function cleanUserAgent(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined
@@ -56,8 +67,14 @@ export function resolveRequestContext(
   // gaps. For a call made straight to the API there is no proxy and the edge
   // is the only source.
   const edge = resolveClientAddress(req)
+  // Taken whole from one source. When the dashboard forwarded anything, the
+  // edge describes the dashboard server, not the visitor.
+  const forwarded =
+    client !== null && typeof client === 'object' && Object.keys(client).length
+  const location = forwarded ? cleanLocation(client) : cleanLocation(edge)
 
   return {
+    ...location,
     userAgent:
       forwardedUserAgent ?? cleanUserAgent(req?.headers?.['user-agent']),
     ip: forwardedIp ?? edge.ip,

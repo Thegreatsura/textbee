@@ -153,4 +153,65 @@ describe('resolveRequestContext', () => {
       expect(resolveRequestContext(undefined, edgeReq).ip).toBe('10.0.0.1')
     })
   })
+
+  describe('location', () => {
+    const edgeReq = {
+      ip: '10.0.0.1',
+      headers: {
+        'cf-connecting-ip': '198.51.100.7',
+        'cf-ipcountry': 'US',
+        'cf-region': 'Virginia',
+        'cf-ipcity': 'Ashburn',
+        'cf-timezone': 'America/New_York',
+      },
+    }
+
+    afterEach(() => {
+      restoreEnv('TRUSTED_PROXY')
+    })
+
+    it('takes the forwarded location whole, without mixing in the edge', () => {
+      process.env.TRUSTED_PROXY = 'cloudflare'
+      const context = resolveRequestContext(
+        { city: 'Lyon', timezone: 'Europe/Paris', asn: '3215' },
+        edgeReq,
+      )
+      expect(context).toMatchObject({
+        city: 'Lyon',
+        timezone: 'Europe/Paris',
+        asn: 3215,
+      })
+      expect(context.region).toBeUndefined()
+    })
+
+    it('falls back to the edge location when nothing is forwarded', () => {
+      process.env.TRUSTED_PROXY = 'cloudflare'
+      expect(resolveRequestContext(undefined, edgeReq)).toMatchObject({
+        region: 'Virginia',
+        city: 'Ashburn',
+        timezone: 'America/New_York',
+      })
+    })
+
+    it('takes no edge location when the dashboard forwarded a context', () => {
+      process.env.TRUSTED_PROXY = 'cloudflare'
+      const context = resolveRequestContext(
+        { ip: '203.0.113.4', country: 'US' },
+        edgeReq,
+      )
+      expect(context.city).toBeUndefined()
+      expect(context.timezone).toBeUndefined()
+      expect(context.country).toBe('US')
+    })
+
+    it('drops forwarded values that do not clean', () => {
+      const context = resolveRequestContext(
+        { timezone: 'Not/AZone', asn: 'AS1', city: {} },
+        undefined,
+      )
+      expect(context.timezone).toBeUndefined()
+      expect(context.asn).toBeUndefined()
+      expect(context.city).toBeUndefined()
+    })
+  })
 })

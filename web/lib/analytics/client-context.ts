@@ -46,15 +46,49 @@ export function clientCountryFromHeaders(
   return UNPLACED_REGIONS.has(code) ? undefined : code
 }
 
+const LOCATION_HEADERS = {
+  region: 'cf-region',
+  regionCode: 'cf-region-code',
+  city: 'cf-ipcity',
+  continent: 'cf-ipcontinent',
+  timezone: 'cf-timezone',
+  asn: 'x-client-asn',
+} as const
+
+type ClientLocation = Partial<
+  Record<Exclude<keyof typeof LOCATION_HEADERS, 'asn'>, string>
+> & { asn?: number }
+
+// Raw values only. The API cleans and bounds each one.
+export function clientLocationFromHeaders(headers: HeaderBag): ClientLocation {
+  const location: ClientLocation = {}
+  if (!headers) return location
+  for (const [field, header] of Object.entries(LOCATION_HEADERS)) {
+    const value = first(headers[header])?.trim().slice(0, 128)
+    if (!value) continue
+    if (field === 'asn') {
+      const asn = Number(value)
+      if (Number.isInteger(asn) && asn > 0) location.asn = asn
+    } else {
+      location[field as Exclude<keyof ClientLocation, 'asn'>] = value
+    }
+  }
+  return location
+}
+
 export function clientContextFromHeaders(headers: HeaderBag) {
   const userAgent = first(headers?.['user-agent'])?.slice(0, MAX_USER_AGENT)
   const ip = clientIpFromHeaders(headers)
   const country = clientCountryFromHeaders(headers)
+  const location = clientLocationFromHeaders(headers)
 
-  if (!userAgent && !ip && !country) return undefined
+  if (!userAgent && !ip && !country && !Object.keys(location).length) {
+    return undefined
+  }
   return {
     ...(userAgent && { userAgent }),
     ...(ip && { ip }),
     ...(country && { country }),
+    ...location,
   }
 }

@@ -1,6 +1,11 @@
 import {
   canonicalAddress,
+  cleanAsn,
   cleanCountry,
+  cleanLocation,
+  cleanPlaceName,
+  cleanTimezone,
+  pickLocation,
   rawAddress,
   resolveClientAddress,
 } from './client-address'
@@ -182,5 +187,101 @@ describe('resolveClientAddress', () => {
   it('returns nothing rather than a partial value for an empty request', () => {
     expect(resolveClientAddress(undefined)).toEqual({})
     expect(resolveClientAddress({})).toEqual({})
+  })
+})
+
+describe('location cleaners', () => {
+  it('decodes a percent-encoded place name', () => {
+    expect(cleanPlaceName('S%C3%A3o%20Paulo')).toBe('São Paulo')
+    expect(cleanPlaceName('São Paulo')).toBe('São Paulo')
+  })
+
+  it('repairs UTF-8 that arrived as latin1', () => {
+    const mangled = Buffer.from('Zürich', 'utf8').toString('latin1')
+    expect(cleanPlaceName(mangled)).toBe('Zürich')
+    expect(cleanPlaceName('Zürich')).toBe('Zürich')
+  })
+
+  it('keeps a name with a stray percent sign as it is', () => {
+    expect(cleanPlaceName('100% Town')).toBe('100% Town')
+  })
+
+  it('strips control characters and bounds the length', () => {
+    expect(cleanPlaceName('Ber\nlin')).toBe('Berlin')
+    expect(cleanPlaceName('a'.repeat(200))).toHaveLength(64)
+    expect(cleanPlaceName('   ')).toBeUndefined()
+    expect(cleanPlaceName(42)).toBeUndefined()
+  })
+
+  it('accepts real time zones only', () => {
+    expect(cleanTimezone('America/Los_Angeles')).toBe('America/Los_Angeles')
+    expect(cleanTimezone('America/Argentina/Buenos_Aires')).toBe(
+      'America/Argentina/Buenos_Aires',
+    )
+    expect(cleanTimezone('Mars/Olympus_Mons')).toBeUndefined()
+    expect(cleanTimezone('../../etc')).toBeUndefined()
+    expect(cleanTimezone('')).toBeUndefined()
+  })
+
+  it('accepts a network number as a string or a number', () => {
+    expect(cleanAsn('7922')).toBe(7922)
+    expect(cleanAsn(16509)).toBe(16509)
+    expect(cleanAsn('0')).toBeUndefined()
+    expect(cleanAsn('AS7922')).toBeUndefined()
+    expect(cleanAsn('99999999999')).toBeUndefined()
+    expect(cleanAsn(-1)).toBeUndefined()
+  })
+
+  it('keeps only the fields that survive cleaning', () => {
+    expect(
+      cleanLocation({
+        region: 'California',
+        regionCode: 'ca',
+        city: '',
+        continent: 'XX',
+        timezone: 'Nowhere/Land',
+        asn: 'abc',
+      }),
+    ).toEqual({ region: 'California', regionCode: 'CA' })
+    expect(pickLocation({})).toBeUndefined()
+    expect(pickLocation({ city: 'Austin' })).toEqual({ city: 'Austin' })
+  })
+})
+
+describe('resolveClientAddress location', () => {
+  const headers = {
+    'cf-connecting-ip': '198.51.100.7',
+    'cf-ipcountry': 'US',
+    'cf-region': 'California',
+    'cf-region-code': 'CA',
+    'cf-ipcity': 'San Jose',
+    'cf-ipcontinent': 'NA',
+    'cf-timezone': 'America/Los_Angeles',
+    'x-client-asn': '7922',
+  }
+
+  afterEach(() => {
+    restoreEnv('TRUSTED_PROXY')
+  })
+
+  it('reads the location headers when the edge is declared', () => {
+    process.env.TRUSTED_PROXY = 'cloudflare'
+    expect(resolveClientAddress({ ip: '10.0.0.1', headers })).toEqual({
+      ip: '198.51.100.7',
+      country: 'US',
+      region: 'California',
+      regionCode: 'CA',
+      city: 'San Jose',
+      continent: 'NA',
+      timezone: 'America/Los_Angeles',
+      asn: 7922,
+    })
+  })
+
+  it('ignores them when no edge is declared', () => {
+    delete process.env.TRUSTED_PROXY
+    expect(resolveClientAddress({ ip: '10.0.0.1', headers })).toEqual({
+      ip: '10.0.0.1',
+    })
   })
 })

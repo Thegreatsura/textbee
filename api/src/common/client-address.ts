@@ -22,10 +22,35 @@ const IPV6_PREFIX_GROUPS = 4
 
 type HeaderBag = Record<string, string | string[] | undefined> | undefined
 
+const CONTINENTS = new Set(['AF', 'AN', 'AS', 'EU', 'NA', 'OC', 'SA'])
+
+const MAX_PLACE_NAME = 64
+const MAX_ASN = 4294967295
+
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g
+
+export type ClientLocation = {
+  region?: string
+  regionCode?: string
+  city?: string
+  continent?: string
+  timezone?: string
+  asn?: number
+}
+
+export const LOCATION_FIELDS = [
+  'region',
+  'regionCode',
+  'city',
+  'continent',
+  'timezone',
+  'asn',
+] as const
+
 export type ClientAddress = {
   ip?: string
   country?: string
-}
+} & ClientLocation
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) return value[0]
@@ -127,6 +152,113 @@ export function cleanCountry(value: unknown): string | undefined {
   return UNPLACED_REGIONS.has(code) ? undefined : code
 }
 
+/** Header values arrive as latin1, so raw UTF-8 bytes show up as mojibake. */
+function repairUtf8(text: string): string {
+  if (!/[\u0080-\u00ff]/.test(text) || /[^\u0000-\u00ff]/.test(text)) {
+    return text
+  }
+  const decoded = Buffer.from(text, 'latin1').toString('utf8')
+  return decoded.includes('\ufffd') ? text : decoded
+}
+
+/** A region or city name, bounded and decoded, or nothing. */
+export function cleanPlaceName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  let text = value
+  if (text.includes('%')) {
+    try {
+      text = decodeURIComponent(text)
+    } catch {
+      // Not percent encoded after all.
+    }
+  }
+  text = repairUtf8(text).replace(CONTROL_CHARACTERS, '').trim()
+  return text ? text.slice(0, MAX_PLACE_NAME) : undefined
+}
+
+/** A subdivision code such as "CA" or "ENG". */
+export function cleanRegionCode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const code = value.trim().toUpperCase()
+  return /^[A-Z0-9]{1,3}$/.test(code) ? code : undefined
+}
+
+export function cleanContinent(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const code = value.trim().toUpperCase()
+  return CONTINENTS.has(code) ? code : undefined
+}
+
+/** An IANA zone name this runtime can format dates in. */
+export function cleanTimezone(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const zone = value.trim()
+  if (!/^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,2}$/.test(zone)) {
+    return undefined
+  }
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: zone })
+    return zone
+  } catch {
+    return undefined
+  }
+}
+
+export function cleanAsn(value: unknown): number | undefined {
+  const text = typeof value === 'number' ? String(value) : value
+  if (typeof text !== 'string' || !/^\d{1,10}$/.test(text.trim())) {
+    return undefined
+  }
+  const asn = Number(text.trim())
+  return asn > 0 && asn <= MAX_ASN ? asn : undefined
+}
+
+/** Cleans each location field and keeps only the ones that survive. */
+export function cleanLocation(
+  input:
+    | {
+        region?: unknown
+        regionCode?: unknown
+        city?: unknown
+        continent?: unknown
+        timezone?: unknown
+        asn?: unknown
+      }
+    | undefined,
+): ClientLocation {
+  const location: ClientLocation = {
+    region: cleanPlaceName(input?.region),
+    regionCode: cleanRegionCode(input?.regionCode),
+    city: cleanPlaceName(input?.city),
+    continent: cleanContinent(input?.continent),
+    timezone: cleanTimezone(input?.timezone),
+    asn: cleanAsn(input?.asn),
+  }
+  for (const field of LOCATION_FIELDS) {
+    if (location[field] === undefined) delete location[field]
+  }
+  return location
+}
+
+/** The location fields of a context, or undefined when it has none. */
+export function pickLocation(
+  context: ClientLocation | undefined,
+): ClientLocation | undefined {
+  const location = cleanLocation(context)
+  return Object.keys(location).length ? location : undefined
+}
+
+function locationFromHeaders(headers: NonNullable<HeaderBag>): ClientLocation {
+  return cleanLocation({
+    region: headerValue(headers['cf-region']),
+    regionCode: headerValue(headers['cf-region-code']),
+    city: headerValue(headers['cf-ipcity']),
+    continent: headerValue(headers['cf-ipcontinent']),
+    timezone: headerValue(headers['cf-timezone']),
+    asn: headerValue(headers['x-client-asn']),
+  })
+}
+
 /**
  * The caller's address and region for this request. The address is whole;
  * pass it through canonicalAddress when counting distinct origins.
@@ -155,5 +287,6 @@ export function resolveClientAddress(req?: {
   return {
     ...(ip && { ip }),
     ...(country && { country }),
+    ...locationFromHeaders(headers),
   }
 }

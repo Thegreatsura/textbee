@@ -182,13 +182,20 @@ export class BillingNotificationsProcessor {
       })
     }
     if (key === 'U3' || key === 'U4') {
-      const account = await this.userModel.findById(user).select('signupCountry').lean()
+      const account = await this.userModel
+        .findById(user)
+        .select('signupCountry signupLocation.timezone access.lastLocation.timezone')
+        .lean()
       Object.assign(vars, {
         used: formatCount(meta.processedSmsToday),
         limit: formatCount(meta.dailyLimit),
         left: left(meta.dailyLimit, meta.processedSmsToday),
         usageLabel: LABEL_TODAY,
-        localMidnight: localMidnight(account?.signupCountry, now),
+        localMidnight: localMidnight(
+          account?.signupCountry,
+          now,
+          account?.access?.lastLocation?.timezone ?? account?.signupLocation?.timezone,
+        ),
       })
     }
     if (key === 'U5') {

@@ -16,6 +16,8 @@ export type MetaUserContext = {
   userAgent?: string
   // Two-letter region code, hashed like every other match key.
   country?: string
+  city?: string
+  regionCode?: string
   fbclid?: string
   fbclidAt?: Date
   fbp?: string
@@ -33,6 +35,14 @@ export type MetaEvent = {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex')
+}
+
+function normaliseMatchKey(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
 }
 
 @Injectable()
@@ -55,6 +65,10 @@ export class MetaCapiService {
     if (user.userAgent) data.client_user_agent = user.userAgent
     if (user.fbp) data.fbp = user.fbp
     if (user.country) data.country = sha256(user.country.toLowerCase())
+    const city = user.city && normaliseMatchKey(user.city)
+    if (city) data.ct = sha256(city)
+    const state = user.regionCode && normaliseMatchKey(user.regionCode)
+    if (state) data.st = sha256(state)
 
     // Meta's documented click-id format: fb.<subdomain index>.<click time in
     // milliseconds>.<fbclid>. The click time came from a browser clock, so it

@@ -156,6 +156,60 @@ export class ClientContextDTO {
       "The two-letter region code the edge network reported for the visitor, forwarded for the same reason. Used only to label analytics, never for access control.",
   })
   country?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The region name the edge network reported for the visitor, forwarded for the same reason.',
+    example: 'California',
+  })
+  region?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The subdivision code of that region, forwarded for the same reason.',
+    example: 'CA',
+  })
+  regionCode?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The city the edge network reported for the visitor, forwarded for the same reason.',
+    example: 'San Jose',
+  })
+  city?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The two-letter continent code the edge network reported for the visitor, forwarded for the same reason.',
+    example: 'NA',
+  })
+  continent?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      "The visitor's IANA time zone as the edge network reported it, forwarded for the same reason.",
+    example: 'America/Los_Angeles',
+  })
+  timezone?: string
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description:
+      "The autonomous system number of the visitor's network, forwarded for the same reason.",
+    example: 7922,
+  })
+  asn?: number
 }
 
 export class RegisterInputDTO {

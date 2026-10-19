@@ -130,9 +130,7 @@ export class UserLocation {
 const UserLocationSchema = SchemaFactory.createForClass(UserLocation)
 
 // Lifetime summary of where an account has been used from. The rows behind it
-// live in their own collection, one per distinct origin, and expire; these
-// sets do not, so a report can still say which regions an account has ever
-// been used from after the detail has aged out.
+// live in their own collection, one per distinct origin.
 @Schema({ _id: false })
 export class UserAccess {
   @Prop({ type: [String], default: [] })

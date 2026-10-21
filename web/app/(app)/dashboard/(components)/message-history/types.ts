@@ -23,8 +23,19 @@ export type SmsMessage = {
   smsBatch?: string
   // SIM the caller requested, not necessarily the one used.
   simSubscriptionId?: number
-  // SIM the phone reports it used. Absent from older app versions.
-  simUsed?: { subscriptionId?: number; slotIndex?: number }
+  // SIM the phone reports it used. Absent from older app versions, and
+  // every part is optional because Android does not always expose it.
+  simUsed?: SimUsed
+}
+
+export type SimUsed = {
+  subscriptionId?: number
+  slotIndex?: number
+  carrierName?: string
+  displayName?: string
+  countryIso?: string
+  mcc?: string
+  mnc?: string
 }
 
 export type MessagesPagination = {

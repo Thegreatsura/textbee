@@ -110,6 +110,19 @@ export function resolveSimUsedReport(
   return Object.keys(simUsed).length > 0 ? simUsed : undefined
 }
 
+/**
+ * True when the report carries the nested simUsed object. It describes one
+ * whole SIM, so it replaces the stored one instead of merging into it.
+ */
+export function hasNestedSimUsed(report: SimUsedReport | null | undefined) {
+  return (
+    !!report &&
+    typeof report.simUsed === 'object' &&
+    report.simUsed !== null &&
+    !Array.isArray(report.simUsed)
+  )
+}
+
 /** Why the phone picked that SIM, or undefined for an unknown value. */
 export function resolveSimSelection(value: unknown): SimSelection | undefined {
   return SIM_SELECTIONS.find((s) => s === value)

@@ -1,4 +1,5 @@
 import {
+  hasNestedSimUsed,
   resolveSimSelection,
   resolveSimUsed,
   resolveSimUsedReport,
@@ -133,6 +134,24 @@ describe('resolveSimUsedReport', () => {
       { simUsed: { carrierName: '' }, simSubscriptionId: -1 },
     ]) {
       expect(resolveSimUsedReport(report as any)).toBeUndefined()
+    }
+  })
+})
+
+describe('hasNestedSimUsed', () => {
+  it('is true only for an object', () => {
+    expect(hasNestedSimUsed({ simUsed: {} })).toBe(true)
+    expect(hasNestedSimUsed({ simUsed: { slotIndex: 0 } })).toBe(true)
+    for (const report of [
+      undefined,
+      null,
+      {},
+      { simUsed: null },
+      { simUsed: 'SIM 2' },
+      { simUsed: [] },
+      { simSubscriptionId: 19 },
+    ]) {
+      expect(hasNestedSimUsed(report as any)).toBe(false)
     }
   })
 })

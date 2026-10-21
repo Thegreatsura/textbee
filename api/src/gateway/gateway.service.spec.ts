@@ -2259,14 +2259,49 @@ describe('GatewayService', () => {
         } as any)
 
         const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
-        expect(update.$set['simUsed.subscriptionId']).toBe(17)
-        expect(update.$set['simUsed.slotIndex']).toBe(0)
-        expect(update.$set['simUsed.carrierName']).toBe('Globe')
-        expect(update.$set['simUsed.countryIso']).toBe('ph')
-        expect(update.$set['simUsed.mcc']).toBe('515')
-        expect(update.$set['simUsed.mnc']).toBe('02')
-        expect(update.$set).not.toHaveProperty('simUsed.displayName')
+        // Replaced whole, so no field of an earlier SIM survives
+        expect(update.$set.simUsed).toEqual({
+          subscriptionId: 17,
+          slotIndex: 0,
+          carrierName: 'Globe',
+          countryIso: 'ph',
+          mcc: '515',
+          mnc: '02',
+        })
+        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed.'))).toEqual([])
+        expect(update.$unset).toBeUndefined()
         expect(update.$set['metadata.simSelection']).toBe('system_default')
+      })
+
+      it('clears the stored SIM when a nested report says it is unknown', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'sent',
+          simUsed: {},
+          simSelection: 'system_default',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        expect(update.$unset).toEqual({ simUsed: '' })
+        expect(update.$set).not.toHaveProperty('simUsed')
+        expect(update.$set['metadata.simSelection']).toBe('system_default')
+      })
+
+      it('keeps the stored SIM when a report has none', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'failed',
+          errorCode: 'PERMISSION_DENIED',
+          simSelection: 'requested',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        expect(update.$unset).toBeUndefined()
+        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed'))).toEqual([])
       })
 
       it('updates only the SIM part the report carries', async () => {

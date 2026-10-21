@@ -19,6 +19,8 @@ import com.vernu.sms.helpers.SMSHelper
 import com.vernu.sms.helpers.SendSlotScheduler
 import com.vernu.sms.helpers.SendTiming
 import com.vernu.sms.helpers.SharedPreferenceHelper
+import com.vernu.sms.helpers.SimLookup
+import com.vernu.sms.helpers.SimReport
 import java.util.concurrent.TimeUnit
 
 class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(context, workerParams) {
@@ -154,7 +156,8 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
             return Result.success()
         }
 
-        val resolvedSim = resolveSim(context, simSubscriptionId)
+        val (resolvedSim, simSelection) = resolveSim(context, simSubscriptionId)
+        val simReport = describeSim(context, resolvedSim, simSelection)
 
         // Jobs due at different times can still run together after the phone
         // wakes, so the gap is enforced once more right before the radio call
@@ -184,9 +187,9 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
 
         DeviceLog.log(context, "send_attempted", "to $phone" + (resolvedSim?.let { ", sim $it" } ?: ""), smsId)
         val sent = if (resolvedSim != null) {
-            SMSHelper.sendSMSFromSpecificSim(phone, message, resolvedSim, smsId, smsBatchId ?: "", context, timing)
+            SMSHelper.sendSMSFromSpecificSim(phone, message, resolvedSim, smsId, smsBatchId ?: "", context, timing, simReport)
         } else {
-            SMSHelper.sendSMS(phone, message, smsId, smsBatchId ?: "", context, timing)
+            SMSHelper.sendSMS(phone, message, smsId, smsBatchId ?: "", context, timing, simReport)
         }
         if (sent) store.markSent(smsId, phone) else DeviceLog.log(context, "send_failed", "radio call refused", smsId)
 
@@ -232,20 +235,34 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
         return ForegroundInfo(FOREGROUND_NOTIFICATION_ID, notification)
     }
 
-    private fun resolveSim(context: Context, backendSimId: Int): Int? {
-        if (backendSimId != -1 && TextbeeUtils.isValidSubscriptionId(context, backendSimId)) {
-            Log.d(TAG, "Using backend-provided SIM subscription ID: $backendSimId")
-            return backendSimId
+    // The subscription to send from (null for the system default) and why
+    private fun resolveSim(context: Context, backendSimId: Int): Pair<Int?, String> {
+        val requested = if (backendSimId == -1) null else backendSimId
+        val requestedValid = requested != null && TextbeeUtils.isValidSubscriptionId(context, requested)
+        if (requested != null && requestedValid) {
+            Log.d(TAG, "Using backend-provided SIM subscription ID: $requested")
+            return requested to SimReport.selectionFor(requested, true, false)
         }
 
         val preferredSim = SharedPreferenceHelper.getSharedPreferenceInt(
             context, AppConstants.SHARED_PREFS_PREFERRED_SIM_KEY, -1
         )
-        if (preferredSim != -1 && TextbeeUtils.isValidSubscriptionId(context, preferredSim)) {
+        val preferredValid = preferredSim != -1 && TextbeeUtils.isValidSubscriptionId(context, preferredSim)
+        val selection = SimReport.selectionFor(requested, false, preferredValid)
+        if (preferredValid) {
             Log.d(TAG, "Using app-preferred SIM subscription ID: $preferredSim")
-            return preferredSim
+            return preferredSim to selection
         }
 
-        return null
+        return null to selection
+    }
+
+    // Never fails the send: an unreadable SIM just goes unreported
+    private fun describeSim(context: Context, resolvedSim: Int?, selection: String): SimReport = try {
+        val subscriptionId = resolvedSim ?: SimLookup.defaultSmsSubscriptionId()
+        SimReport(SimLookup.describe(context, subscriptionId), selection)
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not describe the sending SIM: ${e.message}")
+        SimReport(null, selection)
     }
 }

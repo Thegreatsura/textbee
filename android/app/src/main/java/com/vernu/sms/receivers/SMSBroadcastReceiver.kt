@@ -10,6 +10,7 @@ import com.vernu.sms.dtos.SMSDTO
 import com.vernu.sms.helpers.DeviceLog
 import com.vernu.sms.helpers.SMSFilterHelper
 import com.vernu.sms.helpers.SharedPreferenceHelper
+import com.vernu.sms.helpers.SimLookup
 import com.vernu.sms.workers.SMSReceivedWorker
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
@@ -65,6 +66,7 @@ class SMSBroadcastReceiver : BroadcastReceiver() {
 
         val fingerprint = generateFingerprint(dto.sender, dto.message, dto.receivedAtInMillis)
         dto.fingerprint = fingerprint
+        dto.simUsed = SimLookup.fromReceivedIntent(context, intent)
 
         val currentTime = System.currentTimeMillis()
         val lastProcessedTime = processedFingerprints[fingerprint]

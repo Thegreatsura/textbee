@@ -1363,7 +1363,7 @@ export class UpdateSMSStatusDTO {
     type: SimUsedDTO,
     required: false,
     description:
-      'The SIM the device used for this message. Can differ from the requested simSubscriptionId. Omit it, or any field in it, when the device cannot tell.',
+      'The SIM the device used for this message. Can differ from the requested simSubscriptionId. Replaces the SIM stored for the message; an empty object clears it. Omit it to keep the stored SIM, and omit any field in it the device cannot tell.',
   })
   simUsed?: SimUsedDTO
 

@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
+import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.vernu.sms.dtos.SimUsedDTO
@@ -44,7 +45,7 @@ object SimLookup {
         val id = dto.subscriptionId
         if (id != null) {
             try {
-                activeSubscription(context, id)?.let { fill(dto, it) }
+                activeSubscription(context, id)?.let { fill(context, dto, it) }
             } catch (e: Exception) {
                 Log.d(TAG, "Could not describe subscription $id: ${e.message}")
             }
@@ -69,6 +70,21 @@ object SimLookup {
         return null
     }
 
+    // Q and up have the codes as strings. Before Q the int getters drop the
+    // leading zeros of the mnc, so the operator string "MCCMNC" is used instead.
+    private fun networkCodes(context: Context, info: SubscriptionInfo): Pair<String?, String?> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val mcc = runCatching { info.mccString }.getOrNull()
+            val mnc = runCatching { info.mncString }.getOrNull()
+            return SimReport.mccOrNull(mcc) to SimReport.mncOrNull(mnc)
+        }
+        val operator = runCatching {
+            val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+            telephony?.createForSubscriptionId(info.subscriptionId)?.simOperator
+        }.getOrNull()
+        return SimReport.splitOperator(operator)
+    }
+
     private fun activeSubscription(context: Context, subscriptionId: Int): SubscriptionInfo? {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED
@@ -78,28 +94,15 @@ object SimLookup {
         return manager.getActiveSubscriptionInfo(subscriptionId)
     }
 
-    private fun fill(dto: SimUsedDTO, info: SubscriptionInfo) {
+    private fun fill(context: Context, dto: SimUsedDTO, info: SubscriptionInfo) {
         if (dto.slotIndex == null) {
             dto.slotIndex = runCatching { SimReport.usableSlotIndex(info.simSlotIndex) }.getOrNull()
         }
         dto.carrierName = runCatching { info.carrierName?.toString()?.trim()?.takeIf { it.isNotEmpty() } }.getOrNull()
         dto.displayName = runCatching { info.displayName?.toString()?.trim()?.takeIf { it.isNotEmpty() } }.getOrNull()
         dto.countryIso = runCatching { info.countryIso?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } }.getOrNull()
-        dto.mcc = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                info.mccString?.takeIf { it.isNotEmpty() }
-            } else {
-                @Suppress("DEPRECATION")
-                info.mcc.takeIf { it != Int.MAX_VALUE }?.let { String.format("%03d", it) }
-            }
-        }.getOrNull()
-        dto.mnc = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                info.mncString?.takeIf { it.isNotEmpty() }
-            } else {
-                @Suppress("DEPRECATION")
-                info.mnc.takeIf { it != Int.MAX_VALUE }?.toString()
-            }
-        }.getOrNull()
+        val (mcc, mnc) = networkCodes(context, info)
+        dto.mcc = mcc
+        dto.mnc = mnc
     }
 }

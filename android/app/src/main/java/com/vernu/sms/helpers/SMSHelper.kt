@@ -127,7 +127,7 @@ object SMSHelper {
             errorMessage = "SMS permission not granted"
             pushReceivedAtInMillis = timing.pushReceivedAtMillis
             sendAttemptedAtInMillis = timing.sendAttemptedAtMillis
-            simUsed = sim?.simUsed
+            // Nothing reached the radio, so no SIM is claimed
             simSelection = sim?.selection
         }
         updateSMSStatus(context, smsDTO)
@@ -155,7 +155,7 @@ object SMSHelper {
             errorMessage = error
             pushReceivedAtInMillis = timing.pushReceivedAtMillis
             sendAttemptedAtInMillis = timing.sendAttemptedAtMillis
-            simUsed = sim?.simUsed
+            // Nothing reached the radio, so no SIM is claimed
             simSelection = sim?.selection
         }
         updateSMSStatus(context, smsDTO)

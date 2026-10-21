@@ -38,6 +38,23 @@ data class SimReport(
             else -> SELECTION_SYSTEM_DEFAULT
         }
 
+        private val MCC = Regex("^[0-9]{3}$")
+        private val MNC = Regex("^[0-9]{2,3}$")
+
+        // ASCII digits only; "000" is what some phones report for unknown
+        fun mccOrNull(value: String?): String? =
+            value?.trim()?.takeIf { MCC.matches(it) && it != "000" }
+
+        fun mncOrNull(value: String?): String? = value?.trim()?.takeIf { MNC.matches(it) }
+
+        /** "310260" to ("310", "260"). Anything else gives nulls. */
+        fun splitOperator(operator: String?): Pair<String?, String?> {
+            val code = operator?.trim() ?: return null to null
+            if (code.length !in 5..6) return null to null
+            val mcc = mccOrNull(code.substring(0, 3)) ?: return null to null
+            return mcc to mncOrNull(code.substring(3))
+        }
+
         /** Nothing worth sending becomes null, so the upload stays as it was. */
         fun compact(dto: SimUsedDTO?): SimUsedDTO? =
             if (dto == null || dto.isEmpty()) null else dto
@@ -45,8 +62,8 @@ data class SimReport(
         fun fromJson(json: String?): SimReport? {
             if (json.isNullOrBlank()) return null
             return try {
-                val parsed = Gson().fromJson(json, SimReport::class.java) ?: return null
-                SimReport(compact(parsed.simUsed), parsed.selection)
+                // An empty simUsed is kept: it tells the server the SIM is unknown
+                Gson().fromJson(json, SimReport::class.java)
             } catch (e: Exception) {
                 null
             }

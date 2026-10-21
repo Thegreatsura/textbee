@@ -79,6 +79,35 @@ class SimReportTest {
         assertNull(SimReport.fromJson(null))
         assertNull(SimReport.fromJson(""))
         assertNull(SimReport.fromJson("not json"))
-        assertNull(SimReport.fromJson("{\"simUsed\":{}}")!!.simUsed)
+        assertNull(SimReport.fromJson("{\"selection\":\"requested\"}")!!.simUsed)
+    }
+
+    @Test
+    fun keepsAnEmptySimSoTheServerClearsTheOldOne() {
+        val json = SimReport(SimUsedDTO(), "system_default").toJson()
+        assertTrue(json.contains("\"simUsed\":{}"))
+        assertTrue(SimReport.fromJson(json)!!.simUsed!!.isEmpty())
+    }
+
+    @Test
+    fun splitsTheOperatorCode() {
+        assertEquals("310" to "260", SimReport.splitOperator("310260"))
+        assertEquals("515" to "03", SimReport.splitOperator("51503"))
+        assertEquals(null to null, SimReport.splitOperator(null))
+        assertEquals(null to null, SimReport.splitOperator(""))
+        assertEquals(null to null, SimReport.splitOperator("3102"))
+        assertEquals(null to null, SimReport.splitOperator("000000"))
+        // Arabic-Indic digits are not network codes
+        assertEquals(null to null, SimReport.splitOperator("\u0665\u0661\u0665\u0660\u0663"))
+    }
+
+    @Test
+    fun checksNetworkCodes() {
+        assertEquals("515", SimReport.mccOrNull(" 515 "))
+        assertNull(SimReport.mccOrNull("000"))
+        assertNull(SimReport.mccOrNull("51"))
+        assertEquals("03", SimReport.mncOrNull("03"))
+        assertNull(SimReport.mncOrNull("3"))
+        assertNull(SimReport.mncOrNull("abcd"))
     }
 }

@@ -13,6 +13,7 @@ import com.vernu.sms.AppConstants
 import com.vernu.sms.R
 import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.database.SmsDedupeStore
+import com.vernu.sms.dtos.SimUsedDTO
 import com.vernu.sms.helpers.DeviceLog
 import com.vernu.sms.helpers.DeviceConfig
 import com.vernu.sms.helpers.SMSHelper
@@ -257,12 +258,13 @@ class SmsSendWorker(context: Context, workerParams: WorkerParameters) : Worker(c
         return null to selection
     }
 
-    // Never fails the send: an unreadable SIM just goes unreported
+    // Never fails the send. An unreadable SIM goes out as an empty simUsed,
+    // so the server drops whatever an earlier attempt stored.
     private fun describeSim(context: Context, resolvedSim: Int?, selection: String): SimReport = try {
         val subscriptionId = resolvedSim ?: SimLookup.defaultSmsSubscriptionId()
-        SimReport(SimLookup.describe(context, subscriptionId), selection)
+        SimReport(SimLookup.describe(context, subscriptionId) ?: SimUsedDTO(), selection)
     } catch (e: Exception) {
         Log.w(TAG, "Could not describe the sending SIM: ${e.message}")
-        SimReport(null, selection)
+        SimReport(SimUsedDTO(), selection)
     }
 }

@@ -20,4 +20,8 @@ class SMSDTO {
 
     // Which attempt of this worker's retry loop filed the report
     var reportAttempt: Int = 0
+
+    // The SIM the message went through, when the phone can tell
+    var simUsed: SimUsedDTO? = null
+    var simSelection: String? = null
 }

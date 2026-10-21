@@ -394,6 +394,67 @@ export class SendBulkSMSRequestDTO extends SendBulkSMSInputDTO {
   deviceId?: string
 }
 
+// The SIM a device reports for one message. Every field is optional: the
+// device omits what Android does not expose, and older apps send nothing.
+export class SimUsedDTO {
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description:
+      'Android subscription id of the SIM. It can change when the SIM is removed and reinserted or swapped.',
+    example: 19,
+  })
+  subscriptionId?: number
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Zero-based slot of the SIM: 0 is SIM 1, 1 is SIM 2.',
+    example: 1,
+  })
+  slotIndex?: number
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile network operator, as reported by Android.',
+    example: 'Example Mobile',
+  })
+  carrierName?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Label the user gave this SIM on the device.',
+    example: 'Work',
+  })
+  displayName?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Two letter country code of the SIM, lowercase.',
+    example: 'us',
+  })
+  countryIso?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile country code.',
+    example: '310',
+  })
+  mcc?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Mobile network code.',
+    example: '260',
+  })
+  mnc?: string
+}
+
 export class ReceivedSMSDTO {
   @ApiProperty({
     type: String,
@@ -432,9 +493,18 @@ export class ReceivedSMSDTO {
   receivedAtInMillis?: number
 
   @ApiProperty({
+    type: SimUsedDTO,
+    required: false,
+    description:
+      'The SIM that received the message. Omit it, or any field in it, when the device cannot tell.',
+  })
+  simUsed?: SimUsedDTO
+
+  @ApiProperty({
     type: Number,
     required: false,
-    description: 'Subscription id of the SIM that received the message.',
+    description:
+      'Subscription id of the SIM that received the message. Older form of simUsed.subscriptionId, which takes precedence when both are present.',
     example: 19,
   })
   simSubscriptionId?: number
@@ -443,7 +513,7 @@ export class ReceivedSMSDTO {
     type: Number,
     required: false,
     description:
-      'Zero-based slot of the SIM that received the message: 0 is SIM 1, 1 is SIM 2.',
+      'Zero-based slot of the SIM that received the message: 0 is SIM 1, 1 is SIM 2. Older form of simUsed.slotIndex, which takes precedence when both are present.',
     example: 1,
   })
   simSlotIndex?: number
@@ -896,24 +966,6 @@ export class DeviceDTO {
   updatedAt: Date
 }
 
-export class SimUsedDTO {
-  @ApiProperty({
-    type: Number,
-    required: false,
-    description: 'Subscription id of the SIM.',
-    example: 19,
-  })
-  subscriptionId?: number
-
-  @ApiProperty({
-    type: Number,
-    required: false,
-    description: 'Zero-based slot of the SIM: 0 is SIM 1, 1 is SIM 2.',
-    example: 1,
-  })
-  slotIndex?: number
-}
-
 export class RetrieveSMSDTO {
   @ApiProperty({ type: String, description: 'Message id.' })
   _id: string
@@ -1308,10 +1360,18 @@ export class UpdateSMSStatusDTO {
   sendAttemptedAtInMillis?: number
 
   @ApiProperty({
+    type: SimUsedDTO,
+    required: false,
+    description:
+      'The SIM the device used for this message. Can differ from the requested simSubscriptionId. Replaces the SIM stored for the message; an empty object clears it. Omit it to keep the stored SIM, and omit any field in it the device cannot tell.',
+  })
+  simUsed?: SimUsedDTO
+
+  @ApiProperty({
     type: Number,
     required: false,
     description:
-      'Subscription id of the SIM the device used for this message. Can differ from the requested simSubscriptionId.',
+      'Subscription id of the SIM the device used for this message. Older form of simUsed.subscriptionId, which takes precedence when both are present.',
     example: 19,
   })
   simSubscriptionId?: number
@@ -1320,7 +1380,7 @@ export class UpdateSMSStatusDTO {
     type: Number,
     required: false,
     description:
-      'Zero-based slot of the SIM the device used for this message: 0 is SIM 1, 1 is SIM 2.',
+      'Zero-based slot of the SIM the device used for this message: 0 is SIM 1, 1 is SIM 2. Older form of simUsed.slotIndex, which takes precedence when both are present.',
     example: 1,
   })
   simSlotIndex?: number

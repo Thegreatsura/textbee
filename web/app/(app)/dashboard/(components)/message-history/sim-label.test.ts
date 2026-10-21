@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
+  simCarrier,
   simDetails,
   simFullLabel,
   simLabel,
   simMismatch,
   simName,
+  simNameWithCarrier,
 } from './sim-label'
 import type { SmsMessage } from './types'
 
@@ -77,7 +79,82 @@ describe('simDetails', () => {
   })
 })
 
+describe('simCarrier and simNameWithCarrier', () => {
+  it('adds the carrier to the SIM name', () => {
+    const m = msg({ simUsed: { slotIndex: 1, carrierName: ' Smart ' } })
+    expect(simCarrier(m)).toBe('Smart')
+    expect(simNameWithCarrier(m)).toBe('SIM 2 · Smart')
+  })
+
+  it('shows the name alone when the carrier is missing or blank', () => {
+    expect(simNameWithCarrier(msg({ simUsed: { slotIndex: 0 } }))).toBe('SIM 1')
+    expect(
+      simNameWithCarrier(msg({ simUsed: { slotIndex: 0, carrierName: '  ' } }))
+    ).toBe('SIM 1')
+  })
+
+  it('names the SIM by its carrier when nothing else is known', () => {
+    const m = msg({ type: 'RECEIVED', simUsed: { carrierName: 'Smart' } })
+    expect(simName(m)).toBe('Smart')
+    expect(simNameWithCarrier(m)).toBe('Smart')
+    expect(simFullLabel(m)).toBe('Received on Smart')
+  })
+})
+
+describe('simDetails with carrier data', () => {
+  it('lists every part the phone reported', () => {
+    expect(
+      simDetails(
+        msg({
+          simUsed: {
+            subscriptionId: 19,
+            slotIndex: 1,
+            carrierName: 'Smart',
+            displayName: 'Work',
+            countryIso: 'ph',
+            mcc: '515',
+            mnc: '03',
+          },
+        })
+      )
+    ).toEqual([
+      'Slot: SIM 2 (slotIndex 1)',
+      'Subscription ID: 19',
+      'Carrier: Smart',
+      'Name on phone: Work',
+      'Country: PH',
+      'Network code: 515-03',
+    ])
+  })
+
+  it('skips a phone name that only repeats the carrier', () => {
+    expect(
+      simDetails(msg({ simUsed: { carrierName: 'Smart', displayName: 'Smart' } }))
+    ).toEqual(['Carrier: Smart'])
+  })
+
+  it('shows either code alone when the other is missing', () => {
+    expect(simDetails(msg({ simUsed: { mcc: '515' } }))).toEqual([
+      'Mobile country code: 515',
+    ])
+    expect(simDetails(msg({ simUsed: { mnc: '03' } }))).toEqual([
+      'Mobile network code: 03',
+    ])
+  })
+})
+
 describe('simFullLabel', () => {
+  it('adds the carrier and the ID', () => {
+    expect(
+      simFullLabel(
+        msg({
+          type: 'RECEIVED',
+          simUsed: { subscriptionId: 19, slotIndex: 1, carrierName: 'Smart' },
+        })
+      )
+    ).toBe('Received on SIM 2 · Smart (ID 19)')
+  })
+
   it('adds the ID when the slot named the SIM', () => {
     expect(
       simFullLabel(msg({ type: 'SENT', simUsed: { subscriptionId: 19, slotIndex: 1 } }))

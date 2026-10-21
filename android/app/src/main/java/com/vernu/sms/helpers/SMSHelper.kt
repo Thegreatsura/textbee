@@ -30,17 +30,18 @@ object SMSHelper {
         smsId: String,
         smsBatchId: String,
         context: Context,
-        timing: SendTiming = SendTiming()
+        timing: SendTiming = SendTiming(),
+        sim: SimReport? = null
     ): Boolean {
         if (!TextbeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS)) {
             Log.e(TAG, "SMS permission not granted. Unable to send SMS.")
-            reportPermissionError(context, smsId, smsBatchId, timing)
+            reportPermissionError(context, smsId, smsBatchId, timing, sim)
             return false
         }
         return try {
             val smsManager = SmsManager.getDefault()
-            val sentIntent = createSentPendingIntent(context, smsId, smsBatchId, timing)
-            val deliveredIntent = createDeliveredPendingIntent(context, smsId, smsBatchId, timing)
+            val sentIntent = createSentPendingIntent(context, smsId, smsBatchId, timing, sim)
+            val deliveredIntent = createDeliveredPendingIntent(context, smsId, smsBatchId, timing, sim)
             val parts = smsManager.divideMessage(message)
             if (parts.size > 1) {
                 val sentIntents = ArrayList<PendingIntent>(parts.size).also { list ->
@@ -56,7 +57,7 @@ object SMSHelper {
             true
         } catch (e: Exception) {
             TextbeeUtils.logException(e, "Exception when sending SMS")
-            reportSendingError(context, smsId, smsBatchId, e.message, timing)
+            reportSendingError(context, smsId, smsBatchId, e.message, timing, sim)
             false
         }
     }
@@ -70,13 +71,14 @@ object SMSHelper {
         smsId: String,
         smsBatchId: String,
         context: Context,
-        timing: SendTiming = SendTiming()
+        timing: SendTiming = SendTiming(),
+        sim: SimReport? = null
     ): Boolean {
         if (!TextbeeUtils.isPermissionGranted(context, Manifest.permission.SEND_SMS) ||
             !TextbeeUtils.isPermissionGranted(context, Manifest.permission.READ_PHONE_STATE)
         ) {
             Log.e(TAG, "SMS or Phone State permission not granted. Unable to send SMS from specific SIM.")
-            reportPermissionError(context, smsId, smsBatchId, timing)
+            reportPermissionError(context, smsId, smsBatchId, timing, sim)
             return false
         }
         return try {
@@ -87,8 +89,8 @@ object SMSHelper {
                 Log.w(TAG, "Using default SIM as specific SIM selection not supported on this Android version")
                 SmsManager.getDefault()
             }
-            val sentIntent = createSentPendingIntent(context, smsId, smsBatchId, timing)
-            val deliveredIntent = createDeliveredPendingIntent(context, smsId, smsBatchId, timing)
+            val sentIntent = createSentPendingIntent(context, smsId, smsBatchId, timing, sim)
+            val deliveredIntent = createDeliveredPendingIntent(context, smsId, smsBatchId, timing, sim)
             val parts = smsManager.divideMessage(message)
             if (parts.size > 1) {
                 val sentIntents = ArrayList<PendingIntent>(parts.size).also { list ->
@@ -104,7 +106,7 @@ object SMSHelper {
             true
         } catch (e: Exception) {
             TextbeeUtils.logException(e, "Exception when sending SMS from specific SIM")
-            reportSendingError(context, smsId, smsBatchId, e.message, timing)
+            reportSendingError(context, smsId, smsBatchId, e.message, timing, sim)
             false
         }
     }
@@ -113,7 +115,8 @@ object SMSHelper {
         context: Context,
         smsId: String,
         smsBatchId: String,
-        timing: SendTiming
+        timing: SendTiming,
+        sim: SimReport?
     ) {
         val smsDTO = SMSDTO().apply {
             this.smsId = smsId
@@ -124,6 +127,8 @@ object SMSHelper {
             errorMessage = "SMS permission not granted"
             pushReceivedAtInMillis = timing.pushReceivedAtMillis
             sendAttemptedAtInMillis = timing.sendAttemptedAtMillis
+            // Nothing reached the radio, so no SIM is claimed
+            simSelection = sim?.selection
         }
         updateSMSStatus(context, smsDTO)
         try {
@@ -138,7 +143,8 @@ object SMSHelper {
         smsId: String,
         smsBatchId: String,
         error: String?,
-        timing: SendTiming
+        timing: SendTiming,
+        sim: SimReport?
     ) {
         val smsDTO = SMSDTO().apply {
             this.smsId = smsId
@@ -149,6 +155,8 @@ object SMSHelper {
             errorMessage = error
             pushReceivedAtInMillis = timing.pushReceivedAtMillis
             sendAttemptedAtInMillis = timing.sendAttemptedAtMillis
+            // Nothing reached the radio, so no SIM is claimed
+            simSelection = sim?.selection
         }
         updateSMSStatus(context, smsDTO)
     }
@@ -171,7 +179,8 @@ object SMSHelper {
         context: Context,
         smsId: String,
         smsBatchId: String,
-        timing: SendTiming
+        timing: SendTiming,
+        sim: SimReport?
     ): PendingIntent {
         val intent = Intent(context, SMSStatusReceiver::class.java).apply {
             action = SMSStatusReceiver.SMS_SENT
@@ -179,6 +188,7 @@ object SMSHelper {
             putExtra("sms_batch_id", smsBatchId)
             putExtra(SMSStatusReceiver.EXTRA_PUSH_RECEIVED_AT, timing.pushReceivedAtMillis)
             putExtra(SMSStatusReceiver.EXTRA_SEND_ATTEMPTED_AT, timing.sendAttemptedAtMillis)
+            sim?.let { putExtra(SMSStatusReceiver.EXTRA_SIM_REPORT, it.toJson()) }
         }
         var flags = PendingIntent.FLAG_UPDATE_CURRENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags = flags or PendingIntent.FLAG_MUTABLE
@@ -189,7 +199,8 @@ object SMSHelper {
         context: Context,
         smsId: String,
         smsBatchId: String,
-        timing: SendTiming
+        timing: SendTiming,
+        sim: SimReport?
     ): PendingIntent {
         val intent = Intent(context, SMSStatusReceiver::class.java).apply {
             action = SMSStatusReceiver.SMS_DELIVERED
@@ -197,6 +208,7 @@ object SMSHelper {
             putExtra("sms_batch_id", smsBatchId)
             putExtra(SMSStatusReceiver.EXTRA_PUSH_RECEIVED_AT, timing.pushReceivedAtMillis)
             putExtra(SMSStatusReceiver.EXTRA_SEND_ATTEMPTED_AT, timing.sendAttemptedAtMillis)
+            sim?.let { putExtra(SMSStatusReceiver.EXTRA_SIM_REPORT, it.toJson()) }
         }
         var flags = PendingIntent.FLAG_UPDATE_CURRENT
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags = flags or PendingIntent.FLAG_MUTABLE

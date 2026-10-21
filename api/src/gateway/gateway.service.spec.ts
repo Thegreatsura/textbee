@@ -1603,6 +1603,31 @@ describe('GatewayService', () => {
       })
     })
 
+    it('stores every SIM detail the app reports', async () => {
+      await service.receiveSMS(mockDeviceId, {
+        ...mockReceivedSmsData,
+        simUsed: {
+          subscriptionId: 19,
+          slotIndex: 1,
+          carrierName: 'Smart',
+          displayName: 'Work',
+          countryIso: 'ph',
+          mcc: '515',
+          mnc: '03',
+        },
+      })
+
+      expect(mockSmsModel.create.mock.calls[0][0].simUsed).toEqual({
+        subscriptionId: 19,
+        slotIndex: 1,
+        carrierName: 'Smart',
+        displayName: 'Work',
+        countryIso: 'ph',
+        mcc: '515',
+        mnc: '03',
+      })
+    })
+
     it('stores no SIM when the app does not report one', async () => {
       await service.receiveSMS(mockDeviceId, mockReceivedSmsData)
 
@@ -2214,6 +2239,69 @@ describe('GatewayService', () => {
           'requested_invalid_fallback',
         )
         expect(update.$set.simSubscriptionId).toBeUndefined()
+      })
+
+      it('stores every SIM detail of a nested report', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'sent',
+          simUsed: {
+            subscriptionId: 17,
+            slotIndex: 0,
+            carrierName: 'Globe',
+            countryIso: 'ph',
+            mcc: '515',
+            mnc: '02',
+          },
+          simSelection: 'system_default',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        // Replaced whole, so no field of an earlier SIM survives
+        expect(update.$set.simUsed).toEqual({
+          subscriptionId: 17,
+          slotIndex: 0,
+          carrierName: 'Globe',
+          countryIso: 'ph',
+          mcc: '515',
+          mnc: '02',
+        })
+        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed.'))).toEqual([])
+        expect(update.$unset).toBeUndefined()
+        expect(update.$set['metadata.simSelection']).toBe('system_default')
+      })
+
+      it('clears the stored SIM when a nested report says it is unknown', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'sent',
+          simUsed: {},
+          simSelection: 'system_default',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        expect(update.$unset).toEqual({ simUsed: '' })
+        expect(update.$set).not.toHaveProperty('simUsed')
+        expect(update.$set['metadata.simSelection']).toBe('system_default')
+      })
+
+      it('keeps the stored SIM when a report has none', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'failed',
+          errorCode: 'PERMISSION_DENIED',
+          simSelection: 'requested',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        expect(update.$unset).toBeUndefined()
+        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed'))).toEqual([])
       })
 
       it('updates only the SIM part the report carries', async () => {

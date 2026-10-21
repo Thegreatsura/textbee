@@ -10,6 +10,7 @@ import com.vernu.sms.AppConstants
 import com.vernu.sms.dtos.SMSDTO
 import com.vernu.sms.helpers.DeviceLog
 import com.vernu.sms.helpers.SharedPreferenceHelper
+import com.vernu.sms.helpers.SimReport
 import com.vernu.sms.workers.SMSStatusUpdateWorker
 import java.lang.reflect.Modifier
 
@@ -20,6 +21,7 @@ class SMSStatusReceiver : BroadcastReceiver() {
         const val SMS_DELIVERED = "SMS_DELIVERED"
         const val EXTRA_PUSH_RECEIVED_AT = "push_received_at"
         const val EXTRA_SEND_ATTEMPTED_AT = "send_attempted_at"
+        const val EXTRA_SIM_REPORT = "sim_report"
 
         private fun getResultCodeName(resultCode: Int): String? {
             for (clazz in arrayOf<Class<*>>(SmsManager::class.java, Activity::class.java)) {
@@ -49,6 +51,10 @@ class SMSStatusReceiver : BroadcastReceiver() {
             // Carried through the pending intent from the send worker
             pushReceivedAtInMillis = intent.getLongExtra(EXTRA_PUSH_RECEIVED_AT, 0)
             sendAttemptedAtInMillis = intent.getLongExtra(EXTRA_SEND_ATTEMPTED_AT, 0)
+            SimReport.fromJson(intent.getStringExtra(EXTRA_SIM_REPORT))?.let {
+                simUsed = it.simUsed
+                simSelection = it.selection
+            }
         }
 
         when (intent.action) {

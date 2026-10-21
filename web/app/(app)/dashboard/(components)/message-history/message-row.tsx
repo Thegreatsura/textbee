@@ -6,7 +6,7 @@ import RelativeTime from '@/components/shared/relative-time'
 import { cn } from '@/lib/utils'
 import { getStatusBadge } from './utils'
 import { messageDate, messageDirection } from './group'
-import { simName } from './sim-label'
+import { simNameWithCarrier } from './sim-label'
 import { SimChip } from './sim-chip'
 import type { Device } from '@/lib/api'
 import type { SmsMessage } from './types'
@@ -32,7 +32,7 @@ export function MessageRow({
   const isSent = direction === 'sent'
   const badge = getStatusBadge(message.status)
   // Short form: the arrow already shows the direction
-  const sim = simName(message)
+  const sim = simNameWithCarrier(message)
   const counterparty = isSent
     ? message.recipient || message.recipients?.[0] || 'Unknown'
     : message.sender || 'Unknown'

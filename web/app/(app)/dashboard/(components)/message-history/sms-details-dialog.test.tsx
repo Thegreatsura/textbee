@@ -53,6 +53,15 @@ describe('SmsDetailsDialog SIM', () => {
     expect(screen.queryByText(/but the phone used/)).toBeNull()
   })
 
+  it('shows the carrier when the phone reported it', () => {
+    open({
+      ...sent,
+      simUsed: { subscriptionId: 19, slotIndex: 1, carrierName: 'Smart' },
+    })
+
+    expect(screen.getByText('Sent from SIM 2 · Smart (ID 19)')).toBeTruthy()
+  })
+
   it('shows no SIM when the app did not report one', () => {
     open({ ...sent, simSubscriptionId: 19 })
 

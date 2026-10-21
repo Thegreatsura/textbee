@@ -190,10 +190,13 @@ export function WebhookDocs() {
                 </TabsContent>
                 </Tabs>
                 <p className='text-xs text-muted-foreground'>
-                  Any event can also include{' '}
-                  <code>{'"simUsed": { "subscriptionId": 19, "slotIndex": 1 }'}</code>
-                  , the SIM that sent or received the message. It is present
-                  only when the textbee app on the phone reports the SIM.
+                  Any event can also include <code>simUsed</code>, the SIM
+                  that sent or received the message, for example{' '}
+                  <code>
+                    {'"simUsed": { "subscriptionId": 19, "slotIndex": 1, "carrierName": "Example Mobile", "displayName": "Work", "countryIso": "us", "mcc": "310", "mnc": "260" }'}
+                  </code>
+                  . It is present only when the textbee app on the phone
+                  reports the SIM, and each field inside it is optional.
                 </p>
               </div>
             </TabsContent>

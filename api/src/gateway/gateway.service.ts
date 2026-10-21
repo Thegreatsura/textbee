@@ -45,7 +45,11 @@ import {
   toRecoveryPayload,
 } from './pending-recovery'
 import { errorHistoryPush } from './error-history'
-import { resolveSimSelection, resolveSimUsed } from './sim-report'
+import {
+  hasNestedSimUsed,
+  resolveSimSelection,
+  resolveSimUsedReport,
+} from './sim-report'
 import {
   loadSmsPermissionStatus,
   reportsSmsPermissionOff,
@@ -1254,7 +1258,7 @@ export class GatewayService {
       return existingSMS
     }
 
-    const simUsed = resolveSimUsed(dto.simSubscriptionId, dto.simSlotIndex)
+    const simUsed = resolveSimUsedReport(dto)
     const sms = await this.smsModel.create({
       user: device.user,
       device: device._id,
@@ -1651,10 +1655,17 @@ export class GatewayService {
     if (reportAttempt !== undefined) {
       updateData['metadata.statusReportAttempt'] = reportAttempt
     }
-    // Dotted paths so a report with only one part keeps the other
-    const simUsed = resolveSimUsed(dto.simSubscriptionId, dto.simSlotIndex)
-    for (const [key, value] of Object.entries(simUsed ?? {})) {
-      updateData[`simUsed.${key}`] = value
+    const simUsed = resolveSimUsedReport(dto)
+    let simUnset: { $unset: { simUsed: '' } } | null = null
+    if (hasNestedSimUsed(dto)) {
+      // A whole SIM, so a resend on another SIM never mixes the two
+      if (simUsed) updateData.simUsed = simUsed
+      else simUnset = { $unset: { simUsed: '' } }
+    } else {
+      // Older flat fields: dotted paths so a report with one part keeps the other
+      for (const [key, value] of Object.entries(simUsed ?? {})) {
+        updateData[`simUsed.${key}`] = value
+      }
     }
     const simSelection = resolveSimSelection(dto.simSelection)
     if (simSelection) {
@@ -1687,7 +1698,7 @@ export class GatewayService {
     // Update the SMS
 const updatedSms = await this.smsModel.findByIdAndUpdate(
   dto.smsId,
-  { $set: updateData, ...(failureEntry ?? {}) },
+  { $set: updateData, ...(failureEntry ?? {}), ...(simUnset ?? {}) },
   { new: true } 
 );
     

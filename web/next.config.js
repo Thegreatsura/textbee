@@ -12,7 +12,7 @@ const nextConfig = {
       },
       {
         source: '/android',
-        destination: 'https://dl.textbee.dev',
+        destination: 'https://textbee.dev/download',
         permanent: false,
       },
       // The invite itself lives behind textbee.dev/discord, so it can rotate

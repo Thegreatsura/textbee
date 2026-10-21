@@ -93,8 +93,11 @@ describe('simCarrier and simNameWithCarrier', () => {
     ).toBe('SIM 1')
   })
 
-  it('shows nothing when only the carrier is known', () => {
-    expect(simNameWithCarrier(msg({ simUsed: { carrierName: 'Smart' } }))).toBeUndefined()
+  it('names the SIM by its carrier when nothing else is known', () => {
+    const m = msg({ type: 'RECEIVED', simUsed: { carrierName: 'Smart' } })
+    expect(simName(m)).toBe('Smart')
+    expect(simNameWithCarrier(m)).toBe('Smart')
+    expect(simFullLabel(m)).toBe('Received on Smart')
   })
 })
 
@@ -130,9 +133,12 @@ describe('simDetails with carrier data', () => {
     ).toEqual(['Carrier: Smart'])
   })
 
-  it('shows the country code alone when the network code is missing', () => {
+  it('shows either code alone when the other is missing', () => {
     expect(simDetails(msg({ simUsed: { mcc: '515' } }))).toEqual([
       'Mobile country code: 515',
+    ])
+    expect(simDetails(msg({ simUsed: { mnc: '03' } }))).toEqual([
+      'Mobile network code: 03',
     ])
   })
 })

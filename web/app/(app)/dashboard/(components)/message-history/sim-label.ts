@@ -4,6 +4,9 @@ import type { SmsMessage } from './types'
 const isNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0
 
+const text = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined
+
 // The SIM the phone reported, e.g. "SIM 2". Undefined for messages handled by
 // app versions that do not report it, so those rows show nothing.
 export function simName(message: SmsMessage): string | undefined {
@@ -11,11 +14,8 @@ export function simName(message: SmsMessage): string | undefined {
   const id = message.simUsed?.subscriptionId
   if (isNumber(slot)) return `SIM ${slot + 1}`
   if (isNumber(id)) return `SIM ID ${id}`
-  return undefined
+  return text(message.simUsed?.carrierName)
 }
-
-const text = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim() ? value.trim() : undefined
 
 // The carrier the phone reported for that SIM, e.g. "Smart".
 export function simCarrier(message: SmsMessage): string | undefined {
@@ -27,7 +27,7 @@ export function simNameWithCarrier(message: SmsMessage): string | undefined {
   const name = simName(message)
   if (!name) return undefined
   const carrier = simCarrier(message)
-  return carrier ? `${name} · ${carrier}` : name
+  return carrier && carrier !== name ? `${name} · ${carrier}` : name
 }
 
 // "Sent from SIM 2" or "Received on SIM 2".
@@ -72,6 +72,7 @@ export function simDetails(message: SmsMessage): string[] {
   const mnc = text(sim?.mnc)
   if (mcc && mnc) lines.push(`Network code: ${mcc}-${mnc}`)
   else if (mcc) lines.push(`Mobile country code: ${mcc}`)
+  else if (mnc) lines.push(`Mobile network code: ${mnc}`)
   return lines
 }
 

@@ -146,6 +146,30 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
   })
 
+  it('fails the messages and frees the job when the push never settles', async () => {
+    jest.useFakeTimers()
+    jest
+      .spyOn(firebaseAdmin.messaging(), 'sendEach')
+      .mockReturnValueOnce(new Promise(() => undefined))
+
+    const handled = processor.handleSendSms(job).catch((e) => e)
+    await jest.advanceTimersByTimeAsync(120_000)
+    const error = await handled
+    jest.useRealTimers()
+
+    expect(error.code).toBe('FCM_SEND_TIMEOUT')
+    const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
+    expect(filter).toEqual({ _id: { $in: ['sms-1'] } })
+    expect(update.$set).toEqual({
+      status: 'failed',
+      failedAt: expect.any(Date),
+      errorCode: 'FCM_SEND_TIMEOUT',
+      errorMessage:
+        'FCM_SEND_TIMEOUT: Push to the device timed out after 120 seconds. The message may not have reached the phone.',
+    })
+    expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
+  })
+
   it('withholds the push for a listed user and marks the message', async () => {
     process.env.FCM_SEND_SKIP_USER_IDS = userId
     const sendEach = jest.spyOn(firebaseAdmin.messaging(), 'sendEach')

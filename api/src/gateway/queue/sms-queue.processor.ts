@@ -16,6 +16,11 @@ import {
 } from '../fcm-send-skip'
 import { errorHistoryPush } from '../error-history'
 import { SmsBatchStatusService } from '../sms-batch-status.service'
+import {
+  FCM_SEND_TIMEOUT_ERROR_CODE,
+  FcmSendTimeoutError,
+  withSendTimeout,
+} from './send-timeout'
 
 function getFcmErrorCode(error: { code?: string; message?: string } | null): string {
   if (!error?.code) return 'FCM_DELIVERY_FAILED'
@@ -81,7 +86,7 @@ export class SmsQueueProcessor {
       const skipped = shouldSkipFcmSend(device?.user, deviceId)
       const response = skipped
         ? skippedBatchResponse(fcmMessages.length)
-        : await firebaseAdmin.messaging().sendEach(fcmMessages)
+        : await withSendTimeout(firebaseAdmin.messaging().sendEach(fcmMessages))
       // The push is done. Anything that throws from here on is a persistence
       // problem, and must not mark handed-off messages as failed a second time.
       pushHandedOff = true
@@ -264,11 +269,16 @@ export class SmsQueueProcessor {
 
       if (failedSmsIds.length > 0) {
         const failedAt = new Date()
-        const errorCode =
-          (error as any)?.code != null
+        const timedOut = error instanceof FcmSendTimeoutError
+        const errorCode = timedOut
+          ? FCM_SEND_TIMEOUT_ERROR_CODE
+          : (error as any)?.code != null
             ? getFcmErrorCode(error as any)
             : 'FCM_SEND_ERROR'
-        const errorMessage = getFcmErrorMessage(error as any)
+        // A timeout says nothing about the token, so it skips the resync advice
+        const errorMessage = timedOut
+          ? `${FCM_SEND_TIMEOUT_ERROR_CODE}: ${error.message}`
+          : getFcmErrorMessage(error as any)
         await this.smsModel.updateMany(
           { _id: { $in: failedSmsIds } as any },
           {

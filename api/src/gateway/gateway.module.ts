@@ -17,6 +17,7 @@ import { SmsQueueProcessor } from './queue/sms-queue.processor'
 import { SmsStatusUpdateTask } from './tasks/sms-status-update.task'
 import { HeartbeatCheckTask } from './tasks/heartbeat-check.task'
 import { SmsBatchStatusService } from './sms-batch-status.service'
+import { SEND_JOB_TIMEOUT_MS } from './queue/send-timeout'
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SmsBatchStatusService } from './sms-batch-status.service'
           duration: configService.get<number>('SMS_QUEUE_LIMITER_DURATION_MS', 1000),
         },
         defaultJobOptions: {
+          timeout: SEND_JOB_TIMEOUT_MS,
           attempts: 2,
           backoff: {
             type: 'exponential',

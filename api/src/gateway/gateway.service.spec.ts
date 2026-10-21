@@ -1603,6 +1603,31 @@ describe('GatewayService', () => {
       })
     })
 
+    it('stores every SIM detail the app reports', async () => {
+      await service.receiveSMS(mockDeviceId, {
+        ...mockReceivedSmsData,
+        simUsed: {
+          subscriptionId: 19,
+          slotIndex: 1,
+          carrierName: 'Smart',
+          displayName: 'Work',
+          countryIso: 'ph',
+          mcc: '515',
+          mnc: '03',
+        },
+      })
+
+      expect(mockSmsModel.create.mock.calls[0][0].simUsed).toEqual({
+        subscriptionId: 19,
+        slotIndex: 1,
+        carrierName: 'Smart',
+        displayName: 'Work',
+        countryIso: 'ph',
+        mcc: '515',
+        mnc: '03',
+      })
+    })
+
     it('stores no SIM when the app does not report one', async () => {
       await service.receiveSMS(mockDeviceId, mockReceivedSmsData)
 
@@ -2214,6 +2239,34 @@ describe('GatewayService', () => {
           'requested_invalid_fallback',
         )
         expect(update.$set.simSubscriptionId).toBeUndefined()
+      })
+
+      it('stores every SIM detail of a nested report', async () => {
+        reportingDevice()
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'sent',
+          simUsed: {
+            subscriptionId: 17,
+            slotIndex: 0,
+            carrierName: 'Globe',
+            countryIso: 'ph',
+            mcc: '515',
+            mnc: '02',
+          },
+          simSelection: 'system_default',
+        } as any)
+
+        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        expect(update.$set['simUsed.subscriptionId']).toBe(17)
+        expect(update.$set['simUsed.slotIndex']).toBe(0)
+        expect(update.$set['simUsed.carrierName']).toBe('Globe')
+        expect(update.$set['simUsed.countryIso']).toBe('ph')
+        expect(update.$set['simUsed.mcc']).toBe('515')
+        expect(update.$set['simUsed.mnc']).toBe('02')
+        expect(update.$set).not.toHaveProperty('simUsed.displayName')
+        expect(update.$set['metadata.simSelection']).toBe('system_default')
       })
 
       it('updates only the SIM part the report carries', async () => {

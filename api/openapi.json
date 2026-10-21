@@ -1623,6 +1623,46 @@
           "messages"
         ]
       },
+      "SimUsedDTO": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "number",
+            "description": "Android subscription id of the SIM. It can change when the SIM is removed and reinserted or swapped.",
+            "example": 19
+          },
+          "slotIndex": {
+            "type": "number",
+            "description": "Zero-based slot of the SIM: 0 is SIM 1, 1 is SIM 2.",
+            "example": 1
+          },
+          "carrierName": {
+            "type": "string",
+            "description": "Mobile network operator, as reported by Android.",
+            "example": "Example Mobile"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Label the user gave this SIM on the device.",
+            "example": "Work"
+          },
+          "countryIso": {
+            "type": "string",
+            "description": "Two letter country code of the SIM, lowercase.",
+            "example": "us"
+          },
+          "mcc": {
+            "type": "string",
+            "description": "Mobile country code.",
+            "example": "310"
+          },
+          "mnc": {
+            "type": "string",
+            "description": "Mobile network code.",
+            "example": "260"
+          }
+        }
+      },
       "MessagePageMetaDTO": {
         "type": "object",
         "properties": {
@@ -1722,21 +1762,6 @@
           "model",
           "buildId"
         ]
-      },
-      "SimUsedDTO": {
-        "type": "object",
-        "properties": {
-          "subscriptionId": {
-            "type": "number",
-            "description": "Subscription id of the SIM.",
-            "example": 19
-          },
-          "slotIndex": {
-            "type": "number",
-            "description": "Zero-based slot of the SIM: 0 is SIM 1, 1 is SIM 2.",
-            "example": 1
-          }
-        }
       },
       "MessageDTO": {
         "type": "object",

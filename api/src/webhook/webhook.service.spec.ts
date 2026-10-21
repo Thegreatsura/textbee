@@ -463,6 +463,24 @@ describe('WebhookService payload simUsed', () => {
     expect(payload.simUsed).toEqual({ subscriptionId: 19, slotIndex: 1 })
   })
 
+  it('passes every stored SIM detail through', async () => {
+    const simUsed = {
+      subscriptionId: 19,
+      slotIndex: 1,
+      carrierName: 'Smart',
+      displayName: 'Work',
+      countryIso: 'ph',
+      mcc: '515',
+      mnc: '03',
+    }
+    const payload = await setup().payloadFor(
+      { _id: 's1', status: 'sent', simUsed },
+      'MESSAGE_SENT',
+    )
+
+    expect(payload.simUsed).toEqual(simUsed)
+  })
+
   it('adds it to received messages too', async () => {
     const payload = await setup().payloadFor(
       { _id: 's1', sender: '+15550100', simUsed: { slotIndex: 0 } },

@@ -3,6 +3,7 @@ import { Document, SchemaTypes, Types } from 'mongoose'
 import { Device } from './device.schema'
 import { SMSBatch } from './sms-batch.schema'
 import { User } from '../../users/schemas/user.schema'
+import { SimUsed } from '../sim-report'
 
 export type SMSDocument = SMS & Document
 
@@ -98,8 +99,19 @@ export class SMS {
   simSubscriptionId?: number
 
   // The SIM the phone reports it used; absent from builds that do not report it
-  @Prop({ type: { subscriptionId: Number, slotIndex: Number }, _id: false })
-  simUsed?: { subscriptionId?: number; slotIndex?: number }
+  @Prop({
+    type: {
+      subscriptionId: Number,
+      slotIndex: Number,
+      carrierName: String,
+      displayName: String,
+      countryIso: String,
+      mcc: String,
+      mnc: String,
+    },
+    _id: false,
+  })
+  simUsed?: SimUsed
 
   // misc metadata for debugging, not part of the public message shape
   @Prop({ type: Object, select: false })

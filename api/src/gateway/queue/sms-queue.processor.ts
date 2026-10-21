@@ -267,8 +267,8 @@ export class SmsQueueProcessor {
         }
       }
 
+      const failedAt = new Date()
       if (failedSmsIds.length > 0) {
-        const failedAt = new Date()
         const timedOut = error instanceof FcmSendTimeoutError
         const errorCode = timedOut
           ? FCM_SEND_TIMEOUT_ERROR_CODE
@@ -279,8 +279,12 @@ export class SmsQueueProcessor {
         const errorMessage = timedOut
           ? `${FCM_SEND_TIMEOUT_ERROR_CODE}: ${error.message}`
           : getFcmErrorMessage(error as any)
+        // The push may still have landed, so a phone report is not overwritten
         await this.smsModel.updateMany(
-          { _id: { $in: failedSmsIds } as any },
+          {
+            _id: { $in: failedSmsIds } as any,
+            status: { $nin: ['sent', 'delivered'] },
+          },
           {
             $set: {
               status: 'failed',
@@ -298,8 +302,11 @@ export class SmsQueueProcessor {
       }
 
       if (device?.user && failedSmsIds.length > 0) {
+        // Only the rows this failure actually changed
         const failedSmsDocuments = await this.smsModel.find({
           _id: { $in: failedSmsIds },
+          status: 'failed',
+          failedAt,
         })
         for (const failedSms of failedSmsDocuments) {
           await this.webhookService

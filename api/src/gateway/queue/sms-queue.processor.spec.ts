@@ -146,6 +146,56 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
   })
 
+  it('sends failure webhooks only for messages the failed handoff changed', async () => {
+    jest
+      .spyOn(firebaseAdmin.messaging(), 'sendEach')
+      .mockRejectedValueOnce(new Error('fcm down'))
+    const changed = { _id: 'sms-1', status: 'failed' }
+    mockSmsModel.find.mockResolvedValueOnce([changed])
+    mockWebhookService.deliverNotification.mockResolvedValue(undefined)
+
+    await expect(processor.handleSendSms(job)).rejects.toThrow('fcm down')
+
+    const [, update] = mockSmsModel.updateMany.mock.calls[0]
+    expect(mockSmsModel.find).toHaveBeenCalledWith({
+      _id: { $in: ['sms-1'] },
+      status: 'failed',
+      failedAt: update.$set.failedAt,
+    })
+    expect(mockWebhookService.deliverNotification).toHaveBeenCalledTimes(1)
+    expect(mockWebhookService.deliverNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ sms: changed, event: 'MESSAGE_FAILED' }),
+    )
+  })
+
+  it('fails the messages and frees the job when the push never settles', async () => {
+    jest.useFakeTimers()
+    jest
+      .spyOn(firebaseAdmin.messaging(), 'sendEach')
+      .mockReturnValueOnce(new Promise(() => undefined))
+
+    const handled = processor.handleSendSms(job).catch((e) => e)
+    await jest.advanceTimersByTimeAsync(120_000)
+    const error = await handled
+    jest.useRealTimers()
+
+    expect(error.code).toBe('FCM_SEND_TIMEOUT')
+    const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
+    // A phone report that landed while the push hung is kept
+    expect(filter).toEqual({
+      _id: { $in: ['sms-1'] },
+      status: { $nin: ['sent', 'delivered'] },
+    })
+    expect(update.$set).toEqual({
+      status: 'failed',
+      failedAt: expect.any(Date),
+      errorCode: 'FCM_SEND_TIMEOUT',
+      errorMessage:
+        'FCM_SEND_TIMEOUT: Push to the device timed out after 120 seconds. The message may not have reached the phone.',
+    })
+    expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
+  })
+
   it('withholds the push for a listed user and marks the message', async () => {
     process.env.FCM_SEND_SKIP_USER_IDS = userId
     const sendEach = jest.spyOn(firebaseAdmin.messaging(), 'sendEach')

@@ -67,7 +67,12 @@ describe('SmsQueueService', () => {
       fcmMessages: messages,
       smsBatchId: 'batch-1',
     })
-    expect(opts).toMatchObject({ attempts: 1, delay: 0, priority: 1 })
+    expect(opts).toMatchObject({
+      attempts: 1,
+      delay: 0,
+      priority: 1,
+      timeout: 300_000,
+    })
     expect(service.planSendSmsJob(10).waves).toEqual([
       { start: 0, end: 10, delayMs: 0 },
     ])

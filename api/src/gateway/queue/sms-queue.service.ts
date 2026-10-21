@@ -9,6 +9,7 @@ import {
   DispatchPlan,
   planDispatchWaves,
 } from './dispatch-pacing'
+import { SEND_JOB_TIMEOUT_MS } from './send-timeout'
 
 @Injectable()
 export class SmsQueueService {
@@ -128,6 +129,7 @@ export class SmsQueueService {
             priority: 1, // TODO: Make this dynamic based on users subscription plan
             attempts: 1,
             delay: wave.delayMs,
+            timeout: SEND_JOB_TIMEOUT_MS,
             backoff: {
               type: 'exponential',
               delay: 5000, // 5 seconds

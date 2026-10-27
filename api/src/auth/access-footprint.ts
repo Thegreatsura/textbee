@@ -17,6 +17,7 @@ const ANDROID_CLIENT = 'textbee-android'
 
 const CLIENT_FAMILIES: { label: string; match: RegExp }[] = [
   { label: 'textbee-js', match: /^textbee-js\b/ },
+  { label: 'textbee-python', match: /^textbee-python\b/ },
   { label: 'textbee-android', match: /^textbee-android\b/ },
 ]
 

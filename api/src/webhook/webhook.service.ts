@@ -26,6 +26,9 @@ import { MailService } from '../mail/mail.service'
 import { firstName } from '../mail/first-name'
 import { UsersService } from '../users/users.service'
 
+// Longer than the 60 second delivery timeout cap, so an attempt in flight keeps its claim.
+const DELIVERY_CLAIM_MS = 5 * 60 * 1000
+
 const blockedAddresses = new BlockList()
 for (const [address, prefix] of [
   ['0.0.0.0', 8],
@@ -561,10 +564,30 @@ export class WebhookService {
       return
     }
 
+    // A repeated status report must not notify the same endpoint twice.
+    // UNKNOWN_STATE covers several different statuses, so each one still goes out.
+    const alreadyNotified = new Set(
+      event === WebhookEvent.UNKNOWN_STATE
+        ? []
+        : (
+            await this.webhookNotificationModel.distinct('webhookSubscription', {
+              sms: sms._id,
+              event,
+              webhookSubscription: {
+                $in: webhookSubscriptions.map((s) => s._id),
+              },
+              deliveryAttemptAbortedAt: null,
+            })
+          ).map(String),
+    )
+    const pending = webhookSubscriptions.filter(
+      (subscription) => !alreadyNotified.has(String(subscription._id)),
+    )
+
     // Fan out: one notification + one queue job per matching subscription.
     // Use allSettled so a single failed enqueue does not block the others.
     const results = await Promise.allSettled(
-      webhookSubscriptions.map((subscription) =>
+      pending.map((subscription) =>
         this.createAndEnqueueNotification({ subscription, sms, event }),
       ),
     )
@@ -674,12 +697,32 @@ export class WebhookService {
 
   async attemptWebhookDelivery(notificationId: string) {
     const now = new Date()
-    const webhookNotification = await this.webhookNotificationModel.findById(
-      notificationId,
-    )
+    // Claims the notification so a duplicate or stale job cannot send it again.
+    const webhookNotification =
+      await this.webhookNotificationModel.findOneAndUpdate(
+        {
+          _id: notificationId,
+          deliveredAt: null,
+          deliveryAttemptAbortedAt: null,
+          $or: [
+            { nextDeliveryAttemptAt: null },
+            { nextDeliveryAttemptAt: { $lte: now } },
+          ],
+        },
+        {
+          $set: {
+            nextDeliveryAttemptAt: new Date(
+              now.getTime() + DELIVERY_CLAIM_MS,
+            ),
+          },
+        },
+        { new: true },
+      )
 
     if (!webhookNotification) {
-      console.log(`Webhook notification not found for ${notificationId}`)
+      console.log(
+        `Webhook notification ${notificationId} is missing, delivered, aborted, or not due, skipping`,
+      )
       return
     }
 
@@ -691,6 +734,8 @@ export class WebhookService {
     )
 
     if (!webhookSubscription) {
+      webhookNotification.deliveryAttemptAbortedAt = now
+      await webhookNotification.save()
       console.log(`Webhook subscription not found for ${webhookSubscriptionId}`)
       return
     }

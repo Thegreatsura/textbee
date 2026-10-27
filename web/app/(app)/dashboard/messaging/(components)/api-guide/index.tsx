@@ -27,6 +27,7 @@ import {
   API_BASE_URL,
   buildEndpoints,
   LANGUAGES,
+  PYTHON_SDK_PACKAGE,
   SDK_PACKAGE,
   type LanguageId,
 } from './snippets'
@@ -179,11 +180,20 @@ export default function ApiGuide() {
       </div>
 
       {/* One install step for the whole guide, since the language picker above
-          is global. Only the SDK needs installing; the REST samples do not. */}
+          is global. Only the SDKs need installing; the REST samples do not. */}
       {language === 'sdk' && (
         <div className='space-y-1.5'>
           <p className='text-sm font-medium'>Install the SDK</p>
           <PackageManagerTabs pkg={SDK_PACKAGE} />
+        </div>
+      )}
+      {language === 'python-sdk' && (
+        <div className='space-y-1.5'>
+          <p className='text-sm font-medium'>Install the SDK</p>
+          <CodeBlock
+            code={`pip install ${PYTHON_SDK_PACKAGE}`}
+            language='bash'
+          />
         </div>
       )}
 
@@ -259,6 +269,16 @@ export default function ApiGuide() {
             >
               <ExternalLink className='h-3.5 w-3.5' />
               JavaScript SDK on npm
+            </a>
+          </Button>
+          <Button asChild variant='outline' size='sm'>
+            <a
+              href='https://pypi.org/project/textbee/'
+              target='_blank'
+              rel='noopener noreferrer'
+            >
+              <ExternalLink className='h-3.5 w-3.5' />
+              Python SDK on PyPI
             </a>
           </Button>
         </div>

@@ -61,12 +61,16 @@ test.describe('api guide (mocked API, no real backend)', () => {
     // cURL is the default.
     await expect(page.getByText('curl -X POST').first()).toBeVisible()
 
-    await page.getByRole('tab', { name: 'Python' }).click()
+    await page.getByRole('tab', { name: 'Python', exact: true }).click()
     await expect(page.getByText('import os, requests').first()).toBeVisible()
     await expect(page.getByText('curl -X POST')).toHaveCount(0)
 
     await page.getByRole('tab', { name: 'Go' }).click()
     await expect(page.getByText('package main').first()).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Python SDK', exact: true }).click()
+    await expect(page.getByText('pip install textbee')).toBeVisible()
+    await expect(page.getByText('from textbee import Textbee').first()).toBeVisible()
   })
 
   // The guide applies Prism themes, so it must render with the Prism
@@ -81,7 +85,15 @@ test.describe('api guide (mocked API, no real backend)', () => {
     await mockApi(page)
     await page.goto('/dashboard/messaging/api-guide')
 
-    for (const language of ['cURL', 'Node.js', 'Python', 'PHP', 'Go']) {
+    for (const language of [
+      'cURL',
+      'Node.js',
+      'Python',
+      'PHP',
+      'Go',
+      'JS SDK',
+      'Python SDK',
+    ]) {
       await page.getByRole('tab', { name: language, exact: true }).click()
       await expect(
         page.locator('pre code .token').first(),

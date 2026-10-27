@@ -16,7 +16,11 @@ vi.mock('@/lib/api', () => ({
   useSetDefaultDevice: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }))
-vi.mock('./add-device-dialog', () => ({ default: forwardRef(() => null) }))
+vi.mock('./add-device-dialog', () => {
+  const AddDeviceDialog = forwardRef(() => null)
+  AddDeviceDialog.displayName = 'AddDeviceDialog'
+  return { default: AddDeviceDialog }
+})
 
 const device = (over: Partial<Device>): Device =>
   ({

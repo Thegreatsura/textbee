@@ -49,9 +49,14 @@ export default function SupportHQWidget() {
       window.SupportHQWidget?.init({
         projectId,
         themeColor: process.env.NEXT_PUBLIC_SUPPORT_HQ_THEME_COLOR ?? '#2563eb',
-        ...(hasUser && {
-          metadata: { userId, name, email, phone },
-        }),
+        // Signed-out pages (login, register, checkout) have no session to read
+        // the contact from, so the visitor is asked for it before chatting.
+        ...(hasUser
+          ? { metadata: { userId, name, email, phone } }
+          : {
+              metadata: { source: 'web-app-signed-out' },
+              requiredFields: ['name', 'email'],
+            }),
       })
       const shadow = document.getElementById('supporthq-widget-host')?.shadowRoot
       // Signed-out pages have no account menu, so they keep the launcher.

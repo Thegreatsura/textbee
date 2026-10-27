@@ -122,13 +122,25 @@ describe('SupportHQWidget', () => {
     expect(init).not.toHaveBeenCalled()
   })
 
-  it('omits metadata when nobody is signed in', () => {
+  // Signed-out chats used to arrive with no name or email at all.
+  it('asks signed-out visitors for their name and email', () => {
     useSessionMock.mockReturnValue({ data: null })
     render(<SupportHQWidget />)
     fireLoad()
 
     expect(init).toHaveBeenCalledTimes(1)
-    expect(init.mock.calls[0][0]).not.toHaveProperty('metadata')
+    expect(init.mock.calls[0][0].requiredFields).toEqual(['name', 'email'])
+    expect(init.mock.calls[0][0].metadata).toEqual({
+      source: 'web-app-signed-out',
+    })
+  })
+
+  it('does not ask signed-in users for details the session already has', () => {
+    useSessionMock.mockReturnValue(sessionWith())
+    render(<SupportHQWidget />)
+    fireLoad()
+
+    expect(init.mock.calls[0][0]).not.toHaveProperty('requiredFields')
   })
 })
 

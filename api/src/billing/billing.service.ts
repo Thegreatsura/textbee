@@ -83,6 +83,8 @@ export type PolarSubscriptionSync = {
   revoked?: boolean
 }
 
+const PAYMENT_ISSUE_STATUSES = ['past_due', 'incomplete', 'unpaid']
+
 // Update fields left undefined are not written.
 const defined = <T extends Record<string, any>>(fields: T): Partial<T> =>
   Object.fromEntries(
@@ -428,17 +430,17 @@ export class BillingService {
 
     // Same plan with a different billing interval is a valid change
     // (e.g. pro monthly -> pro yearly), each interval is a separate product
-    if (
+    const isSamePlan =
       currentPlan?.name === planName &&
       (!currentInterval || currentInterval === billingInterval)
-    ) {
-      throw new BadRequestException({
+    const alreadyOnPlan = () =>
+      new BadRequestException({
         message: `You are already on ${planName} plan, please contact billing@textbee.dev to get a custom plan`,
         code: 'ALREADY_ON_PLAN',
       })
-    }
 
     if (!currentPlan || currentPlan.name === 'free') {
+      if (isSamePlan) throw alreadyOnPlan()
       return { selectedPlan, isPlanChange: false, currentSubscription }
     }
 
@@ -482,6 +484,20 @@ export class BillingService {
       }
     }
 
+    // A payment problem is the real blocker, so it is reported before "already on plan".
+    const hasPaymentIssue = polarSubscription
+      ? PAYMENT_ISSUE_STATUSES.includes(polarSubscription.status)
+      : PAYMENT_ISSUE_STATUSES.includes(currentSubscription.status)
+    if (hasPaymentIssue) {
+      throw new BadRequestException({
+        message:
+          'Your subscription has a payment issue. Please update your payment method in the customer portal before changing plans.',
+        code: 'PAYMENT_ISSUE',
+      })
+    }
+
+    if (isSamePlan) throw alreadyOnPlan()
+
     if (!polarSubscription) {
       // Paid subscription with no Polar record (e.g. manually granted):
       // a regular checkout is the correct path for these users
@@ -504,18 +520,7 @@ export class BillingService {
 
     // Catches drift between our DB and Polar
     if (polarSubscription.product_id === targetProductId) {
-      throw new BadRequestException({
-        message: `You are already on ${planName} plan, please contact billing@textbee.dev to get a custom plan`,
-        code: 'ALREADY_ON_PLAN',
-      })
-    }
-
-    if (['past_due', 'incomplete', 'unpaid'].includes(polarSubscription.status)) {
-      throw new BadRequestException({
-        message:
-          'Your subscription has a payment issue. Please update your payment method in the customer portal before changing plans.',
-        code: 'PAYMENT_ISSUE',
-      })
+      throw alreadyOnPlan()
     }
 
     return {

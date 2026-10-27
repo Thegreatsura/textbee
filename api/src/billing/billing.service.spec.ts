@@ -1487,5 +1487,85 @@ describe('BillingService - Polar SDK calls', () => {
         { polarSubscriptionId: 'sub_1', polarCustomerId: 'cus_1' },
       )
     })
+
+    describe('same plan', () => {
+      const onPro = { ...current, plan: { name: 'pro' } }
+      const request = (service: BillingService) =>
+        service.changePlan({
+          user: { _id: userId },
+          payload: { planName: 'pro', billingInterval: 'monthly' },
+        })
+
+      it('reports a payment issue before "already on plan"', async () => {
+        const { service } = build({ plan, current: onPro })
+        ;(service as any).polarApi = {
+          subscriptions: {
+            get: jest.fn().mockResolvedValue({
+              ...polarSubscription,
+              status: 'past_due',
+              product_id: 'prod_pro_m',
+            }),
+          },
+        }
+
+        await expect(request(service)).rejects.toMatchObject({
+          response: { code: 'PAYMENT_ISSUE' },
+        })
+      })
+
+      it('uses the stored status when Polar has no subscription', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+        const { service } = build({
+          plan,
+          current: { ...onPro, status: 'past_due' },
+        })
+        ;(service as any).polarApi = {
+          subscriptions: {
+            get: jest.fn().mockRejectedValue(new Error('not found')),
+            list: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+          },
+        }
+
+        await expect(request(service)).rejects.toMatchObject({
+          response: { code: 'PAYMENT_ISSUE' },
+        })
+      })
+
+      it('ignores a leftover retry date once the stored status has moved on', async () => {
+        jest.spyOn(console, 'error').mockImplementation(() => undefined)
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+        const { service } = build({
+          plan,
+          current: { ...onPro, status: 'canceled', pastDueAt: new Date('2026-10-01T00:00:00Z') },
+        })
+        ;(service as any).polarApi = {
+          subscriptions: {
+            get: jest.fn().mockRejectedValue(new Error('not found')),
+            list: jest.fn().mockResolvedValue({ items: [], pagination: {} }),
+          },
+        }
+
+        await expect(request(service)).rejects.toMatchObject({
+          response: { code: 'ALREADY_ON_PLAN' },
+        })
+      })
+
+      it('still reports "already on plan" when payments are fine', async () => {
+        const { service } = build({ plan, current: onPro })
+        ;(service as any).polarApi = {
+          subscriptions: {
+            get: jest.fn().mockResolvedValue({
+              ...polarSubscription,
+              product_id: 'prod_pro_m',
+            }),
+          },
+        }
+
+        await expect(request(service)).rejects.toMatchObject({
+          response: { code: 'ALREADY_ON_PLAN' },
+        })
+      })
+    })
   })
 })

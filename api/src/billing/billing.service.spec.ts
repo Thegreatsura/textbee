@@ -342,7 +342,7 @@ describe('BillingService - canPerformAction account checks', () => {
       givenUser({ emailVerifiedAt: new Date(), isBanned: true })
 
       await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
-        status: 500,
+        status: 403,
       })
     })
   })
@@ -360,7 +360,7 @@ describe('BillingService - canPerformAction account checks', () => {
     givenUser({ emailVerifiedAt: new Date(), isBanned: true })
 
     await expect(service.canPerformAction(userId, 'send_sms', 1)).rejects.toMatchObject({
-      status: 500,
+      status: 403,
     })
   })
 

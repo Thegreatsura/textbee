@@ -66,6 +66,11 @@ const DEVICE_NOT_FOUND_RESPONSE = {
   description: 'No device with that id on your account.',
 } as const
 
+const ACCOUNT_BLOCKED_RESPONSE = {
+  status: 403,
+  description: 'This account cannot send or receive messages.',
+} as const
+
 const INVALID_DEVICE_ID_RESPONSE = {
   status: 400,
   description: 'The device id is not a valid id.',
@@ -304,6 +309,7 @@ export class GatewayController {
       'No enabled device to send from, the device is disabled, your email is not verified, or the message could not be pushed to the phone.',
   })
   @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(ACCOUNT_BLOCKED_RESPONSE)
   @ApiResponse({
     status: 429,
     description:
@@ -337,6 +343,7 @@ export class GatewayController {
       'No enabled device to send from, the device is disabled, your email is not verified, or the batch could not be pushed to the phone.',
   })
   @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(ACCOUNT_BLOCKED_RESPONSE)
   @ApiResponse({
     status: 429,
     description:
@@ -423,6 +430,7 @@ export class GatewayController {
   })
   @ApiResponse(INVALID_DEVICE_ID_RESPONSE)
   @ApiResponse(UNAUTHORIZED_RESPONSE)
+  @ApiResponse(ACCOUNT_BLOCKED_RESPONSE)
   @ApiResponse(DEVICE_NOT_FOUND_RESPONSE)
   @HttpCode(HttpStatus.OK)
   @Post('/devices/:id/receive-sms')

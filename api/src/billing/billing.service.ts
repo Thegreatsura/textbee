@@ -1411,7 +1411,7 @@ export class BillingService {
           {
             message: 'Sorry, we cannot process your request at the moment',
           },
-          HttpStatus.INTERNAL_SERVER_ERROR,
+          HttpStatus.FORBIDDEN,
         )
       }
 

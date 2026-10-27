@@ -36,6 +36,7 @@ import com.vernu.sms.R;
 import com.vernu.sms.dtos.RegisterDeviceInputDTO;
 import com.vernu.sms.dtos.RegisterDeviceResponseDTO;
 import com.vernu.sms.dtos.SimInfoCollectionDTO;
+import com.vernu.sms.helpers.RegistrationChecks;
 import com.vernu.sms.helpers.SharedPreferenceHelper;
 import com.vernu.sms.helpers.VersionTracker;
 import com.vernu.sms.helpers.HeartbeatManager;
@@ -485,16 +486,20 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleRegisterDevice() {
         String newKey = apiKeyEditText.getText().toString();
-        String deviceIdInput = deviceIdEditText.getText().toString();
+        String deviceIdInput = deviceIdEditText.getText().toString().trim();
+        View view = findViewById(R.id.registerDeviceBtn);
+        if (!deviceIdInput.isEmpty() && !RegistrationChecks.isValidDeviceId(deviceIdInput)) {
+            Snackbar.make(view, RegistrationChecks.INVALID_DEVICE_ID, Snackbar.LENGTH_LONG).show();
+            return;
+        }
         
         registerDeviceBtn.setEnabled(false);
         registerDeviceBtn.setText("Loading...");
-        View view = findViewById(R.id.registerDeviceBtn);
 
         FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
                     if (!task.isSuccessful()) {
-                        Snackbar.make(view, "Failed to obtain FCM Token :(", Snackbar.LENGTH_LONG).show();
+                        Snackbar.make(view, RegistrationChecks.pushTokenFailureMessage(mContext), Snackbar.LENGTH_LONG).show();
                         registerDeviceBtn.setEnabled(true);
                         registerDeviceBtn.setText("Update");
                         return;
@@ -666,17 +671,21 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleUpdateDevice() {
         String apiKey = apiKeyEditText.getText().toString();
-        String deviceIdInput = deviceIdEditText.getText().toString();
+        String deviceIdInput = deviceIdEditText.getText().toString().trim();
         String deviceIdToUse = !deviceIdInput.isEmpty() ? deviceIdInput : deviceId;
+        View view = findViewById(R.id.registerDeviceBtn);
+        if (!RegistrationChecks.isValidDeviceId(deviceIdToUse)) {
+            Snackbar.make(view, RegistrationChecks.INVALID_DEVICE_ID, Snackbar.LENGTH_LONG).show();
+            return;
+        }
         
         registerDeviceBtn.setEnabled(false);
         registerDeviceBtn.setText("Loading...");
-        View view = findViewById(R.id.registerDeviceBtn);
 
         FirebaseMessaging.getInstance().getToken()
                 .addOnCompleteListener(task -> {
                     if (!task.isSuccessful()) {
-                        Snackbar.make(view, "Failed to obtain FCM Token :(", Snackbar.LENGTH_LONG).show();
+                        Snackbar.make(view, RegistrationChecks.pushTokenFailureMessage(mContext), Snackbar.LENGTH_LONG).show();
                         registerDeviceBtn.setEnabled(true);
                         registerDeviceBtn.setText("Update");
                         return;

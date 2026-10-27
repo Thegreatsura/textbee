@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn, formatDeviceName } from '@/lib/utils'
 import AddDeviceDialog, { type AddDeviceHandle } from './add-device-dialog'
+import { devicePresence, type DevicePresence } from './device-presence'
 import {
   DeviceVersionCandidate,
   formatDeviceVersion,
@@ -74,6 +75,38 @@ const reportsSmsPermissionOff = (device: Device) =>
   Date.now() - new Date(device.appStateInfo.lastUpdated).getTime() <
     REPORT_WINDOW_MS
 
+const PRESENCE: Record<DevicePresence, { label: string; className: string }> = {
+  online: { label: 'Online', className: 'text-success' },
+  offline: { label: 'Offline', className: 'text-warning' },
+  disabled: { label: 'Disabled', className: 'text-muted-foreground' },
+  // No heartbeat yet, so only the enabled flag is known.
+  unknown: { label: 'Enabled', className: 'text-success' },
+}
+
+function PresenceStatus({ device }: { device: Device }) {
+  const presence = devicePresence(device)
+  return (
+    <>
+      {/* Colour and text come from the same field. */}
+      <span
+        className={cn(
+          'inline-flex items-center gap-1 font-medium',
+          PRESENCE[presence].className
+        )}
+      >
+        <span aria-hidden className='h-1.5 w-1.5 rounded-full bg-current' />
+        {PRESENCE[presence].label}
+      </span>
+      {/* Desktop shows "Last seen" separately; phones get the short form here. */}
+      {presence === 'offline' && device.lastHeartbeat && (
+        <span className='shrink-0 md:hidden'>
+          <RelativeTime value={device.lastHeartbeat} compact />
+        </span>
+      )}
+    </>
+  )
+}
+
 const errorMessage = (err: unknown) =>
   err &&
   typeof err === 'object' &&
@@ -87,7 +120,10 @@ export default function DeviceList() {
   const [devicePendingDelete, setDevicePendingDelete] =
     useState<DeviceRow | null>(null)
   const { toast } = useToast()
-  const { isPending, error, data: devices, refetch } = useDevices()
+  // Polled so online status and last seen stay current while the page is open.
+  const { isPending, error, data: devices, refetch } = useDevices({
+    refetchInterval: 60_000,
+  })
 
   const { data: currentSubscription } = useSubscription()
 
@@ -324,19 +360,7 @@ export default function DeviceList() {
                         report either, so they only ever rendered "unknown"
                         and "-" next to a meaningful-looking icon. */}
                     <p className='mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-muted-foreground max-md:mt-0.5 max-md:flex-nowrap max-md:whitespace-nowrap'>
-                      {/* Colour and text come from the same field. */}
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1 font-medium',
-                          device.enabled ? 'text-success' : 'text-muted-foreground'
-                        )}
-                      >
-                        <span
-                          aria-hidden
-                          className='h-1.5 w-1.5 rounded-full bg-current'
-                        />
-                        {device.enabled ? 'Enabled' : 'Disabled'}
-                      </span>
+                      <PresenceStatus device={device} />
                       <span aria-hidden>·</span>
                       <span className='hidden md:inline'>
                         App{' '}
@@ -356,6 +380,29 @@ export default function DeviceList() {
                       <span aria-hidden className='hidden md:inline'>
                         ·
                       </span>
+                      {device.lastHeartbeat && (
+                        <>
+                          <span className='hidden md:inline'>
+                            Last seen{' '}
+                            <RelativeTime value={device.lastHeartbeat} />
+                          </span>
+                          <span aria-hidden className='hidden md:inline'>
+                            ·
+                          </span>
+                        </>
+                      )}
+                      {/* Builds without heartbeats cannot report online status. */}
+                      {devicePresence(device) === 'unknown' &&
+                        isDeviceOutdated(device as DeviceVersionCandidate) && (
+                          <>
+                            <span className='hidden md:inline'>
+                              Update the app to see online status
+                            </span>
+                            <span aria-hidden className='hidden md:inline'>
+                              ·
+                            </span>
+                          </>
+                        )}
                       <span className='hidden md:inline'>
                         Registered <RelativeTime value={device.createdAt} />
                       </span>

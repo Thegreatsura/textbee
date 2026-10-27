@@ -142,6 +142,9 @@
           "401": {
             "description": "Missing, invalid, or revoked API key."
           },
+          "403": {
+            "description": "This account cannot send or receive messages."
+          },
           "429": {
             "description": "Your daily, monthly, or per-batch plan limit is used up. The body says which one."
           }
@@ -188,6 +191,9 @@
           },
           "401": {
             "description": "Missing, invalid, or revoked API key."
+          },
+          "403": {
+            "description": "This account cannot send or receive messages."
           },
           "429": {
             "description": "Your daily, monthly, or per-batch plan limit is used up. The body says which one."

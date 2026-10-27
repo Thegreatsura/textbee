@@ -54,3 +54,7 @@ export class WebhookNotification {
 
 export const WebhookNotificationSchema =
   SchemaFactory.createForClass(WebhookNotification)
+
+// Serves the repeated-report check on every status update. Build on Atlas
+// before deploying.
+WebhookNotificationSchema.index({ sms: 1, event: 1, webhookSubscription: 1 })

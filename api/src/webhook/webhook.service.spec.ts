@@ -17,7 +17,7 @@ const build = () => {
     create: jest.fn(),
     updateOne: jest.fn().mockResolvedValue(undefined),
   }
-  const webhookNotificationModel: any = { findById: jest.fn() }
+  const webhookNotificationModel: any = { findOneAndUpdate: jest.fn() }
 
   const service = new WebhookService(
     webhookSubscriptionModel,
@@ -258,7 +258,7 @@ describe('WebhookService', () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const sub = activeSubscription()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(sub)
       mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
 
@@ -277,7 +277,7 @@ describe('WebhookService', () => {
     it('follows redirects through the guarded agents', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
       mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
 
@@ -304,7 +304,7 @@ describe('WebhookService', () => {
       'refuses a redirect hop to %s',
       async (hostname) => {
         const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
-        webhookNotificationModel.findById.mockResolvedValue(notification())
+        webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notification())
         webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
         mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
 
@@ -317,7 +317,7 @@ describe('WebhookService', () => {
 
     it('allows a redirect hop to a public host', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
-      webhookNotificationModel.findById.mockResolvedValue(notification())
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notification())
       webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
       mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
 
@@ -332,7 +332,7 @@ describe('WebhookService', () => {
     it('classifies an unfollowed 3xx like a 4xx', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
       mockedAxios.post.mockRejectedValue({ response: { status: 302, data: '' } })
 
@@ -351,7 +351,7 @@ describe('WebhookService', () => {
       async (before, aborted) => {
         const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
         const notif = { ...notification(), deliveryAttemptCount: before }
-        webhookNotificationModel.findById.mockResolvedValue(notif)
+        webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
         webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
         mockedAxios.post.mockRejectedValue({ response: { status: 404, data: 'nope' } })
 
@@ -372,7 +372,7 @@ describe('WebhookService', () => {
     it('still aborts a 5xx after the 10th attempt', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = { ...notification(), deliveryAttemptCount: 9 }
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
       mockedAxios.post.mockRejectedValue({ response: { status: 503, data: '' } })
 
@@ -385,7 +385,7 @@ describe('WebhookService', () => {
     it('does not deliver to a stored URL whose host is a private IP literal', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(
         activeSubscription({ deliveryUrl: 'http://[::ffff:7f00:1]:3001/' }),
       )
@@ -399,7 +399,7 @@ describe('WebhookService', () => {
     it('aborts delivery without calling axios when the subscription is inactive', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(
         activeSubscription({ isActive: false }),
       )
@@ -414,7 +414,7 @@ describe('WebhookService', () => {
     it('aborts delivery when the subscription has been soft-deleted', async () => {
       const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
       const notif = notification()
-      webhookNotificationModel.findById.mockResolvedValue(notif)
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
       webhookSubscriptionModel.findById.mockResolvedValue(
         activeSubscription({ deletedAt: new Date() }),
       )
@@ -424,6 +424,149 @@ describe('WebhookService', () => {
       expect(notif.deliveryAttemptAbortedAt).toBeInstanceOf(Date)
       expect(mockedAxios.post).not.toHaveBeenCalled()
     })
+
+    it('claims only a pending notification that is due', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notification())
+      webhookSubscriptionModel.findById.mockResolvedValue(activeSubscription())
+      mockedAxios.post.mockResolvedValue({ status: 200, data: 'ok' })
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      const [filter, update] = webhookNotificationModel.findOneAndUpdate.mock.calls[0]
+      expect(filter).toMatchObject({
+        _id: 'wn_1',
+        deliveredAt: null,
+        deliveryAttemptAbortedAt: null,
+      })
+      expect(filter.$or).toEqual([
+        { nextDeliveryAttemptAt: null },
+        { nextDeliveryAttemptAt: { $lte: expect.any(Date) } },
+      ])
+      expect(update.$set.nextDeliveryAttemptAt.getTime()).toBeGreaterThan(Date.now())
+    })
+
+    it('sends nothing when the notification is already delivered or claimed', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(null)
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      expect(webhookSubscriptionModel.findById).not.toHaveBeenCalled()
+      expect(mockedAxios.post).not.toHaveBeenCalled()
+    })
+
+    it('aborts a notification whose subscription no longer exists', async () => {
+      const { service, webhookSubscriptionModel, webhookNotificationModel } = build()
+      const notif = notification()
+      webhookNotificationModel.findOneAndUpdate.mockResolvedValue(notif)
+      webhookSubscriptionModel.findById.mockResolvedValue(null)
+
+      await service.attemptWebhookDelivery('wn_1')
+
+      expect(notif.deliveryAttemptAbortedAt).toBeInstanceOf(Date)
+      expect(mockedAxios.post).not.toHaveBeenCalled()
+    })
+  })
+})
+
+describe('WebhookService repeated reports', () => {
+  const setup = (notifiedSubscriptionIds: string[]) => {
+    const webhookSubscriptionModel: any = {
+      find: jest.fn().mockResolvedValue([
+        { _id: 'ws_1', deliveryUrl: 'https://example.com/a' },
+        { _id: 'ws_2', deliveryUrl: 'https://example.com/b' },
+      ]),
+    }
+    const webhookNotificationModel: any = {
+      distinct: jest.fn().mockResolvedValue(notifiedSubscriptionIds),
+      create: jest.fn().mockResolvedValue({ _id: 'wn_new' }),
+    }
+    const webhookQueueService: any = {
+      addWebhookDeliveryJob: jest.fn().mockResolvedValue(undefined),
+    }
+    const service = new WebhookService(
+      webhookSubscriptionModel,
+      webhookNotificationModel,
+      webhookQueueService,
+      {} as any,
+      {} as any,
+    )
+    return { service, webhookNotificationModel }
+  }
+
+  it('skips subscriptions already notified about this message and event', async () => {
+    const { service, webhookNotificationModel } = setup(['ws_1'])
+
+    await service.deliverNotification({
+      sms: { _id: 's1', status: 'delivered' },
+      user: { _id: 'u1' },
+      event: 'MESSAGE_DELIVERED',
+    })
+
+    expect(webhookNotificationModel.distinct).toHaveBeenCalledWith('webhookSubscription', {
+      sms: 's1',
+      event: 'MESSAGE_DELIVERED',
+      webhookSubscription: { $in: ['ws_1', 'ws_2'] },
+      deliveryAttemptAbortedAt: null,
+    })
+    expect(webhookNotificationModel.create).toHaveBeenCalledTimes(1)
+    expect(webhookNotificationModel.create.mock.calls[0][0].webhookSubscription).toBe('ws_2')
+  })
+
+  it('still sends every unknown-state report', async () => {
+    const { service, webhookNotificationModel } = setup(['ws_1', 'ws_2'])
+
+    await service.deliverNotification({
+      sms: { _id: 's1', status: 'queued' },
+      user: { _id: 'u1' },
+      event: 'UNKNOWN_STATE',
+    })
+
+    expect(webhookNotificationModel.distinct).not.toHaveBeenCalled()
+    expect(webhookNotificationModel.create).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves a notification due for retry when its job cannot be queued', async () => {
+    const webhookSubscriptionModel: any = {
+      find: jest.fn().mockResolvedValue([{ _id: 'ws_1', deliveryUrl: 'https://example.com/a' }]),
+    }
+    const webhookNotificationModel: any = {
+      distinct: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ _id: 'wn_new' }),
+      updateOne: jest.fn().mockResolvedValue(undefined),
+    }
+    const service = new WebhookService(
+      webhookSubscriptionModel,
+      webhookNotificationModel,
+      { addWebhookDeliveryJob: jest.fn().mockRejectedValue(new Error('redis down')) } as any,
+      {} as any,
+      {} as any,
+    )
+    jest.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await service.deliverNotification({
+      sms: { _id: 's1', status: 'sent' },
+      user: { _id: 'u1' },
+      event: 'MESSAGE_SENT',
+    })
+
+    expect(webhookNotificationModel.updateOne).toHaveBeenCalledWith(
+      { _id: 'wn_new' },
+      { $set: { nextDeliveryAttemptAt: expect.any(Date) } },
+    )
+  })
+
+  it('creates nothing when every subscription was already notified', async () => {
+    const { service, webhookNotificationModel } = setup(['ws_1', 'ws_2'])
+
+    await service.deliverNotification({
+      sms: { _id: 's1', status: 'delivered' },
+      user: { _id: 'u1' },
+      event: 'MESSAGE_DELIVERED',
+    })
+
+    expect(webhookNotificationModel.create).not.toHaveBeenCalled()
   })
 })
 
@@ -435,6 +578,7 @@ describe('WebhookService payload simUsed', () => {
       ]),
     }
     const webhookNotificationModel: any = {
+      distinct: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({ _id: 'wn_1' }),
     }
     const webhookQueueService: any = {

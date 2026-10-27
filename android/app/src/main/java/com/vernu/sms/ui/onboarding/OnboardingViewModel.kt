@@ -175,9 +175,8 @@ class OnboardingViewModel : ViewModel() {
                         it.copy(
                             isLoading = false,
                             errorMessage = when (response.code()) {
-                                400 -> response.serverErrorMessage()
-                                    ?: if (shouldUpdate) RegistrationChecks.INVALID_DEVICE_ID
-                                    else "Request failed (400). Please try again."
+                                // The ID format is checked before the request, so a 400 is about another field.
+                                400 -> response.serverErrorMessage() ?: "Request failed (400). Please try again."
                                 401 -> "Invalid API key. Go back and check your key."
                                 404 -> "Device ID not found. Verify it in your dashboard."
                                 429 -> response.serverErrorMessage()

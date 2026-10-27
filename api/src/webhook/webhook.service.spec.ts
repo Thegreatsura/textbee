@@ -527,6 +527,36 @@ describe('WebhookService repeated reports', () => {
     expect(webhookNotificationModel.create).toHaveBeenCalledTimes(2)
   })
 
+  it('leaves a notification due for retry when its job cannot be queued', async () => {
+    const webhookSubscriptionModel: any = {
+      find: jest.fn().mockResolvedValue([{ _id: 'ws_1', deliveryUrl: 'https://example.com/a' }]),
+    }
+    const webhookNotificationModel: any = {
+      distinct: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ _id: 'wn_new' }),
+      updateOne: jest.fn().mockResolvedValue(undefined),
+    }
+    const service = new WebhookService(
+      webhookSubscriptionModel,
+      webhookNotificationModel,
+      { addWebhookDeliveryJob: jest.fn().mockRejectedValue(new Error('redis down')) } as any,
+      {} as any,
+      {} as any,
+    )
+    jest.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    await service.deliverNotification({
+      sms: { _id: 's1', status: 'sent' },
+      user: { _id: 'u1' },
+      event: 'MESSAGE_SENT',
+    })
+
+    expect(webhookNotificationModel.updateOne).toHaveBeenCalledWith(
+      { _id: 'wn_new' },
+      { $set: { nextDeliveryAttemptAt: expect.any(Date) } },
+    )
+  })
+
   it('creates nothing when every subscription was already notified', async () => {
     const { service, webhookNotificationModel } = setup(['ws_1', 'ws_2'])
 

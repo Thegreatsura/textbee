@@ -32,8 +32,12 @@ object RegistrationChecks {
             "Google Play services is out of date on this phone. Update it in the Play Store, then try again."
         ConnectionResult.SERVICE_DISABLED ->
             "Google Play services is turned off on this phone. Turn it on in Settings > Apps, then try again."
-        else ->
+        ConnectionResult.SERVICE_MISSING ->
             "This phone does not have Google Play services. textbee needs it to get messages to send, so it cannot work on this phone."
+        ConnectionResult.SERVICE_INVALID ->
+            "Google Play services on this phone is not genuine or is damaged. Reinstall or update it from the Play Store, then try again."
+        else ->
+            "Google Play services is not ready on this phone. Restart the phone and try again."
     }
 
     /** The message to show when the push token request fails. */

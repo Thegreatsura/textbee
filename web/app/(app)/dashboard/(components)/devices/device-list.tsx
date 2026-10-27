@@ -120,7 +120,10 @@ export default function DeviceList() {
   const [devicePendingDelete, setDevicePendingDelete] =
     useState<DeviceRow | null>(null)
   const { toast } = useToast()
-  const { isPending, error, data: devices, refetch } = useDevices()
+  // Polled so online status and last seen stay current while the page is open.
+  const { isPending, error, data: devices, refetch } = useDevices({
+    refetchInterval: 60_000,
+  })
 
   const { data: currentSubscription } = useSubscription()
 

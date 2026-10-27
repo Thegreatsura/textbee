@@ -690,9 +690,20 @@ export class WebhookService {
       deliveryUrl: deliveryUrlSnapshot,
     })
 
-    await this.webhookQueueService.addWebhookDeliveryJob(
-      webhookNotification._id.toString(),
-    )
+    try {
+      await this.webhookQueueService.addWebhookDeliveryJob(
+        webhookNotification._id.toString(),
+      )
+    } catch (error) {
+      // Due now, so the retry cron picks it up instead of it staying pending forever.
+      await this.webhookNotificationModel
+        .updateOne(
+          { _id: webhookNotification._id },
+          { $set: { nextDeliveryAttemptAt: new Date() } },
+        )
+        .catch(() => undefined)
+      throw error
+    }
   }
 
   async attemptWebhookDelivery(notificationId: string) {

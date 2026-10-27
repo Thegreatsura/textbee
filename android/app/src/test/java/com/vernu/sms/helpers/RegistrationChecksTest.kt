@@ -40,4 +40,14 @@ class RegistrationChecksTest {
         assertTrue(outdated!!.contains("out of date"))
         assertTrue(disabled!!.contains("turned off"))
     }
+
+    @Test
+    fun doesNotCallAFakeOrBrokenInstallMissing() {
+        val invalid = RegistrationChecks.playServicesMessage(ConnectionResult.SERVICE_INVALID)!!
+        val other = RegistrationChecks.playServicesMessage(ConnectionResult.NETWORK_ERROR)!!
+
+        assertTrue(invalid.contains("not genuine"))
+        assertFalse(invalid.contains("does not have"))
+        assertFalse(other.contains("does not have"))
+    }
 }

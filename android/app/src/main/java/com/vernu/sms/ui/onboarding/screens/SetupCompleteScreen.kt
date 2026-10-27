@@ -47,7 +47,24 @@ fun SetupCompleteScreen(
     val state by viewModel.state.collectAsState()
     val clipboardManager: ClipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    var receiveSmsEnabled by remember { mutableStateOf(true) }
+    var receiveSmsEnabled by remember {
+        mutableStateOf(
+            SharedPreferenceHelper.getSharedPreferenceBoolean(
+                context, AppConstants.SHARED_PREFS_RECEIVE_SMS_ENABLED_KEY, true
+            )
+        )
+    }
+
+    fun saveReceiveSms(enabled: Boolean) {
+        receiveSmsEnabled = enabled
+        SharedPreferenceHelper.setSharedPreferenceBoolean(
+            context, AppConstants.SHARED_PREFS_RECEIVE_SMS_ENABLED_KEY, enabled
+        )
+        HeartbeatManager.triggerHeartbeat(context)
+    }
+
+    // Save the value the switch shows, so an untouched switch is not read as off
+    LaunchedEffect(Unit) { saveReceiveSms(receiveSmsEnabled) }
 
     fun checkSendSms() =
         ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
@@ -207,15 +224,7 @@ fun SetupCompleteScreen(
                 }
                 Switch(
                     checked = receiveSmsEnabled,
-                    onCheckedChange = { enabled ->
-                        receiveSmsEnabled = enabled
-                        SharedPreferenceHelper.setSharedPreferenceBoolean(
-                            context,
-                            AppConstants.SHARED_PREFS_RECEIVE_SMS_ENABLED_KEY,
-                            enabled
-                        )
-                        HeartbeatManager.triggerHeartbeat(context)
-                    },
+                    onCheckedChange = { saveReceiveSms(it) },
                     modifier = Modifier.scale(0.75f)
                 )
             }

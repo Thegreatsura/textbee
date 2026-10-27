@@ -12,6 +12,7 @@ import com.vernu.sms.TextbeeUtils
 import com.vernu.sms.dtos.RegisterDeviceInputDTO
 import com.vernu.sms.dtos.SimInfoCollectionDTO
 import com.vernu.sms.helpers.HeartbeatManager
+import com.vernu.sms.helpers.RegistrationChecks
 import com.vernu.sms.helpers.SharedPreferenceHelper
 import com.vernu.sms.helpers.serverErrorMessage
 import kotlinx.coroutines.channels.Channel
@@ -88,11 +89,26 @@ class OnboardingViewModel : ViewModel() {
             _state.update { it.copy(errorMessage = "Please enter your Device ID.") }
             return
         }
+        if (shouldUpdate && !RegistrationChecks.isValidDeviceId(deviceId)) {
+            _state.update { it.copy(errorMessage = RegistrationChecks.INVALID_DEVICE_ID) }
+            return
+        }
 
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
             try {
-                val fcmToken = getFcmToken()
+                val fcmToken = try {
+                    getFcmToken()
+                } catch (e: Exception) {
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            errorMessage = RegistrationChecks.pushTokenFailureMessage(context)
+                        )
+                    }
+                    TextbeeUtils.logException(e, "Onboarding push token request failed")
+                    return@launch
+                }
                 val collectedSimInfo = SimInfoCollectionDTO().apply {
                     lastUpdated = System.currentTimeMillis()
                     sims = TextbeeUtils.collectSimInfo(context)
@@ -159,6 +175,9 @@ class OnboardingViewModel : ViewModel() {
                         it.copy(
                             isLoading = false,
                             errorMessage = when (response.code()) {
+                                400 -> response.serverErrorMessage()
+                                    ?: if (shouldUpdate) RegistrationChecks.INVALID_DEVICE_ID
+                                    else "Request failed (400). Please try again."
                                 401 -> "Invalid API key. Go back and check your key."
                                 404 -> "Device ID not found. Verify it in your dashboard."
                                 429 -> response.serverErrorMessage()

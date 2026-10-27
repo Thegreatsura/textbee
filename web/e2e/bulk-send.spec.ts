@@ -218,4 +218,33 @@ test.describe('bulk send (mocked API, no real backend)', () => {
 
     await expect(page.getByText(/is not a CSV/)).toBeVisible()
   })
+
+  test('accepts a CSV while a page translator has rewritten the text', async ({
+    page,
+    context,
+  }) => {
+    await authenticate(context)
+    await mockApi(page)
+    await gotoBulkPage(page)
+
+    // Same DOM change Chrome Translate makes: each text node becomes <font><font>.
+    await page.evaluate(() => {
+      const root = document.getElementById('main-content')!
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+      const nodes: Text[] = []
+      while (walker.nextNode()) nodes.push(walker.currentNode as Text)
+      nodes.forEach((node) => {
+        const outer = document.createElement('font')
+        const inner = document.createElement('font')
+        inner.textContent = node.nodeValue
+        outer.appendChild(inner)
+        node.parentNode!.replaceChild(outer, node)
+      })
+    })
+
+    await uploadCsv(page, CSV_WITH_PROBLEM_ROWS)
+
+    await expect(page.getByText('5 rows, 4 columns')).toBeVisible()
+    await expect(page.getByText(/couldn.t load/)).toHaveCount(0)
+  })
 })

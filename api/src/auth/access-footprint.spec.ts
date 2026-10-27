@@ -72,6 +72,12 @@ describe('classifyClient', () => {
     expect(classifyClient({ sdkClient: 'textbee-android/2.9.0' })).toBe(
       'textbee-android',
     )
+    expect(
+      classifyClient({
+        sdkClient: 'textbee-python/0.1.0',
+        userAgent: 'textbee-python/0.1.0',
+      }),
+    ).toBe('textbee-python')
   })
 
   it.each([

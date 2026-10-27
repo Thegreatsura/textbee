@@ -6,10 +6,17 @@
 
 export const API_BASE_URL = 'https://api.textbee.dev/api/v1'
 
-export type LanguageId = 'curl' | 'node' | 'python' | 'php' | 'go' | 'sdk'
+export type LanguageId =
+  | 'curl'
+  | 'node'
+  | 'python'
+  | 'php'
+  | 'go'
+  | 'sdk'
+  | 'python-sdk'
 
-// cURL stays first and stays the default. The SDK is an extra option for
-// JavaScript users, not a replacement for the REST examples.
+// cURL stays first and stays the default. The SDKs are an extra option for
+// JavaScript and Python users, not a replacement for the REST examples.
 export const LANGUAGES: { id: LanguageId; label: string; highlight: string }[] =
   [
     { id: 'curl', label: 'cURL', highlight: 'bash' },
@@ -18,6 +25,7 @@ export const LANGUAGES: { id: LanguageId; label: string; highlight: string }[] =
     { id: 'php', label: 'PHP', highlight: 'php' },
     { id: 'go', label: 'Go', highlight: 'go' },
     { id: 'sdk', label: 'JS SDK', highlight: 'javascript' },
+    { id: 'python-sdk', label: 'Python SDK', highlight: 'python' },
   ]
 
 export type EndpointId =
@@ -50,6 +58,7 @@ const deviceIdField = (deviceId?: string) => ({
   php: deviceId ? `\n        'deviceId' => '${deviceId}',` : '',
   go: deviceId ? `"deviceId":"${deviceId}",` : '',
   sdk: deviceId ? `\n  deviceId: '${deviceId}',` : '',
+  pythonSdk: deviceId ? `\n    device_id='${deviceId}',` : '',
 })
 
 /** Package the SDK samples install, surfaced by the package manager picker. */
@@ -61,6 +70,15 @@ export const SDK_PACKAGE = '@textbee/sdk'
 const SDK_SETUP = `import { Textbee } from '@textbee/sdk'
 
 const textbee = new Textbee({ apiKey: process.env.TEXTBEE_API_KEY })`
+
+/** Package the Python SDK samples install. */
+export const PYTHON_SDK_PACKAGE = 'textbee'
+
+const PYTHON_SDK_SETUP = `import os
+
+from textbee import Textbee
+
+textbee = Textbee(api_key=os.environ['TEXTBEE_API_KEY'])`
 
 export function buildEndpoints(deviceId?: string): Endpoint[] {
   const id = deviceId || PLACEHOLDER_DEVICE
@@ -162,6 +180,14 @@ const result = await textbee.sendSms({${device.sdk}
 })
 
 console.log(result)`,
+        'python-sdk': `${PYTHON_SDK_SETUP}
+
+result = textbee.send_sms(${device.pythonSdk}
+    recipients=['+14155550101'],
+    message='Hello from textbee',
+)
+
+print(result)`,
       },
       response: `{
   "data": {
@@ -266,8 +292,8 @@ func main() {
 	out, _ := io.ReadAll(res.Body)
 	fmt.Println(string(out))
 }`,
-        // Bulk send is the one endpoint here with no SDK method yet, so this
-        // stays on the REST call rather than pretending otherwise.
+        // Bulk send is the one endpoint here with no SDK method yet, so the
+        // SDK tabs stay on the REST call rather than pretending otherwise.
         sdk: `// Bulk send is not in @textbee/sdk yet. Use the REST API for now.
 const res = await fetch(
   '${API_BASE_URL}/gateway/send-bulk-sms',
@@ -287,6 +313,22 @@ const res = await fetch(
 )
 
 console.log(await res.json())`,
+        'python-sdk': `# Bulk send is not in the textbee Python SDK yet. This uses the REST API
+# with requests (pip install requests).
+import os, requests
+
+res = requests.post(
+    '${API_BASE_URL}/gateway/send-bulk-sms',
+    headers={'x-api-key': os.environ['TEXTBEE_API_KEY']},
+    json={${device.python}
+        'messages': [
+            {'recipients': ['+14155550101'], 'message': 'Hi Alice'},
+            {'recipients': ['+16475550187'], 'message': 'Hi Bob'},
+        ],
+    },
+)
+
+print(res.json())`,
       },
       response: `{
   "data": {
@@ -367,6 +409,15 @@ for await (const message of textbee.iterateMessages({
 })) {
   console.log(message.sender, message.message)
 }`,
+        'python-sdk': `${PYTHON_SDK_SETUP}
+
+page = textbee.get_messages(direction='received', page=1, limit=20)
+
+print(page['data'], page['meta'])
+
+# Or drain every match, following the cursor for you
+for message in textbee.iterate_messages(direction='received', order='asc'):
+    print(message.get('sender'), message['message'])`,
       },
       response: `{
   "data": [
@@ -455,7 +506,16 @@ console.log(data, meta)
 
 // Narrow to one device, or to the recipients of a batch that failed
 await textbee.getMessages({ deviceIds: ['${id}'] })
-await textbee.getMessages({ smsBatchId, status: 'failed' })`,
+await textbee.getMessages({ smsBatchId: 'YOUR_BATCH_ID', status: 'failed' })`,
+        'python-sdk': `${PYTHON_SDK_SETUP}
+
+page = textbee.get_messages(page=1, limit=20)
+
+print(page['data'], page['meta'])
+
+# Narrow to one device, or to the recipients of a batch that failed
+textbee.get_messages(device_ids=['${id}'])
+textbee.get_messages(sms_batch_id='YOUR_BATCH_ID', status='failed')`,
       },
       // Status values match the SMS schema: pending, dispatched, sent,
       // delivered, failed, unknown, received.

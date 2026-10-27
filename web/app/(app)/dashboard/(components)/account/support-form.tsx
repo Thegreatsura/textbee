@@ -201,7 +201,7 @@ export default function SupportForm() {
             <FormItem>
               <FormLabel>Phone (Optional)</FormLabel>
               <FormControl>
-                <Input placeholder='+1234567890' type='tel' {...field} />
+                <Input placeholder='+12025550123' type='tel' {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

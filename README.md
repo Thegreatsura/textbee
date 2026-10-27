@@ -28,6 +28,7 @@
   <a href="https://github.com/textbee/textbee/actions/workflows/web.yaml"><img src="https://github.com/textbee/textbee/actions/workflows/web.yaml/badge.svg" alt="Web build"></a>
   <a href="https://github.com/textbee/textbee/actions/workflows/android.yaml"><img src="https://github.com/textbee/textbee/actions/workflows/android.yaml/badge.svg" alt="Android build"></a>
   <a href="https://www.npmjs.com/package/@textbee/sdk"><img src="https://img.shields.io/npm/v/@textbee/sdk?style=flat&label=%40textbee%2Fsdk&logo=npm" alt="npm: @textbee/sdk"></a>
+  <a href="https://pypi.org/project/textbee/"><img src="https://img.shields.io/pypi/v/textbee?style=flat&label=pypi%3A%20textbee&logo=pypi&logoColor=white" alt="PyPI: textbee"></a>
   <a href="https://textbee.dev/discord"><img src="https://img.shields.io/discord/1236287182940016723?style=flat&label=Discord&logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
@@ -80,7 +81,7 @@ It is a drop-in **Twilio alternative** for OTP codes, alerts, reminders, and two
 ## Features
 
 **Send**
-- Send SMS from a REST API, the web dashboard, or the [JavaScript SDK](https://github.com/textbee/textbee-js)
+- Send SMS from a REST API, the web dashboard, or the official [JavaScript](https://github.com/textbee/textbee-js) and [Python](https://github.com/textbee/textbee-python) SDKs
 - Bulk SMS with a CSV upload, paced to stay within carrier limits
 - Scheduled messages up to 72 hours ahead
 - Multi-device and multi-SIM: pick the phone and the SIM per message
@@ -170,7 +171,31 @@ await fetch('https://api.textbee.dev/api/v1/gateway/send-sms', {
 </details>
 
 <details>
-<summary><b>Python</b></summary>
+<summary><b>Python</b> (official SDK)</summary>
+
+```bash
+pip install textbee
+```
+
+```python
+import os
+
+from textbee import Textbee
+
+textbee = Textbee(api_key=os.environ["TEXTBEE_API_KEY"])
+
+textbee.send_sms(
+    recipients=["+12025550123"],
+    message="Your verification code is 481920. It expires in 10 minutes.",
+)
+```
+
+Zero dependencies, typed, runs on Python 3.9+. See [textbee/textbee-python](https://github.com/textbee/textbee-python).
+
+</details>
+
+<details>
+<summary><b>Python</b> (requests, no SDK)</summary>
 
 ```python
 import requests
@@ -234,6 +259,10 @@ curl "https://api.textbee.dev/api/v1/gateway/messages?direction=received" \
 const messages = await textbee.getMessages({ direction: 'received' })
 ```
 
+```python
+messages = textbee.get_messages(direction="received")
+```
+
 Read the [receiving SMS guide](https://textbee.dev/docs/receiving-sms?ref=gh-readme) for pagination, filters, and SIM details.
 
 ## Webhooks
@@ -265,6 +294,28 @@ app.post('/webhooks/textbee', express.raw({ type: 'application/json' }), async (
   res.sendStatus(200)
 })
 ```
+
+<details>
+<summary><b>Python</b> (Flask)</summary>
+
+```python
+from textbee import verify_webhook_signature
+
+@app.post("/webhooks/textbee")
+def textbee_webhook():
+    valid = verify_webhook_signature(
+        payload=request.get_data(),
+        signature=request.headers.get("X-Signature"),
+        signing_secret=os.environ["TEXTBEE_WEBHOOK_SECRET"],
+    )
+    if not valid:
+        return "", 401
+
+    event = json.loads(request.get_data())
+    return "", 200
+```
+
+</details>
 
 Retries, pauses, and the full payload shape are in the [webhooks docs](https://textbee.dev/docs/webhooks?ref=gh-readme).
 
@@ -312,6 +363,7 @@ With the hosted connector, textbee checks your key and does not store it. Self-h
 | | What it is | Where |
 |---|---|---|
 | **JavaScript SDK** | `@textbee/sdk`: typed client, message iteration, webhook verification, segment counting | [textbee/textbee-js](https://github.com/textbee/textbee-js) · [npm](https://www.npmjs.com/package/@textbee/sdk) |
+| **Python SDK** | `textbee`: the same client for Python 3.9+, with zero dependencies | [textbee/textbee-python](https://github.com/textbee/textbee-python) · [PyPI](https://pypi.org/project/textbee/) |
 | **MCP server** | `@textbee/mcp`: send and read SMS from any MCP client, hosted or local | [textbee/textbee-mcp](https://github.com/textbee/textbee-mcp) · [npm](https://www.npmjs.com/package/@textbee/mcp) |
 | **REST API** | Any language with an HTTP client | [API reference](https://textbee.dev/docs/api-reference?ref=gh-readme) |
 
@@ -467,7 +519,7 @@ textbee has three parts: the API, the Android app, and the web dashboard. Your c
 
 How a message flows:
 
-1. **Your app sends a request** to the REST API, through the JavaScript SDK, or from an AI agent over MCP. The API checks the API key and plan limits, stores the message as `pending`, and picks the device.
+1. **Your app sends a request** to the REST API, through the JavaScript or Python SDK, or from an AI agent over MCP. The API checks the API key and plan limits, stores the message as `pending`, and picks the device.
 2. **The API queues the send and pushes it to the phone** with Firebase Cloud Messaging. The queue runs on Redis and Bull. Bulk and scheduled sends wait there and are released in paced waves.
 3. **The Android app sends the SMS** over the carrier network from the SIM you chose and reports back each state change: `dispatched`, `sent`, `delivered`, or `failed`.
 4. **Incoming SMS go the other way.** The phone receives a message, the app uploads it to the API, and it appears in your message history.

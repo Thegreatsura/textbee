@@ -299,7 +299,14 @@ app.post('/webhooks/textbee', express.raw({ type: 'application/json' }), async (
 <summary><b>Python</b> (Flask)</summary>
 
 ```python
+import json
+import os
+
+from flask import Flask, request
 from textbee import verify_webhook_signature
+
+app = Flask(__name__)
+
 
 @app.post("/webhooks/textbee")
 def textbee_webhook():

@@ -313,7 +313,8 @@ const res = await fetch(
 )
 
 console.log(await res.json())`,
-        'python-sdk': `# Bulk send is not in the textbee Python SDK yet. Use the REST API for now.
+        'python-sdk': `# Bulk send is not in the textbee Python SDK yet. This uses the REST API
+# with requests (pip install requests).
 import os, requests
 
 res = requests.post(
@@ -505,7 +506,7 @@ console.log(data, meta)
 
 // Narrow to one device, or to the recipients of a batch that failed
 await textbee.getMessages({ deviceIds: ['${id}'] })
-await textbee.getMessages({ smsBatchId, status: 'failed' })`,
+await textbee.getMessages({ smsBatchId: 'YOUR_BATCH_ID', status: 'failed' })`,
         'python-sdk': `${PYTHON_SDK_SETUP}
 
 page = textbee.get_messages(page=1, limit=20)
@@ -514,7 +515,7 @@ print(page['data'], page['meta'])
 
 # Narrow to one device, or to the recipients of a batch that failed
 textbee.get_messages(device_ids=['${id}'])
-textbee.get_messages(sms_batch_id=sms_batch_id, status='failed')`,
+textbee.get_messages(sms_batch_id='YOUR_BATCH_ID', status='failed')`,
       },
       // Status values match the SMS schema: pending, dispatched, sent,
       // delivered, failed, unknown, received.

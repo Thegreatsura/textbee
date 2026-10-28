@@ -36,10 +36,16 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
     return (
       <div className='space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3'>
         <p className='text-xs text-foreground'>
-          No status report from the phone yet. The phone did not report within
-          20 minutes.
+          {view.attempts.some((attempt) => attempt.source === 'device')
+            ? 'The phone sent no sent or delivered report within 20 minutes.'
+            : 'No status report from the phone yet. The phone did not report within 20 minutes.'}
         </p>
-        {view.attempts.length > 0 && <AttemptList attempts={view.attempts} />}
+        {view.attempts.length > 0 && (
+          <div className='space-y-1.5'>
+            <p className='text-xs font-medium text-foreground'>Failures recorded</p>
+            <AttemptList attempts={view.attempts} />
+          </div>
+        )}
       </div>
     )
   }

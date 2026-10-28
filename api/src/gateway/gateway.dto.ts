@@ -1198,7 +1198,7 @@ export class RetrieveSMSDTO {
     type: [ErrorHistoryEntryDTO],
     required: false,
     description:
-      'Every failure the message had, oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when the message never failed.',
+      'Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.',
   })
   errorHistory?: ErrorHistoryEntryDTO[]
 

@@ -100,6 +100,29 @@ describe('SmsDetailsDialog failure box', () => {
     expect(screen.queryByText('Delivery failed')).toBeNull()
   })
 
+  it('does not file a delivery report under other failures', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'failed',
+          errorCode: '1',
+          failedAt: '2026-10-01T10:05:00.000Z',
+          errorHistory: [
+            { code: '0', at: '2026-10-01T10:00:00.000Z', source: 'device', deliveryReport: true },
+            { code: '1', at: '2026-10-01T10:05:00.000Z', source: 'device' },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.queryByText('Other failures')).toBeNull()
+    expect(screen.getByText('Delivery reports not confirmed')).toBeTruthy()
+  })
+
   it('explains an unknown status as a missing report', () => {
     render(
       <SmsDetailsDialog message={{ ...base, status: 'unknown' }} open onOpenChange={() => {}} />,

@@ -3,6 +3,13 @@ import { format } from 'date-fns'
 import { failureView, recoveredLabel, sourceLabel } from './failure-view'
 import type { ErrorHistoryEntry, SmsMessage } from './types'
 
+// A list heading that never calls a delivery report a failure
+function listHeading(attempts: ErrorHistoryEntry[], failures: string) {
+  if (attempts.every((attempt) => !attempt.deliveryReport)) return failures
+  if (attempts.every((attempt) => attempt.deliveryReport)) return 'Delivery reports not confirmed'
+  return 'Other reports'
+}
+
 function AttemptList({ attempts }: { attempts: ErrorHistoryEntry[] }) {
   return (
     <ul className='space-y-1.5'>
@@ -42,7 +49,9 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
         </p>
         {view.attempts.length > 0 && (
           <div className='space-y-1.5'>
-            <p className='text-xs font-medium text-foreground'>Failures recorded</p>
+            <p className='text-xs font-medium text-foreground'>
+              {listHeading(view.attempts, 'Failures recorded')}
+            </p>
             <AttemptList attempts={view.attempts} />
           </div>
         )}
@@ -102,7 +111,9 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
       )}
       {view.others.length > 0 && (
         <div className='space-y-1.5 pt-1.5'>
-          <p className='text-xs font-medium text-foreground'>Other failures</p>
+          <p className='text-xs font-medium text-foreground'>
+            {listHeading(view.others, 'Other failures')}
+          </p>
           <AttemptList attempts={view.others} />
         </div>
       )}

@@ -2098,6 +2098,7 @@ describe('GatewayService', () => {
 
     describe('updateSMSStatus', () => {
       const OTHER_BATCH = '507f1f77bcf86cd799439033'
+      const OWN_SMS = '507f1f77bcf86cd799439044'
 
       // The service reads with +metadata and lean, so the mock is a chain
       const mockStoredSms = (...docs: any[]) => {
@@ -2126,7 +2127,7 @@ describe('GatewayService', () => {
         })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           smsBatchId: OTHER_BATCH,
           status: 'sent',
         } as any)
@@ -2156,7 +2157,7 @@ describe('GatewayService', () => {
         })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
         } as any)
 
@@ -2189,7 +2190,7 @@ describe('GatewayService', () => {
         const sendAttempted = Date.now() - 1500
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           sentAtInMillis: Date.now(),
           pushReceivedAtInMillis: pushReceived,
@@ -2207,7 +2208,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           pushReceivedAtInMillis: 0,
           sendAttemptedAtInMillis: Date.now() + 90 * 60 * 60 * 1000,
@@ -2222,7 +2223,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: 'NO_SERVICE',
           errorMessage: 'no carrier',
@@ -2241,7 +2242,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simSubscriptionId: 17,
           simSlotIndex: 0,
@@ -2261,7 +2262,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simUsed: {
             subscriptionId: 17,
@@ -2293,7 +2294,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simUsed: {},
           simSelection: 'system_default',
@@ -2309,7 +2310,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: 'PERMISSION_DENIED',
           simSelection: 'requested',
@@ -2324,7 +2325,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'delivered',
           simSlotIndex: 1,
           simSelection: 'app_preferred',
@@ -2339,11 +2340,22 @@ describe('GatewayService', () => {
       const ownDevice = () =>
         mockDeviceModel.findById.mockResolvedValue({ _id: OWN_DEVICE, user: 'user_1' })
 
+      it('reports a malformed or non-string sms id as not found without a query', async () => {
+        ownDevice()
+
+        for (const smsId of ['not-an-id', { $ne: null }]) {
+          await expect(
+            service.updateSMSStatus(OWN_DEVICE, { smsId, status: 'sent' } as any),
+          ).rejects.toThrow(HttpException)
+        }
+        expect(mockSmsModel.findById).not.toHaveBeenCalled()
+      })
+
       it('rejects a status the phone never sends', async () => {
         ownDevice()
 
         await expect(
-          service.updateSMSStatus(OWN_DEVICE, { smsId: 'own_sms', status: 'pending' } as any),
+          service.updateSMSStatus(OWN_DEVICE, { smsId: OWN_SMS, status: 'pending' } as any),
         ).rejects.toThrow(HttpException)
         expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
       })
@@ -2359,7 +2371,7 @@ describe('GatewayService', () => {
         mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'delivered' })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'delivered',
           deliveredAtInMillis: Date.now(),
         } as any)
@@ -2393,7 +2405,7 @@ describe('GatewayService', () => {
         })
 
         const result = await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           sentAtInMillis: Date.now() - 60000,
         } as any)
@@ -2416,7 +2428,7 @@ describe('GatewayService', () => {
         mockSmsModel.updateOne.mockResolvedValue({ matchedCount: 1 })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: '1',
           failedAtInMillis: deliveredAt - 5000,
@@ -2449,7 +2461,7 @@ describe('GatewayService', () => {
         mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'failed' })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: 'PERMISSION_DENIED',
           failedAtInMillis: Date.now(),
@@ -2472,7 +2484,7 @@ describe('GatewayService', () => {
         mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'delivered' })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           sentAtInMillis: Date.now() - 1000,
         } as any)
@@ -2491,7 +2503,7 @@ describe('GatewayService', () => {
           .mockResolvedValueOnce({ _id: 'own_sms', status: 'delivered' })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           sentAtInMillis: Date.now() - 1000,
         } as any)
@@ -2509,7 +2521,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'delivered',
           simSelection: 'made_up',
         } as any)

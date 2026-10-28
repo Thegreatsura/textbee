@@ -1659,10 +1659,15 @@ export class GatewayService {
       )
     }
 
+    // Only a real id reaches the query; the body is not validated upstream
+    const smsId =
+      typeof dto.smsId === 'string' && Types.ObjectId.isValid(dto.smsId)
+        ? new Types.ObjectId(dto.smsId)
+        : null
     const readMessage = () =>
-      this.smsModel.findById(dto.smsId).select('+metadata').lean()
+      this.smsModel.findById(smsId).select('+metadata').lean()
 
-    let sms: any = await readMessage()
+    let sms: any = smsId ? await readMessage() : null
 
     if (!sms) {
       throw new HttpException(

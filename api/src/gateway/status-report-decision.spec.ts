@@ -94,6 +94,18 @@ describe('decideStatusReport', () => {
       expect(d.set).toEqual({ sentAt: t(1) })
     })
 
+    it('moves a message with a delivery time to delivered, not sent', () => {
+      const d = applied(
+        decideStatusReport(
+          { status: 'unknown', deliveredAt: t(4) },
+          { status: 'sent', at: t(3) },
+          now,
+        ),
+      )
+
+      expect(d.status).toBe('delivered')
+    })
+
     it('treats a repeated report as nothing new', () => {
       expect(
         decideStatusReport(

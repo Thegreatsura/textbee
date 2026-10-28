@@ -187,6 +187,8 @@ export function decideStatusReport(
 
   if (report.status === 'sent' || report.status === 'delivered') {
     const field = report.status === 'sent' ? 'sentAt' : 'deliveredAt'
+    // A message the carrier already confirmed never goes back to sent
+    const reached = report.status === 'sent' && stored.deliveredAt ? 'delivered' : report.status
     const fill = () => {
       if (report.at && stored[field] == null) set[field] = report.at
     }
@@ -199,7 +201,7 @@ export function decideStatusReport(
       }
       if (report.at) set[field] = report.at
       clearCurrentFailure()
-      return apply(report.status)
+      return apply(reached)
     }
 
     // Delivered is as far as a message goes, and a repeat of the same status
@@ -215,7 +217,7 @@ export function decideStatusReport(
 
     if (report.at) set[field] = report.at
     clearCurrentFailure()
-    return apply(report.status)
+    return apply(reached)
   }
 
   // A failure report always carries a code, UNKNOWN at worst

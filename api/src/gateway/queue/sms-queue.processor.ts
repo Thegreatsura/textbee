@@ -14,7 +14,7 @@ import {
   shouldSkipFcmSend,
   skippedBatchResponse,
 } from '../fcm-send-skip'
-import { errorHistoryPush } from '../error-history'
+import { errorHistoryAppend, literalSetStage } from '../error-history'
 import { SmsBatchStatusService } from '../sms-batch-status.service'
 import {
   FCM_SEND_TIMEOUT_ERROR_CODE,
@@ -54,6 +54,10 @@ function getFcmErrorMessage(error: { code?: string; message?: string } | null | 
 // Push outcomes only apply to messages the phone has not reported on. A failed
 // message is never pushed again, so a failed one here carries a phone report.
 const AWAITING_PHONE = { status: { $in: ['pending', 'dispatched', 'unknown'] } }
+
+const ADD_DISPATCH_ATTEMPT = {
+  $set: { dispatchAttempts: { $add: [{ $ifNull: ['$dispatchAttempts', 0] }, 1] } },
+}
 
 @Processor('sms')
 export class SmsQueueProcessor {
@@ -166,23 +170,24 @@ export class SmsQueueProcessor {
               _id: failedUpdate.smsId as any,
               ...AWAITING_PHONE,
             },
-            update: {
-              $set: {
+            // A pipeline, so the trail keeps its first and newest entries
+            update: [
+              literalSetStage({
                 status: 'failed',
                 failedAt,
                 errorCode: failedUpdate.errorCode,
                 errorMessage: failedUpdate.errorMessage,
-              },
-              $inc: { dispatchAttempts: 1 },
-              ...(errorHistoryPush(
+              }),
+              ADD_DISPATCH_ATTEMPT,
+              errorHistoryAppend(
                 {
                   code: failedUpdate.errorCode,
                   message: failedUpdate.errorMessage,
                   source: 'push',
                 },
                 failedAt,
-              ) ?? {}),
-            },
+              ),
+            ].filter(Boolean),
           },
         })),
         ...dispatchedUpdates.map((dispatchedUpdate) => ({
@@ -294,19 +299,15 @@ export class SmsQueueProcessor {
             _id: { $in: failedSmsIds } as any,
             ...AWAITING_PHONE,
           },
-          {
-            $set: {
-              status: 'failed',
-              failedAt,
-              errorCode,
-              errorMessage,
-            },
-            $inc: { dispatchAttempts: 1 },
-            ...(errorHistoryPush(
+          [
+            literalSetStage({ status: 'failed', failedAt, errorCode, errorMessage }),
+            ADD_DISPATCH_ATTEMPT,
+            errorHistoryAppend(
               { code: errorCode, message: errorMessage, source: 'push' },
               failedAt,
-            ) ?? {}),
-          },
+            ),
+          ].filter(Boolean),
+          { updatePipeline: true },
         )
       }
 

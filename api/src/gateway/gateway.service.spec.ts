@@ -19,6 +19,7 @@ import { HttpException, HttpStatus } from '@nestjs/common'
 import * as firebaseAdmin from 'firebase-admin'
 import { SMSType } from './sms-type.enum'
 import { WebhookEvent } from '../webhook/webhook-event.enum'
+import { readPipelineUpdate } from '../../test/pipeline-update'
 import { RegisterDeviceInputDTO, SendBulkSMSInputDTO, SendSMSInputDTO } from './gateway.dto'
 import { decodeCursor } from './cursor'
 import { User } from '../users/schemas/user.schema'
@@ -1193,22 +1194,19 @@ describe('GatewayService', () => {
         { $set: { error: 'write failed' } },
       )
       // Only messages that never left the server are marked failed
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        expect.objectContaining({
-          $set: {
-            status: 'failed',
-            failedAt: expect.any(Date),
-            errorCode: 'DISPATCH_FAILED',
-            errorMessage: 'write failed',
-          },
-          $push: expect.objectContaining({
-            errorHistory: expect.objectContaining({
-              $each: [expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' })],
-            }),
-          }),
-        }),
-      )
+      const [unsentFilter, unsentUpdate, unsentOptions] = mockSmsModel.updateMany.mock.calls[0]
+      expect(unsentFilter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(unsentOptions).toEqual({ updatePipeline: true })
+      const unsent = readPipelineUpdate(unsentUpdate)
+      expect(unsent.set).toEqual({
+        status: 'failed',
+        failedAt: expect.any(Date),
+        errorCode: 'DISPATCH_FAILED',
+        errorMessage: 'write failed',
+      })
+      expect(unsent.history).toEqual([
+        expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' }),
+      ])
       // The status comes from the messages, after they are marked
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
       expect(mockSmsModel.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
@@ -1270,22 +1268,19 @@ describe('GatewayService', () => {
         HttpException,
       )
 
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        expect.objectContaining({
-          $set: {
-            status: 'failed',
-            failedAt: expect.any(Date),
-            errorCode: 'DISPATCH_FAILED',
-            errorMessage: expect.any(String),
-          },
-          $push: expect.objectContaining({
-            errorHistory: expect.objectContaining({
-              $each: [expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' })],
-            }),
-          }),
-        }),
-      )
+      const [unsentFilter, unsentUpdate, unsentOptions] = mockSmsModel.updateMany.mock.calls[0]
+      expect(unsentFilter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(unsentOptions).toEqual({ updatePipeline: true })
+      const unsent = readPipelineUpdate(unsentUpdate)
+      expect(unsent.set).toEqual({
+        status: 'failed',
+        failedAt: expect.any(Date),
+        errorCode: 'DISPATCH_FAILED',
+        errorMessage: expect.any(String),
+      })
+      expect(unsent.history).toEqual([
+        expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' }),
+      ])
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
     })
 
@@ -1495,10 +1490,9 @@ describe('GatewayService', () => {
       ).rejects.toThrow(HttpException)
 
       expect(mockSmsQueueService.removeJobs).toHaveBeenCalledWith(firstGroupJobs)
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        expect.objectContaining({ $set: expect.objectContaining({ status: 'failed' }) }),
-      )
+      const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
+      expect(filter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(readPipelineUpdate(update).set.status).toBe('failed')
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
     })
 
@@ -2234,11 +2228,11 @@ describe('GatewayService', () => {
           errorMessage: 'no carrier',
         } as any)
 
-        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
-        expect(update.$set.errorCode).toBe('NO_SERVICE')
-        const history = update.$push['metadata.errorHistory']
-        expect(history.$slice).toBe(-10)
-        expect(history.$each[0]).toEqual(
+        const [, update, options] = mockSmsModel.findOneAndUpdate.mock.calls[0]
+        const { set, history } = readPipelineUpdate(update)
+        expect(options.updatePipeline).toBe(true)
+        expect(set.errorCode).toBe('NO_SERVICE')
+        expect(history[0]).toEqual(
           expect.objectContaining({ code: 'NO_SERVICE', source: 'device' }),
         )
       })
@@ -2321,9 +2315,9 @@ describe('GatewayService', () => {
           simSelection: 'requested',
         } as any)
 
-        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
-        expect(update.$unset).toBeUndefined()
-        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed'))).toEqual([])
+        const { set, unset } = readPipelineUpdate(mockSmsModel.findOneAndUpdate.mock.calls[0][1])
+        expect(unset).toEqual([])
+        expect(Object.keys(set).filter((k) => k.startsWith('simUsed'))).toEqual([])
       })
 
       it('updates only the SIM part the report carries', async () => {
@@ -2434,11 +2428,56 @@ describe('GatewayService', () => {
         expect(filter.errorHistory).toEqual({
           $not: { $elemMatch: { source: 'device', code: '1', at: new Date(deliveredAt - 5000) } },
         })
-        expect(update.$push.errorHistory.$each[0]).toEqual(
+        expect(readPipelineUpdate(update).history[0]).toEqual(
           expect.objectContaining({ code: '1', source: 'device' }),
         )
-        expect(options).toEqual({ timestamps: false })
+        expect(options).toEqual({ timestamps: false, updatePipeline: true })
         expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      })
+
+      it('bumps updatedAt when a newer failure replaces the current one', async () => {
+        ownDevice()
+        const firstFailure = Date.now() - 60000
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'failed',
+          failedAt: new Date(firstFailure),
+          errorCode: '1',
+          errorHistory: [{ code: '1', at: new Date(firstFailure), source: 'device' }],
+        })
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'failed' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'failed',
+          errorCode: 'PERMISSION_DENIED',
+          failedAtInMillis: Date.now(),
+        } as any)
+
+        const [, update, options] = mockSmsModel.findOneAndUpdate.mock.calls[0]
+        expect(readPipelineUpdate(update).set.errorCode).toBe('PERMISSION_DENIED')
+        expect(options.timestamps).toBe(true)
+        expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      })
+
+      it('leaves updatedAt alone when it only fills a time', async () => {
+        ownDevice()
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'delivered',
+          deliveredAt: new Date(),
+        })
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'delivered' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: 'own_sms',
+          status: 'sent',
+          sentAtInMillis: Date.now() - 1000,
+        } as any)
+
+        expect(mockSmsModel.findOneAndUpdate.mock.calls[0][2].timestamps).toBe(false)
       })
 
       it('judges the report again when another writer got there first', async () => {

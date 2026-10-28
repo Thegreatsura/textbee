@@ -6,7 +6,11 @@ import { FCM_SEND_SKIPPED_ERROR_CODE } from './fcm-send-skip'
 
 export type ErrorHistorySource = 'push' | 'device' | 'server'
 
-export const ERROR_HISTORY_LIMIT = 10
+// The first failures usually name the cause and the newest show where things
+// stand, so a long trail keeps both ends and drops the middle
+export const ERROR_HISTORY_FIRST = 5
+export const ERROR_HISTORY_NEWEST = 10
+export const ERROR_HISTORY_LIMIT = ERROR_HISTORY_FIRST + ERROR_HISTORY_NEWEST
 const MAX_MESSAGE_LENGTH = 300
 
 export type ErrorHistoryEntry = {
@@ -61,32 +65,71 @@ export function errorHistoryEntry(
   return entry
 }
 
-/**
- * The `$push` fragment that appends entries to both trails and keeps the last
- * ten, or null when there is nothing to record. Callers spread it next to
- * their `$set`. The metadata copy stays until every reader uses the field.
- */
-export function errorHistoryPushEntries(
-  entries: ErrorHistoryEntry[],
-): { $push: Record<string, any> } | null {
-  if (entries.length === 0) return null
-  // Reports arrive out of order, so the cap must drop the oldest, not the
-  // first appended
-  const each = { $each: entries, $sort: { at: 1 }, $slice: -ERROR_HISTORY_LIMIT }
+/** Oldest first; past the limit, the first few and the newest. */
+export function capErrorHistory<T extends { at: Date }>(sorted: T[]): T[] {
+  if (sorted.length <= ERROR_HISTORY_LIMIT) return sorted
+  return [...sorted.slice(0, ERROR_HISTORY_FIRST), ...sorted.slice(-ERROR_HISTORY_NEWEST)]
+}
+
+// The same cap as an aggregation expression over an array of entries
+function cappedTrail(input: unknown) {
   return {
-    $push: {
-      errorHistory: each,
-      'metadata.errorHistory': { ...each, $each: [...entries] },
+    $let: {
+      vars: { all: { $sortArray: { input, sortBy: { at: 1 } } } },
+      in: {
+        $cond: [
+          { $lte: [{ $size: '$$all' }, ERROR_HISTORY_LIMIT] },
+          '$$all',
+          {
+            $concatArrays: [
+              { $firstN: { n: ERROR_HISTORY_FIRST, input: '$$all' } },
+              { $lastN: { n: ERROR_HISTORY_NEWEST, input: '$$all' } },
+            ],
+          },
+        ],
+      },
     },
   }
 }
 
-export function errorHistoryPush(
+/**
+ * The pipeline stage that appends entries to both trails and caps them, or
+ * null when there is nothing to record. A plain $push can only keep one end,
+ * so every history write is a pipeline update. The metadata copy stays until
+ * every reader uses the field.
+ */
+export function errorHistoryAppendStage(
+  entries: ErrorHistoryEntry[],
+): { $set: Record<string, unknown> } | null {
+  if (entries.length === 0) return null
+  // $literal, so a phone-sent message starting with $ is never read as a path
+  const append = (field: string) =>
+    cappedTrail({
+      $concatArrays: [{ $cond: [{ $isArray: field }, field, []] }, { $literal: entries }],
+    })
+  return {
+    $set: {
+      errorHistory: append('$errorHistory'),
+      'metadata.errorHistory': append('$metadata.errorHistory'),
+    },
+  }
+}
+
+/** A $set stage whose values are taken as they are, never as expressions. */
+export function literalSetStage(values: Record<string, unknown>): { $set: Record<string, unknown> } {
+  const set: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) set[key] = { $literal: value }
+  }
+  return { $set: set }
+}
+
+export function errorHistoryAppend(
   input: { code?: unknown; message?: unknown; source: ErrorHistorySource },
   at: Date = new Date(),
-): { $push: Record<string, any> } | null {
+): { $set: Record<string, unknown> } | null {
   const entry = errorHistoryEntry(input, at)
-  return entry ? errorHistoryPushEntries([entry]) : null
+  return entry ? errorHistoryAppendStage([entry]) : null
 }
 
 function toDate(value: unknown): Date | null {
@@ -113,7 +156,7 @@ export function sameEntry(
 
 /**
  * Both trails of a stored message, merged: older entries live only under
- * metadata, newer ones in both places. Oldest first, at most ten.
+ * metadata, newer ones in both places. Oldest first, capped like the trail.
  */
 export function storedErrorHistory(doc: {
   errorHistory?: unknown
@@ -137,7 +180,7 @@ export function storedErrorHistory(doc: {
     if (!merged.some((existing) => sameEntry(existing, entry))) merged.push(entry)
   }
   merged.sort((a, b) => a.at.getTime() - b.at.getTime())
-  return merged.slice(-ERROR_HISTORY_LIMIT)
+  return capErrorHistory(merged)
 }
 
 // Written by the server when it could not hand a message off

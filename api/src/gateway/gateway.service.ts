@@ -47,8 +47,9 @@ import {
 import {
   DISPATCH_FAILED_ERROR_CODE,
   ErrorHistoryEntry,
-  errorHistoryPush,
-  errorHistoryPushEntries,
+  errorHistoryAppend,
+  errorHistoryAppendStage,
+  literalSetStage,
 } from './error-history'
 import {
   StatusReport,
@@ -578,18 +579,19 @@ export class GatewayService {
       const failedAt = new Date()
       await this.smsModel.updateMany(
         { ...filter, status: 'pending' } as any,
-        {
-          $set: {
+        [
+          literalSetStage({
             status: 'failed',
             failedAt,
             errorCode: DISPATCH_FAILED_ERROR_CODE,
             errorMessage,
-          },
-          ...(errorHistoryPush(
+          }),
+          errorHistoryAppend(
             { code: DISPATCH_FAILED_ERROR_CODE, message: errorMessage, source: 'server' },
             failedAt,
-          ) ?? {}),
-        },
+          ),
+        ],
+        { updatePipeline: true },
       )
     } catch (error) {
       console.error('failed to mark unsent messages as failed', error)
@@ -1770,31 +1772,45 @@ export class GatewayService {
         // An older failure changes no status, so it does not count as an update
         const result = await this.smsModel.updateOne(
           { ...unchangedSince(sms), ...notRecordedYet(decision.entries, report) },
-          errorHistoryPushEntries(decision.entries),
-          { timestamps: false },
+          [errorHistoryAppendStage(decision.entries)],
+          { timestamps: false, updatePipeline: true },
         )
         if (result.matchedCount > 0) return ok
         continue
       }
 
-      const $unset: Record<string, ''> = {}
-      for (const key of decision.unset) $unset[key] = ''
-      if (unsetSimUsed) $unset.simUsed = ''
+      const set = {
+        ...telemetry,
+        ...decision.set,
+        ...(decision.writeStatus && { status: decision.status }),
+      }
+      const unset = [...decision.unset, ...(unsetSimUsed ? ['simUsed'] : [])]
+      const history = errorHistoryAppendStage(decision.entries)
+      // Appending to the trail needs a pipeline; everything else stays plain
+      const update = history
+        ? [
+            ...(Object.keys(set).length > 0 ? [literalSetStage(set)] : []),
+            ...(unset.length > 0 ? [{ $unset: unset }] : []),
+            history,
+          ]
+        : {
+            $set: set,
+            ...(unset.length > 0 && {
+              $unset: Object.fromEntries(unset.map((key) => [key, ''])),
+            }),
+          }
 
       const updatedSms = await this.smsModel.findOneAndUpdate(
         unchangedSince(sms),
-        {
-          $set: {
-            ...telemetry,
-            ...decision.set,
-            ...(decision.writeStatus && { status: decision.status }),
-          },
-          ...(Object.keys($unset).length > 0 && { $unset }),
-          ...(errorHistoryPushEntries(decision.entries) ?? {}),
-        },
+        update as any,
         // A time filled in on an unchanged status is not news to readers
-        // that judge staleness by updatedAt
-        { new: true, timestamps: decision.statusChanged || decision.writeStatus },
+        // that judge staleness by updatedAt; a replaced failure is
+        {
+          new: true,
+          timestamps:
+            decision.statusChanged || decision.writeStatus || 'failedAt' in decision.set,
+          ...(history && { updatePipeline: true }),
+        },
       )
       if (!updatedSms) continue
 
@@ -1824,8 +1840,8 @@ export class GatewayService {
     if (entry && report.at) {
       await this.smsModel.updateOne(
         { _id: sms._id, ...notRecordedYet([entry], report) },
-        errorHistoryPushEntries([entry]),
-        { timestamps: false },
+        [errorHistoryAppendStage([entry])],
+        { timestamps: false, updatePipeline: true },
       )
     }
     return ok

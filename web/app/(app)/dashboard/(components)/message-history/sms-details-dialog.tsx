@@ -18,13 +18,13 @@ import {
   Smartphone,
 } from 'lucide-react'
 import { CopyButton } from '@/components/shared/copy-button'
-import { smsPermissionGuideUrl } from '@/config/external-links'
 import { getStatusBadge } from './utils'
 import { messageDate, messageDirection } from './group'
 import { simFullLabel, simMismatch, simName } from './sim-label'
 import { SimChip } from './sim-chip'
 import { toExactLabel } from '@/components/shared/relative-time'
 import SmsComposerDialog from './sms-composer-dialog'
+import FailureDetails from './failure-details'
 import { cn, formatDeviceName } from '@/lib/utils'
 import type { Device } from '@/lib/api'
 import type { SmsMessage } from './types'
@@ -180,36 +180,7 @@ export default function SmsDetailsDialog({
             </p>
           )}
 
-          {(message.errorCode || message.errorMessage) && (
-            <div className='space-y-1.5 rounded-lg border border-destructive/30 bg-destructive/5 p-3'>
-              <p className='text-sm font-medium text-destructive'>
-                Delivery failed
-              </p>
-              {message.errorCode && (
-                <p className='break-words text-xs text-destructive'>
-                  Code: {message.errorCode}
-                </p>
-              )}
-              {message.errorMessage && (
-                <p className='break-words text-xs text-destructive'>
-                  {message.errorMessage}
-                </p>
-              )}
-              {message.errorCode === 'PERMISSION_DENIED' && (
-                <p className='text-xs text-foreground'>
-                  The textbee app on this phone does not have SMS permission.{' '}
-                  <a
-                    href={smsPermissionGuideUrl('message_details')}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='font-medium underline underline-offset-2'
-                  >
-                    How to fix it
-                  </a>
-                </p>
-              )}
-            </div>
-          )}
+          <FailureDetails message={message} />
 
           <div className='flex flex-col-reverse gap-2 sm:flex-row sm:justify-end'>
             {message.smsBatch && onShowBatch && (

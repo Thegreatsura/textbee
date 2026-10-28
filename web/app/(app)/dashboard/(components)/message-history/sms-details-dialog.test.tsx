@@ -33,6 +33,57 @@ describe('SmsDetailsDialog failure help', () => {
   })
 })
 
+describe('SmsDetailsDialog failure box', () => {
+  const base = { _id: 'm2', type: 'SENT' as const, recipient: '+15550101', message: 'hi' }
+
+  it('does not call a delivered message failed', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'delivered',
+          errorMessage: 'Status update timeout - no response from device after dispatch',
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+
+  it('lists earlier failures of a delivered message', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'delivered',
+          errorHistory: [
+            { code: 'FCM_SEND_TIMEOUT', at: '2026-10-01T10:00:00.000Z', source: 'push' },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getByText('Failed once before it was delivered')).toBeTruthy()
+    expect(screen.getByText(/FCM_SEND_TIMEOUT/)).toBeTruthy()
+  })
+
+  it('explains an unknown status as a missing report', () => {
+    render(
+      <SmsDetailsDialog message={{ ...base, status: 'unknown' }} open onOpenChange={() => {}} />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getByText(/No status report from the phone yet/)).toBeTruthy()
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+})
+
 describe('SmsDetailsDialog SIM', () => {
   const sent = {
     _id: 'm2',

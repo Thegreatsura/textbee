@@ -69,7 +69,7 @@ describe('SmsDetailsDialog failure box', () => {
       { wrapper: TestProviders }
     )
 
-    expect(screen.getByText('Failed once before it was delivered')).toBeTruthy()
+    expect(screen.getByText('1 failure recorded')).toBeTruthy()
     expect(screen.getByText(/FCM_SEND_TIMEOUT/)).toBeTruthy()
   })
 

@@ -1,17 +1,20 @@
 import { smsPermissionGuideUrl } from '@/config/external-links'
-import { toExactLabel } from '@/components/shared/relative-time'
+import { format } from 'date-fns'
 import { failureView, recoveredLabel, sourceLabel } from './failure-view'
 import type { ErrorHistoryEntry, SmsMessage } from './types'
 
 function AttemptList({ attempts }: { attempts: ErrorHistoryEntry[] }) {
   return (
     <ul className='space-y-1.5'>
-      {attempts.map((attempt) => (
+      {attempts.map((attempt, index) => (
         <li
-          key={`${attempt.code}-${attempt.at}`}
+          key={`${attempt.source}-${attempt.code}-${attempt.at}-${index}`}
           className='break-words text-xs text-muted-foreground'
         >
-          <span className='text-foreground'>{toExactLabel(new Date(attempt.at))}</span>
+          {/* Seconds, so retries in the same minute stay apart */}
+          <span className='text-foreground'>
+            {format(new Date(attempt.at), "MMM d, yyyy 'at' h:mm:ss a")}
+          </span>
           {' · '}
           {sourceLabel(attempt.source)}
           {' · '}
@@ -31,10 +34,13 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
 
   if (view.kind === 'no-report') {
     return (
-      <p className='rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-foreground'>
-        No status report from the phone yet. The phone did not report within 20
-        minutes, so the message may or may not have gone out.
-      </p>
+      <div className='space-y-2 rounded-lg border border-warning/30 bg-warning/5 p-3'>
+        <p className='text-xs text-foreground'>
+          No status report from the phone yet. The phone did not report within
+          20 minutes.
+        </p>
+        {view.attempts.length > 0 && <AttemptList attempts={view.attempts} />}
+      </div>
     )
   }
 
@@ -42,7 +48,7 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
     return (
       <div className='space-y-2 rounded-lg border bg-muted/40 p-3'>
         <p className='text-sm font-medium text-foreground'>
-          {recoveredLabel(view, message.status)}
+          {recoveredLabel(view)}
         </p>
         <AttemptList attempts={view.attempts} />
       </div>
@@ -71,10 +77,10 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
           </a>
         </p>
       )}
-      {view.earlier.length > 0 && (
+      {view.others.length > 0 && (
         <div className='space-y-1.5 pt-1.5'>
-          <p className='text-xs font-medium text-foreground'>Earlier attempts</p>
-          <AttemptList attempts={view.earlier} />
+          <p className='text-xs font-medium text-foreground'>Other failures</p>
+          <AttemptList attempts={view.others} />
         </div>
       )}
     </div>

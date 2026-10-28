@@ -21,14 +21,42 @@ describe('failureView', () => {
       kind: 'failed',
       code: '1',
       message: 'generic',
-      earlier: [{ code: 'FCM_SEND_TIMEOUT', at: at(1), source: 'push' }],
+      others: [{ code: 'FCM_SEND_TIMEOUT', at: at(1), source: 'push' }],
     })
+  })
+
+  it('finds the current failure when the phone sent no code', () => {
+    const view = failureView({
+      _id: 'm',
+      status: 'failed',
+      errorMessage: 'Unknown error',
+      failedAt: at(5),
+      errorHistory: [{ code: 'UNKNOWN', message: 'Unknown error', at: at(5), source: 'device' }],
+    })
+
+    expect(view).toEqual(expect.objectContaining({ kind: 'failed', others: [] }))
+  })
+
+  it('finds the current failure of an old message without failedAt', () => {
+    const view = failureView({
+      _id: 'm',
+      status: 'failed',
+      errorMessage: 'queue down',
+      errorHistory: [
+        { code: '4', at: at(1), source: 'device' },
+        { code: 'UNKNOWN', message: 'queue down', at: at(2), source: 'server', backfilled: true },
+      ],
+    })
+
+    expect(view).toEqual(
+      expect.objectContaining({ others: [{ code: '4', at: at(1), source: 'device' }] })
+    )
   })
 
   it('shows an old failure that has no history', () => {
     expect(
       failureView({ _id: 'm', status: 'FAILED', errorCode: '4', errorMessage: 'no service' })
-    ).toEqual({ kind: 'failed', code: '4', message: 'no service', earlier: [] })
+    ).toEqual({ kind: 'failed', code: '4', message: 'no service', others: [] })
   })
 
   it('lists the failures of a message that went out after all', () => {
@@ -62,7 +90,20 @@ describe('failureView', () => {
         status: 'unknown',
         errorMessage: 'Status update timeout - no response from device after dispatch',
       })
-    ).toEqual({ kind: 'no-report' })
+    ).toEqual({ kind: 'no-report', attempts: [] })
+  })
+
+  it('keeps phone reports seen on an unknown message', () => {
+    expect(
+      failureView({
+        _id: 'm',
+        status: 'unknown',
+        errorHistory: [{ code: '0', message: 'canceled', at: at(1), source: 'device' }],
+      })
+    ).toEqual({
+      kind: 'no-report',
+      attempts: [{ code: '0', message: 'canceled', at: at(1), source: 'device' }],
+    })
   })
 
   it('shows nothing for a message still on its way', () => {
@@ -71,15 +112,11 @@ describe('failureView', () => {
 })
 
 describe('recoveredLabel', () => {
-  it('counts attempts and marks the cap', () => {
-    expect(recoveredLabel({ attempts: [1], capped: false }, 'sent')).toBe(
-      'Failed once before it was sent'
-    )
-    expect(recoveredLabel({ attempts: [1, 2], capped: false }, 'delivered')).toBe(
-      'Failed 2 times before it was delivered'
-    )
-    expect(recoveredLabel({ attempts: new Array(10), capped: true }, 'sent')).toBe(
-      'Failed 10+ times before it was sent'
+  it('counts failures without claiming when they happened', () => {
+    expect(recoveredLabel({ attempts: [1], capped: false })).toBe('1 failure recorded')
+    expect(recoveredLabel({ attempts: [1, 2], capped: false })).toBe('2 failures recorded')
+    expect(recoveredLabel({ attempts: new Array(10), capped: true })).toBe(
+      '10 or more failures recorded'
     )
   })
 })

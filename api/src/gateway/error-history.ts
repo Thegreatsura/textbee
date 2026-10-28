@@ -112,7 +112,7 @@ export function errorHistoryAppendStage(
     })
   return {
     $set: {
-      errorHistory: append('$errorHistory'),
+      issueHistory: append('$issueHistory'),
       'metadata.errorHistory': append('$metadata.errorHistory'),
     },
   }
@@ -162,12 +162,12 @@ export function sameEntry(
  * metadata, newer ones in both places. Oldest first, capped like the trail.
  */
 export function storedErrorHistory(doc: {
-  errorHistory?: unknown
+  issueHistory?: unknown
   metadata?: { errorHistory?: unknown } | null
 }): ErrorHistoryEntry[] {
   const raw = [
     ...(Array.isArray(doc?.metadata?.errorHistory) ? doc.metadata.errorHistory : []),
-    ...(Array.isArray(doc?.errorHistory) ? doc.errorHistory : []),
+    ...(Array.isArray(doc?.issueHistory) ? doc.issueHistory : []),
   ]
   const merged: ErrorHistoryEntry[] = []
   for (const item of raw) {

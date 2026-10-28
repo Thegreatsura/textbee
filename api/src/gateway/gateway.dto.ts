@@ -966,7 +966,7 @@ export class DeviceDTO {
   updatedAt: Date
 }
 
-export class ErrorHistoryEntryDTO {
+export class IssueHistoryEntryDTO {
   @ApiProperty({
     type: String,
     description: 'Failure code. UNKNOWN when none was reported.',
@@ -1173,7 +1173,7 @@ export class RetrieveSMSDTO {
     type: Date,
     required: false,
     description:
-      'When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in errorHistory.',
+      'When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory.',
   })
   failedAt?: Date
 
@@ -1195,12 +1195,12 @@ export class RetrieveSMSDTO {
   errorMessage?: string
 
   @ApiProperty({
-    type: [ErrorHistoryEntryDTO],
+    type: [IssueHistoryEntryDTO],
     required: false,
     description:
       'Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.',
   })
-  errorHistory?: ErrorHistoryEntryDTO[]
+  issueHistory?: IssueHistoryEntryDTO[]
 
   @ApiProperty({
     type: Boolean,
@@ -1363,7 +1363,7 @@ export class UpdateSMSStatusDTO {
     type: String,
     required: true,
     description:
-      'The status of the SMS. delivery_failed is a delivery report that did not confirm delivery; it is recorded in errorHistory and does not change the status. Any other value is rejected with 400.',
+      'The status of the SMS. delivery_failed is a delivery report that did not confirm delivery; it is recorded in issueHistory and does not change the status. Any other value is rejected with 400.',
     enum: ['sent', 'delivered', 'failed', 'delivery_failed'],
   })
   status: string

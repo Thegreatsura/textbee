@@ -98,7 +98,7 @@ function notRecordedYet(entries: ErrorHistoryEntry[], report: StatusReport) {
   if (!entry || !report.at || entry.source !== 'device') return {}
   const match = { $elemMatch: { source: 'device', code: entry.code, at: entry.at } }
   return {
-    errorHistory: { $not: match },
+    issueHistory: { $not: match },
     'metadata.errorHistory': { $not: match },
   }
 }

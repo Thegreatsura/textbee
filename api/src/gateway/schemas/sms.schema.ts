@@ -96,7 +96,7 @@ export class SMS {
 
   // Every failure the message had, oldest first, kept after it recovers
   @Prop({ type: [ErrorHistoryEntrySchema], default: undefined })
-  errorHistory?: ErrorHistoryEntry[]
+  issueHistory?: ErrorHistoryEntry[]
 
   // @Prop({ type: String })
   // failureReason: string

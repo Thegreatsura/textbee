@@ -17,20 +17,20 @@ describe('SMSSchema simUsed', () => {
   })
 })
 
-describe('SMSSchema errorHistory', () => {
+describe('SMSSchema issueHistory', () => {
   const SmsModel = mongoose.model('SmsSchemaErrorHistorySpec', SMSSchema)
 
   it('is absent until a failure is recorded', () => {
-    expect(new SmsModel({}).toObject().errorHistory).toBeUndefined()
+    expect(new SmsModel({}).toObject().issueHistory).toBeUndefined()
   })
 
   it('stores entries without an id of their own', () => {
     const at = new Date('2026-10-01T10:00:00.000Z')
     const sms = new SmsModel({
-      errorHistory: [{ code: '1', message: 'generic', at, source: 'device' }],
+      issueHistory: [{ code: '1', message: 'generic', at, source: 'device' }],
     })
 
-    expect(sms.toObject().errorHistory).toEqual([
+    expect(sms.toObject().issueHistory).toEqual([
       { code: '1', message: 'generic', at, source: 'device' },
     ])
   })

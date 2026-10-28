@@ -1,7 +1,7 @@
 import type { ErrorHistoryEntry, SmsMessage } from './types'
 
 // What the details dialog says about a message's failures. The top-level
-// error fields describe a failure that is still current; errorHistory keeps
+// error fields describe a failure that is still current; issueHistory keeps
 // every failure, including ones the message recovered from.
 
 // The API keeps the first 5 and the newest 10
@@ -25,7 +25,7 @@ export type FailureView =
 const time = (value: string) => new Date(value).getTime()
 
 function history(message: SmsMessage): ErrorHistoryEntry[] {
-  return (message.errorHistory ?? [])
+  return (message.issueHistory ?? [])
     .filter((entry) => entry && !Number.isNaN(time(entry.at)))
     .sort((a, b) => time(a.at) - time(b.at))
 }

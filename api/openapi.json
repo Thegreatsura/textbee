@@ -1769,7 +1769,7 @@
           "buildId"
         ]
       },
-      "ErrorHistoryEntryDTO": {
+      "IssueHistoryEntryDTO": {
         "type": "object",
         "properties": {
           "code": {
@@ -1927,7 +1927,7 @@
           "failedAt": {
             "format": "date-time",
             "type": "string",
-            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in errorHistory."
+            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory."
           },
           "errorCode": {
             "type": "string",
@@ -1938,11 +1938,11 @@
             "type": "string",
             "description": "Reason for the current failure. Present while status is failed. While status is unknown it holds a note that the phone did not report in time, which is not a failure."
           },
-          "errorHistory": {
+          "issueHistory": {
             "description": "Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ErrorHistoryEntryDTO"
+              "$ref": "#/components/schemas/IssueHistoryEntryDTO"
             }
           },
           "overLimit": {
@@ -2133,7 +2133,7 @@
           "failedAt": {
             "format": "date-time",
             "type": "string",
-            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in errorHistory."
+            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory."
           },
           "errorCode": {
             "type": "string",
@@ -2144,11 +2144,11 @@
             "type": "string",
             "description": "Reason for the current failure. Present while status is failed. While status is unknown it holds a note that the phone did not report in time, which is not a failure."
           },
-          "errorHistory": {
+          "issueHistory": {
             "description": "Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.",
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ErrorHistoryEntryDTO"
+              "$ref": "#/components/schemas/IssueHistoryEntryDTO"
             }
           },
           "overLimit": {

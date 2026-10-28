@@ -12,7 +12,7 @@ import {
 
 describe('errorHistoryAppend', () => {
   const at = new Date('2026-09-20T10:00:00.000Z')
-  const entriesOf = (stage: any, field = 'errorHistory') =>
+  const entriesOf = (stage: any, field = 'issueHistory') =>
     stage.$set[field].$let.vars.all.$sortArray.input.$concatArrays[1].$literal
 
   it('appends one entry to both trails as a literal', () => {
@@ -28,7 +28,7 @@ describe('errorHistoryAppend', () => {
 
   it('keeps the first five and the newest ten', () => {
     const stage = errorHistoryAppend({ code: 'X', source: 'push' }, at)
-    const cap = (stage.$set.errorHistory as any).$let.in.$cond
+    const cap = (stage.$set.issueHistory as any).$let.in.$cond
 
     expect(ERROR_HISTORY_LIMIT).toBe(15)
     expect(cap[0]).toEqual({ $lte: [{ $size: '$$all' }, 15] })
@@ -87,7 +87,7 @@ describe('storedErrorHistory', () => {
           { code: '4', at: t(3), source: 'device' },
         ],
       },
-      errorHistory: [
+      issueHistory: [
         { code: '4', at: t(3).toISOString(), source: 'device' },
         { code: '1', at: t(2), source: 'device', message: 'generic' },
       ],
@@ -102,7 +102,7 @@ describe('storedErrorHistory', () => {
 
   it('keeps the first five and the newest ten', () => {
     const history = storedErrorHistory({
-      errorHistory: Array.from({ length: 18 }, (_, i) => ({
+      issueHistory: Array.from({ length: 18 }, (_, i) => ({
         code: String(i),
         at: t(i),
         source: 'device',
@@ -117,7 +117,7 @@ describe('storedErrorHistory', () => {
   it('keeps the delivery report mark', () => {
     expect(
       storedErrorHistory({
-        errorHistory: [{ code: '0', at: t(1), source: 'device', deliveryReport: true }],
+        issueHistory: [{ code: '0', at: t(1), source: 'device', deliveryReport: true }],
       }),
     ).toEqual([{ code: '0', at: t(1), source: 'device', deliveryReport: true }])
   })
@@ -125,7 +125,7 @@ describe('storedErrorHistory', () => {
   it('skips entries without a usable time and survives odd shapes', () => {
     expect(
       storedErrorHistory({
-        errorHistory: [{ code: 'X', at: 'not a date' }, null],
+        issueHistory: [{ code: 'X', at: 'not a date' }, null],
         metadata: { errorHistory: 'nope' },
       }),
     ).toEqual([])

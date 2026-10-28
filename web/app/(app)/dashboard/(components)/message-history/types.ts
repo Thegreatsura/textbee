@@ -23,7 +23,7 @@ export type SmsMessage = {
   failedAt?: string
   // Every failure, kept after the message recovers. Oldest first; past 15,
   // only the first 5 and the newest 10.
-  errorHistory?: ErrorHistoryEntry[]
+  issueHistory?: ErrorHistoryEntry[]
   device?: Device
   // Batch id of the send this message came from.
   smsBatch?: string

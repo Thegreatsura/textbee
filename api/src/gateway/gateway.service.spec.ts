@@ -2437,7 +2437,7 @@ describe('GatewayService', () => {
         expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
         const [filter, update, options] = mockSmsModel.updateOne.mock.calls[0]
         // A retry racing the first copy finds it already stored
-        expect(filter.errorHistory).toEqual({
+        expect(filter.issueHistory).toEqual({
           $not: { $elemMatch: { source: 'device', code: '1', at: new Date(deliveredAt - 5000) } },
         })
         expect(readPipelineUpdate(update).history[0]).toEqual(
@@ -2456,7 +2456,7 @@ describe('GatewayService', () => {
           status: 'failed',
           failedAt: new Date(firstFailure),
           errorCode: '1',
-          errorHistory: [{ code: '1', at: new Date(firstFailure), source: 'device' }],
+          issueHistory: [{ code: '1', at: new Date(firstFailure), source: 'device' }],
         })
         mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'failed' })
 

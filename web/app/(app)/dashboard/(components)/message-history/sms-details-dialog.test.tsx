@@ -59,7 +59,7 @@ describe('SmsDetailsDialog failure box', () => {
         message={{
           ...base,
           status: 'delivered',
-          errorHistory: [
+          issueHistory: [
             { code: 'FCM_SEND_TIMEOUT', at: '2026-10-01T10:00:00.000Z', source: 'push' },
           ],
         }}
@@ -79,7 +79,7 @@ describe('SmsDetailsDialog failure box', () => {
         message={{
           ...base,
           status: 'sent',
-          errorHistory: [
+          issueHistory: [
             {
               code: '0',
               message: 'Delivery report was canceled',
@@ -108,7 +108,7 @@ describe('SmsDetailsDialog failure box', () => {
           status: 'failed',
           errorCode: '1',
           failedAt: '2026-10-01T10:05:00.000Z',
-          errorHistory: [
+          issueHistory: [
             { code: '0', at: '2026-10-01T10:00:00.000Z', source: 'device', deliveryReport: true },
             { code: '1', at: '2026-10-01T10:05:00.000Z', source: 'device' },
           ],

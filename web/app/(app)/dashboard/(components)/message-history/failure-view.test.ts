@@ -11,7 +11,7 @@ describe('failureView', () => {
       errorCode: '1',
       errorMessage: 'generic',
       failedAt: at(5),
-      errorHistory: [
+      issueHistory: [
         { code: '1', at: at(5), source: 'device' },
         { code: 'FCM_SEND_TIMEOUT', at: at(1), source: 'push' },
       ],
@@ -31,7 +31,7 @@ describe('failureView', () => {
       status: 'failed',
       errorMessage: 'Unknown error',
       failedAt: at(5),
-      errorHistory: [{ code: 'UNKNOWN', message: 'Unknown error', at: at(5), source: 'device' }],
+      issueHistory: [{ code: 'UNKNOWN', message: 'Unknown error', at: at(5), source: 'device' }],
     })
 
     expect(view).toEqual(expect.objectContaining({ kind: 'failed', others: [] }))
@@ -42,7 +42,7 @@ describe('failureView', () => {
       _id: 'm',
       status: 'failed',
       errorMessage: 'queue down',
-      errorHistory: [
+      issueHistory: [
         { code: '4', at: at(1), source: 'device' },
         { code: 'UNKNOWN', message: 'queue down', at: at(2), source: 'server', backfilled: true },
       ],
@@ -63,7 +63,7 @@ describe('failureView', () => {
     const view = failureView({
       _id: 'm',
       status: 'delivered',
-      errorHistory: [{ code: '1', at: at(1), source: 'device' }],
+      issueHistory: [{ code: '1', at: at(1), source: 'device' }],
     })
 
     expect(view).toEqual({
@@ -76,14 +76,14 @@ describe('failureView', () => {
 
   it('does not call an unconfirmed delivery report a failure', () => {
     const report = { code: '0', at: at(2), source: 'device' as const, deliveryReport: true }
-    expect(failureView({ _id: 'm', status: 'sent', errorHistory: [report] })).toEqual({
+    expect(failureView({ _id: 'm', status: 'sent', issueHistory: [report] })).toEqual({
       kind: 'delivery-unconfirmed',
       attempts: [report],
     })
     const mixed = failureView({
       _id: 'm',
       status: 'delivered',
-      errorHistory: [{ code: '1', at: at(1), source: 'device' }, report],
+      issueHistory: [{ code: '1', at: at(1), source: 'device' }, report],
     })
     expect(mixed).toEqual(expect.objectContaining({ kind: 'recovered', failures: 1 }))
   })
@@ -113,7 +113,7 @@ describe('failureView', () => {
       failureView({
         _id: 'm',
         status: 'unknown',
-        errorHistory: [{ code: '0', message: 'canceled', at: at(1), source: 'device' }],
+        issueHistory: [{ code: '0', message: 'canceled', at: at(1), source: 'device' }],
       })
     ).toEqual({
       kind: 'no-report',

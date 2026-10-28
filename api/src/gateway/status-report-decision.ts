@@ -38,7 +38,7 @@ export type StoredMessage = {
   errorCode?: string | null
   errorMessage?: string | null
   createdAt?: Date | null
-  errorHistory?: unknown
+  issueHistory?: unknown
   metadata?: { errorHistory?: unknown; failureTimeFromServer?: unknown } | null
 }
 

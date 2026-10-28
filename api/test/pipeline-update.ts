@@ -9,7 +9,7 @@ export function readPipelineUpdate(update: any) {
     if (stage.$unset) unset.push(...[].concat(stage.$unset))
     if (!stage.$set) continue
     for (const [key, value] of Object.entries<any>(stage.$set)) {
-      if (key === 'errorHistory') {
+      if (key === 'issueHistory') {
         history = value.$let.vars.all.$sortArray.input.$concatArrays[1].$literal
       } else if (key !== 'metadata.errorHistory') {
         set[key] = value && typeof value === 'object' && '$literal' in value ? value.$literal : value

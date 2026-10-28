@@ -390,11 +390,6 @@ describe('MailService.sendTemplated', () => {
       { user: { _id: userId, email: 'a@example.com', isBanned: true } },
       'not_eligible',
     ],
-    [
-      'an account pending deletion',
-      { user: { _id: userId, email: 'a@example.com', accountDeletionRequestedAt: new Date() } },
-      'not_eligible',
-    ],
     ['a missing account', { user: null }, 'not_eligible'],
   ])('skips %s and logs why', async (_label, opts: any, reason) => {
     const { service, mailerService, sentEmailModel } = setup(opts)
@@ -406,6 +401,36 @@ describe('MailService.sendTemplated', () => {
       status: 'skipped',
       error: reason,
       type: 'T2',
+    })
+  })
+
+  it('still sends a password reset while deletion is pending', async () => {
+    const { service, mailerService } = setup({
+      user: { _id: userId, email: 'a@example.com', accountDeletionRequestedAt: new Date() },
+    })
+
+    await expect(sendT2(service)).resolves.toBe('sent')
+    expect(mailerService.sendMail).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips a non-essential email while deletion is pending', async () => {
+    const { service, mailerService, sentEmailModel } = setup({
+      user: { _id: userId, email: 'a@example.com', accountDeletionRequestedAt: new Date() },
+    })
+
+    await expect(
+      service.sendTemplated({
+        key: 'V2',
+        userId,
+        vars: { verificationUrl: 'https://app.test/v', linkTtl: '24 hours' },
+      }),
+    ).resolves.toBe('skipped')
+
+    expect(mailerService.sendMail).not.toHaveBeenCalled()
+    expect(sentEmailModel.create.mock.calls[0][0]).toMatchObject({
+      status: 'skipped',
+      error: 'not_eligible',
+      type: 'V2',
     })
   })
 

@@ -24,6 +24,7 @@ import { resolveSimUsedReport } from '../gateway/sim-report'
 import { WebhookQueueService } from './queue/webhook-queue.service'
 import { MailService } from '../mail/mail.service'
 import { firstName } from '../mail/first-name'
+import { skipReason } from '../mail/email-eligibility'
 import { UsersService } from '../users/users.service'
 
 // Longer than the 60 second delivery timeout cap, so an attempt in flight keeps its claim.
@@ -1125,6 +1126,12 @@ export class WebhookService {
       if (!user?.email) {
         console.log(
           `Webhook subscription ${subscription._id} auto-disabled but no user/email to notify`,
+        )
+        continue
+      }
+      if (skipReason(user, false)) {
+        console.log(
+          `Webhook subscription ${subscription._id} auto-disabled, owner is banned or pending deletion`,
         )
         continue
       }

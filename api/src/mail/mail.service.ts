@@ -121,7 +121,7 @@ export class MailService {
     const suppressed = address
       ? !!(await this.suppressionModel.exists({ email: address.toLowerCase() }))
       : false
-    const reason = skipReason(user, suppressed)
+    const reason = skipReason(user, suppressed, key)
     if (reason) {
       await this.saveSkip(address, reason, log)
       return 'skipped'

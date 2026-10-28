@@ -1769,6 +1769,47 @@
           "buildId"
         ]
       },
+      "IssueHistoryEntryDTO": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Failure code. UNKNOWN when none was reported.",
+            "example": "PERMISSION_DENIED"
+          },
+          "message": {
+            "type": "string",
+            "description": "Failure reason, up to 300 characters."
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string",
+            "description": "When the failure happened. Phone time for phone failures, server time otherwise."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "device",
+              "push",
+              "server"
+            ],
+            "description": "Where the failure came from. device: the phone could not send. push: the push service could not reach the phone. server: the server could not hand the message off."
+          },
+          "backfilled": {
+            "type": "boolean",
+            "description": "True when the entry was rebuilt from the failure fields of a message recorded before this history existed."
+          },
+          "deliveryReport": {
+            "type": "boolean",
+            "description": "True when the entry is a delivery report that did not confirm delivery. The message was sent; only the carrier receipt is missing, so this is not a send failure."
+          }
+        },
+        "required": [
+          "code",
+          "at",
+          "source"
+        ]
+      },
       "MessageDTO": {
         "type": "object",
         "properties": {
@@ -1886,15 +1927,23 @@
           "failedAt": {
             "format": "date-time",
             "type": "string",
-            "description": "When the message failed."
+            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory."
           },
           "errorCode": {
             "type": "string",
-            "description": "Failure code reported by the device."
+            "description": "Code of the current failure, from the phone, the push service or the server. Present only while status is failed.",
+            "example": "PERMISSION_DENIED"
           },
           "errorMessage": {
             "type": "string",
-            "description": "Failure reason reported by the device."
+            "description": "Reason for the current failure. Present while status is failed. While status is unknown it holds a note that the phone did not report in time, which is not a failure."
+          },
+          "issueHistory": {
+            "description": "Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueHistoryEntryDTO"
+            }
           },
           "overLimit": {
             "type": "boolean",
@@ -2084,15 +2133,23 @@
           "failedAt": {
             "format": "date-time",
             "type": "string",
-            "description": "When the message failed."
+            "description": "When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory."
           },
           "errorCode": {
             "type": "string",
-            "description": "Failure code reported by the device."
+            "description": "Code of the current failure, from the phone, the push service or the server. Present only while status is failed.",
+            "example": "PERMISSION_DENIED"
           },
           "errorMessage": {
             "type": "string",
-            "description": "Failure reason reported by the device."
+            "description": "Reason for the current failure. Present while status is failed. While status is unknown it holds a note that the phone did not report in time, which is not a failure."
+          },
+          "issueHistory": {
+            "description": "Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueHistoryEntryDTO"
+            }
           },
           "overLimit": {
             "type": "boolean",

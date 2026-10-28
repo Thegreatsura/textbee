@@ -16,8 +16,14 @@ export type SmsMessage = {
   receivedAt?: string
   createdAt?: string
   gatewayMessageId?: string
+  // The current failure. Present only while status is failed, except that an
+  // unknown message can carry a note that the phone did not report in time.
   errorCode?: string
   errorMessage?: string
+  failedAt?: string
+  // Every failure, kept after the message recovers. Oldest first; past 15,
+  // only the first 5 and the newest 10.
+  issueHistory?: ErrorHistoryEntry[]
   device?: Device
   // Batch id of the send this message came from.
   smsBatch?: string
@@ -26,6 +32,17 @@ export type SmsMessage = {
   // SIM the phone reports it used. Absent from older app versions, and
   // every part is optional because Android does not always expose it.
   simUsed?: SimUsed
+}
+
+export type ErrorHistoryEntry = {
+  code: string
+  message?: string
+  at: string
+  source: 'device' | 'push' | 'server'
+  backfilled?: boolean
+  // A delivery report that did not confirm delivery. The message was sent,
+  // so this is not a failure.
+  deliveryReport?: boolean
 }
 
 export type SimUsed = {

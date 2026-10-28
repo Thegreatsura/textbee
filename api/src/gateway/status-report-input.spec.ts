@@ -29,6 +29,12 @@ describe('resolveReportedAt', () => {
     expect(resolveReportedAt(absurd, now)).toBeUndefined()
   })
 
+  it('rejects a time sent in seconds or microseconds instead of milliseconds', () => {
+    const now = new Date('2026-10-28T12:00:00.000Z')
+    expect(resolveReportedAt(Math.floor(now.getTime() / 1000), now)).toBeUndefined()
+    expect(resolveReportedAt(now.getTime() * 1000, now)).toBeUndefined()
+  })
+
   it('rejects a timestamp older than 30 days', () => {
     const old = now.getTime() - 31 * 24 * 60 * 60 * 1000
 

@@ -14,7 +14,7 @@ import {
   shouldSkipFcmSend,
   skippedBatchResponse,
 } from '../fcm-send-skip'
-import { errorHistoryPush } from '../error-history'
+import { errorHistoryAppend, literalSetStage } from '../error-history'
 import { SmsBatchStatusService } from '../sms-batch-status.service'
 import {
   FCM_SEND_TIMEOUT_ERROR_CODE,
@@ -49,6 +49,14 @@ const FCM_ACTIONABLE_MESSAGE =
 function getFcmErrorMessage(error: { code?: string; message?: string } | null | undefined): string {
   const rawPart = `FCM_DELIVERY_FAILED: ${error?.message || 'FCM delivery failed'}`
   return `${rawPart}. ${FCM_ACTIONABLE_MESSAGE}`
+}
+
+// Push outcomes only apply to messages the phone has not reported on. A failed
+// message is never pushed again, so a failed one here carries a phone report.
+const AWAITING_PHONE = { status: { $in: ['pending', 'dispatched', 'unknown'] } }
+
+const ADD_DISPATCH_ATTEMPT = {
+  $set: { dispatchAttempts: { $add: [{ $ifNull: ['$dispatchAttempts', 0] }, 1] } },
 }
 
 @Processor('sms')
@@ -158,34 +166,37 @@ export class SmsQueueProcessor {
       const writes = [
         ...failedUpdates.map((failedUpdate) => ({
           updateOne: {
-            filter: { _id: failedUpdate.smsId as any },
-            update: {
-              $set: {
+            filter: {
+              _id: failedUpdate.smsId as any,
+              ...AWAITING_PHONE,
+            },
+            // A pipeline, so the trail keeps its first and newest entries
+            update: [
+              literalSetStage({
                 status: 'failed',
                 failedAt,
                 errorCode: failedUpdate.errorCode,
                 errorMessage: failedUpdate.errorMessage,
-              },
-              $inc: { dispatchAttempts: 1 },
-              ...(errorHistoryPush(
+              }),
+              ADD_DISPATCH_ATTEMPT,
+              errorHistoryAppend(
                 {
                   code: failedUpdate.errorCode,
                   message: failedUpdate.errorMessage,
-                  source: 'fcm',
+                  source: 'push',
                 },
                 failedAt,
-              ) ?? {}),
-            },
+              ),
+            ].filter(Boolean),
           },
         })),
         ...dispatchedUpdates.map((dispatchedUpdate) => ({
           updateOne: {
             // The phone may report before this write lands
-            filter: {
-              _id: dispatchedUpdate.smsId as any,
-              status: { $nin: ['sent', 'delivered'] },
-            },
+            filter: { _id: dispatchedUpdate.smsId as any, ...AWAITING_PHONE },
             update: {
+              // Only the timeout note can be here; a new push replaces it
+              $unset: { errorMessage: '' },
               $set: {
                 status: 'dispatched',
                 dispatchedAt: now,
@@ -205,8 +216,11 @@ export class SmsQueueProcessor {
       }
 
       if (device?.user && failedSmsIds.length > 0) {
+        // Only the rows this failure actually changed
         const failedSmsDocuments = await this.smsModel.find({
           _id: { $in: failedSmsIds },
+          status: 'failed',
+          failedAt,
         })
         for (const failedSms of failedSmsDocuments) {
           await this.webhookService
@@ -283,21 +297,17 @@ export class SmsQueueProcessor {
         await this.smsModel.updateMany(
           {
             _id: { $in: failedSmsIds } as any,
-            status: { $nin: ['sent', 'delivered'] },
+            ...AWAITING_PHONE,
           },
-          {
-            $set: {
-              status: 'failed',
+          [
+            literalSetStage({ status: 'failed', failedAt, errorCode, errorMessage }),
+            ADD_DISPATCH_ATTEMPT,
+            errorHistoryAppend(
+              { code: errorCode, message: errorMessage, source: 'push' },
               failedAt,
-              errorCode,
-              errorMessage,
-            },
-            $inc: { dispatchAttempts: 1 },
-            ...(errorHistoryPush(
-              { code: errorCode, message: errorMessage, source: 'fcm' },
-              failedAt,
-            ) ?? {}),
-          },
+            ),
+          ].filter(Boolean),
+          { updatePipeline: true },
         )
       }
 

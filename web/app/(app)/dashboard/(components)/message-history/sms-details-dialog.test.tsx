@@ -33,6 +33,107 @@ describe('SmsDetailsDialog failure help', () => {
   })
 })
 
+describe('SmsDetailsDialog failure box', () => {
+  const base = { _id: 'm2', type: 'SENT' as const, recipient: '+15550101', message: 'hi' }
+
+  it('does not call a delivered message failed', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'delivered',
+          errorMessage: 'Status update timeout - no response from device after dispatch',
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+
+  it('lists earlier failures of a delivered message', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'delivered',
+          issueHistory: [
+            { code: 'FCM_SEND_TIMEOUT', at: '2026-10-01T10:00:00.000Z', source: 'push' },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getByText('1 failure recorded')).toBeTruthy()
+    expect(screen.getByText(/FCM_SEND_TIMEOUT/)).toBeTruthy()
+  })
+
+  it('labels an unconfirmed delivery report on a sent message', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'sent',
+          issueHistory: [
+            {
+              code: '0',
+              message: 'Delivery report was canceled',
+              at: '2026-10-01T10:00:00.000Z',
+              source: 'device',
+              deliveryReport: true,
+            },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getAllByText(/Delivery report not confirmed/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/failures? recorded/)).toBeNull()
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+
+  it('does not file a delivery report under other failures', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'failed',
+          errorCode: '1',
+          failedAt: '2026-10-01T10:05:00.000Z',
+          issueHistory: [
+            { code: '0', at: '2026-10-01T10:00:00.000Z', source: 'device', deliveryReport: true },
+            { code: '1', at: '2026-10-01T10:05:00.000Z', source: 'device' },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.queryByText('Other failures')).toBeNull()
+    expect(screen.getByText('Delivery reports not confirmed')).toBeTruthy()
+  })
+
+  it('explains an unknown status as a missing report', () => {
+    render(
+      <SmsDetailsDialog message={{ ...base, status: 'unknown' }} open onOpenChange={() => {}} />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getByText(/No status report from the phone yet/)).toBeTruthy()
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+})
+
 describe('SmsDetailsDialog SIM', () => {
   const sent = {
     _id: 'm2',

@@ -966,6 +966,53 @@ export class DeviceDTO {
   updatedAt: Date
 }
 
+export class IssueHistoryEntryDTO {
+  @ApiProperty({
+    type: String,
+    description: 'Failure code. UNKNOWN when none was reported.',
+    example: 'PERMISSION_DENIED',
+  })
+  code: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description: 'Failure reason, up to 300 characters.',
+  })
+  message?: string
+
+  @ApiProperty({
+    type: Date,
+    description:
+      'When the failure happened. Phone time for phone failures, server time otherwise.',
+  })
+  at: Date
+
+  @ApiProperty({
+    type: String,
+    enum: ['device', 'push', 'server'],
+    description:
+      'Where the failure came from. device: the phone could not send. push: the push service could not reach the phone. server: the server could not hand the message off.',
+  })
+  source: 'device' | 'push' | 'server'
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description:
+      'True when the entry was rebuilt from the failure fields of a message recorded before this history existed.',
+  })
+  backfilled?: boolean
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description:
+      'True when the entry is a delivery report that did not confirm delivery. The message was sent; only the carrier receipt is missing, so this is not a send failure.',
+  })
+  deliveryReport?: boolean
+}
+
 export class RetrieveSMSDTO {
   @ApiProperty({ type: String, description: 'Message id.' })
   _id: string
@@ -1125,23 +1172,35 @@ export class RetrieveSMSDTO {
   @ApiProperty({
     type: Date,
     required: false,
-    description: 'When the message failed.',
+    description:
+      'When the current failure happened. Present only while status is failed. Removed when a later report shows the message was sent; the failure stays in issueHistory.',
   })
   failedAt?: Date
 
   @ApiProperty({
     type: String,
     required: false,
-    description: 'Failure code reported by the device.',
+    description:
+      'Code of the current failure, from the phone, the push service or the server. Present only while status is failed.',
+    example: 'PERMISSION_DENIED',
   })
   errorCode?: string
 
   @ApiProperty({
     type: String,
     required: false,
-    description: 'Failure reason reported by the device.',
+    description:
+      'Reason for the current failure. Present while status is failed. While status is unknown it holds a note that the phone did not report in time, which is not a failure.',
   })
   errorMessage?: string
+
+  @ApiProperty({
+    type: [IssueHistoryEntryDTO],
+    required: false,
+    description:
+      'Every failure the message had, plus delivery reports that did not confirm delivery (deliveryReport: true, not failures), oldest first. Kept after the message later succeeds, so a delivered message can show the attempts that failed first. When there are more than 15, only the first 5 and the newest 10 are kept. Absent when nothing was recorded.',
+  })
+  issueHistory?: IssueHistoryEntryDTO[]
 
   @ApiProperty({
     type: Boolean,
@@ -1303,8 +1362,9 @@ export class UpdateSMSStatusDTO {
   @ApiProperty({
     type: String,
     required: true,
-    description: 'The status of the SMS (sent, delivered, failed)',
-    enum: ['sent', 'delivered', 'failed'],
+    description:
+      'The status of the SMS. delivery_failed is a delivery report that did not confirm delivery; it is recorded in issueHistory and does not change the status. Any other value is rejected with 400.',
+    enum: ['sent', 'delivered', 'failed', 'delivery_failed'],
   })
   status: string
 

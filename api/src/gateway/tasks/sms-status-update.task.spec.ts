@@ -82,6 +82,7 @@ describe('SmsStatusUpdateTask', () => {
           $set: {
             status: 'unknown',
             errorMessage: 'Status update timeout - no response received after 20 minutes',
+            'metadata.statusTimedOutAt': expect.any(Date),
           },
         },
       );
@@ -103,6 +104,7 @@ describe('SmsStatusUpdateTask', () => {
           $set: {
             status: 'unknown',
             errorMessage: 'Status update timeout - no response from device after dispatch',
+            'metadata.statusTimedOutAt': expect.any(Date),
           },
         },
       );

@@ -1,4 +1,5 @@
 import { SmsQueueProcessor } from './sms-queue.processor'
+import { readPipelineUpdate } from '../../../test/pipeline-update'
 import * as firebaseAdmin from 'firebase-admin'
 
 jest.mock('firebase-admin', () => ({
@@ -83,8 +84,9 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(writes).toEqual([
       {
         updateOne: {
-          filter: { _id: 'sms-1', status: { $nin: ['sent', 'delivered'] } },
+          filter: { _id: 'sms-1', status: { $in: ['pending', 'dispatched', 'unknown'] } },
           update: {
+            $unset: { errorMessage: '' },
             $set: {
               status: 'dispatched',
               dispatchedAt: expect.any(Date),
@@ -113,20 +115,25 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     await processor.handleSendSms(job)
 
     const [writes] = mockSmsModel.bulkWrite.mock.calls[0]
-    expect(writes[0].updateOne.update.$set).toEqual(
+    const failure = readPipelineUpdate(writes[0].updateOne.update)
+    expect(failure.set).toEqual(
       expect.objectContaining({
         status: 'failed',
         errorCode: 'FCM_TOKEN_NOT_REGISTERED',
       }),
     )
-    expect(writes[0].updateOne.update.$inc).toEqual({ dispatchAttempts: 1 })
-    const history = writes[0].updateOne.update.$push['metadata.errorHistory']
-    expect(history.$slice).toBe(-5)
-    expect(history.$each[0]).toEqual(
+    expect(failure.set.dispatchAttempts).toEqual({
+      $add: [{ $ifNull: ['$dispatchAttempts', 0] }, 1],
+    })
+    expect(failure.history[0]).toEqual(
       expect.objectContaining({
         code: 'FCM_TOKEN_NOT_REGISTERED',
-        source: 'fcm',
+        source: 'push',
       }),
+    )
+    // A phone report the push lost to is never overwritten
+    expect(writes[0].updateOne.filter).toEqual(
+      expect.objectContaining({ status: { $in: ['pending', 'dispatched', 'unknown'] } }),
     )
     // The batch is recalculated from its messages after they are written
     expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
@@ -160,7 +167,7 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(mockSmsModel.find).toHaveBeenCalledWith({
       _id: { $in: ['sms-1'] },
       status: 'failed',
-      failedAt: update.$set.failedAt,
+      failedAt: readPipelineUpdate(update).set.failedAt,
     })
     expect(mockWebhookService.deliverNotification).toHaveBeenCalledTimes(1)
     expect(mockWebhookService.deliverNotification).toHaveBeenCalledWith(
@@ -180,13 +187,17 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     jest.useRealTimers()
 
     expect(error.code).toBe('FCM_SEND_TIMEOUT')
-    const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
-    // A phone report that landed while the push hung is kept
+    const [filter, update, options] = mockSmsModel.updateMany.mock.calls[0]
+    // A phone report that landed while the push hung is kept, failures too
     expect(filter).toEqual({
       _id: { $in: ['sms-1'] },
-      status: { $nin: ['sent', 'delivered'] },
+      status: { $in: ['pending', 'dispatched', 'unknown'] },
     })
-    expect(update.$set).toEqual({
+    expect(options).toEqual({ updatePipeline: true })
+    const { set } = readPipelineUpdate(update)
+    expect(set.dispatchAttempts).toBeDefined()
+    delete set.dispatchAttempts
+    expect(set).toEqual({
       status: 'failed',
       failedAt: expect.any(Date),
       errorCode: 'FCM_SEND_TIMEOUT',
@@ -206,7 +217,7 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(response.successCount).toBe(1)
     const [writes] = mockSmsModel.bulkWrite.mock.calls[0]
     // A phone report that landed first is not overwritten
-    expect(writes[0].updateOne.filter.status).toEqual({ $nin: ['sent', 'delivered'] })
+    expect(writes[0].updateOne.filter.status).toEqual({ $in: ['pending', 'dispatched', 'unknown'] })
     // The skip path fakes a message id, so it must not be stored as one
     expect(writes[0].updateOne.update.$set).toEqual({
       status: 'dispatched',

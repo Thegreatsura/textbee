@@ -19,6 +19,7 @@ import { HttpException, HttpStatus } from '@nestjs/common'
 import * as firebaseAdmin from 'firebase-admin'
 import { SMSType } from './sms-type.enum'
 import { WebhookEvent } from '../webhook/webhook-event.enum'
+import { readPipelineUpdate } from '../../test/pipeline-update'
 import { RegisterDeviceInputDTO, SendBulkSMSInputDTO, SendSMSInputDTO } from './gateway.dto'
 import { decodeCursor } from './cursor'
 import { User } from '../users/schemas/user.schema'
@@ -64,6 +65,7 @@ describe('GatewayService', () => {
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     findOneAndUpdate: jest.fn(),
+    updateOne: jest.fn(),
     updateMany: jest.fn(),
     bulkWrite: jest.fn(),
     countDocuments: jest.fn(),
@@ -1192,16 +1194,19 @@ describe('GatewayService', () => {
         { $set: { error: 'write failed' } },
       )
       // Only messages that never left the server are marked failed
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        {
-          $set: {
-            status: 'failed',
-            failedAt: expect.any(Date),
-            errorMessage: 'write failed',
-          },
-        },
-      )
+      const [unsentFilter, unsentUpdate, unsentOptions] = mockSmsModel.updateMany.mock.calls[0]
+      expect(unsentFilter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(unsentOptions).toEqual({ updatePipeline: true })
+      const unsent = readPipelineUpdate(unsentUpdate)
+      expect(unsent.set).toEqual({
+        status: 'failed',
+        failedAt: expect.any(Date),
+        errorCode: 'DISPATCH_FAILED',
+        errorMessage: 'write failed',
+      })
+      expect(unsent.history).toEqual([
+        expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' }),
+      ])
       // The status comes from the messages, after they are marked
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
       expect(mockSmsModel.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
@@ -1263,16 +1268,19 @@ describe('GatewayService', () => {
         HttpException,
       )
 
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        {
-          $set: {
-            status: 'failed',
-            failedAt: expect.any(Date),
-            errorMessage: expect.any(String),
-          },
-        },
-      )
+      const [unsentFilter, unsentUpdate, unsentOptions] = mockSmsModel.updateMany.mock.calls[0]
+      expect(unsentFilter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(unsentOptions).toEqual({ updatePipeline: true })
+      const unsent = readPipelineUpdate(unsentUpdate)
+      expect(unsent.set).toEqual({
+        status: 'failed',
+        failedAt: expect.any(Date),
+        errorCode: 'DISPATCH_FAILED',
+        errorMessage: expect.any(String),
+      })
+      expect(unsent.history).toEqual([
+        expect.objectContaining({ code: 'DISPATCH_FAILED', source: 'server' }),
+      ])
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
     })
 
@@ -1482,10 +1490,9 @@ describe('GatewayService', () => {
       ).rejects.toThrow(HttpException)
 
       expect(mockSmsQueueService.removeJobs).toHaveBeenCalledWith(firstGroupJobs)
-      expect(mockSmsModel.updateMany).toHaveBeenCalledWith(
-        { smsBatch: mockSmsBatch._id, status: 'pending' },
-        expect.objectContaining({ $set: expect.objectContaining({ status: 'failed' }) }),
-      )
+      const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
+      expect(filter).toEqual({ smsBatch: mockSmsBatch._id, status: 'pending' })
+      expect(readPipelineUpdate(update).set.status).toBe('failed')
       expect(mockBatchStatus.refresh).toHaveBeenCalledWith([mockSmsBatch._id])
     })
 
@@ -2091,6 +2098,16 @@ describe('GatewayService', () => {
 
     describe('updateSMSStatus', () => {
       const OTHER_BATCH = '507f1f77bcf86cd799439033'
+      const OWN_SMS = '507f1f77bcf86cd799439044'
+
+      // The service reads with +metadata and lean, so the mock is a chain
+      const mockStoredSms = (...docs: any[]) => {
+        for (const doc of docs) {
+          mockSmsModel.findById.mockReturnValueOnce({
+            select: () => ({ lean: () => Promise.resolve(doc) }),
+          })
+        }
+      }
 
       it('refreshes the message\'s own batch, not the one in the body', async () => {
         const OWN_BATCH = new Types.ObjectId()
@@ -2098,25 +2115,25 @@ describe('GatewayService', () => {
           _id: OWN_DEVICE,
           user: 'user_1',
         })
-        mockSmsModel.findById.mockResolvedValue({
+        mockStoredSms({
           _id: 'own_sms',
           device: OWN_DEVICE,
           smsBatch: OWN_BATCH,
           status: 'pending',
         })
-        mockSmsModel.findByIdAndUpdate.mockResolvedValue({
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({
           _id: 'own_sms',
           status: 'sent',
         })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           smsBatchId: OTHER_BATCH,
           status: 'sent',
         } as any)
 
         expect(mockBatchStatus.refresh).toHaveBeenCalledWith([OWN_BATCH])
-        expect(mockSmsModel.findByIdAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
+        expect(mockSmsModel.findOneAndUpdate.mock.invocationCallOrder[0]).toBeLessThan(
           mockBatchStatus.refresh.mock.invocationCallOrder[0],
         )
         expect(mockSmsBatchModel.findByIdAndUpdate).not.toHaveBeenCalled()
@@ -2129,22 +2146,22 @@ describe('GatewayService', () => {
           appVersionCode: 17,
           appVersionName: '2.7.0',
         })
-        mockSmsModel.findById.mockResolvedValue({
+        mockStoredSms({
           _id: 'own_sms',
           device: OWN_DEVICE,
           status: 'pending',
         })
-        mockSmsModel.findByIdAndUpdate.mockResolvedValue({
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({
           _id: 'own_sms',
           status: 'sent',
         })
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$set['metadata.appVersionCode']).toBe(17)
         expect(update.$set['metadata.appVersionName']).toBe('2.7.0')
         expect(update.$set['metadata.appVersionAt']).toBeInstanceOf(Date)
@@ -2156,12 +2173,12 @@ describe('GatewayService', () => {
           _id: OWN_DEVICE,
           user: 'user_1',
         })
-        mockSmsModel.findById.mockResolvedValue({
+        mockStoredSms({
           _id: 'own_sms',
           device: OWN_DEVICE,
           status: 'dispatched',
         })
-        mockSmsModel.findByIdAndUpdate.mockResolvedValue({
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({
           _id: 'own_sms',
           status: 'sent',
         })
@@ -2173,7 +2190,7 @@ describe('GatewayService', () => {
         const sendAttempted = Date.now() - 1500
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           sentAtInMillis: Date.now(),
           pushReceivedAtInMillis: pushReceived,
@@ -2181,7 +2198,7 @@ describe('GatewayService', () => {
           reportAttempt: 3,
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$set.pushReceivedAt).toEqual(new Date(pushReceived))
         expect(update.$set.sendAttemptedAt).toEqual(new Date(sendAttempted))
         expect(update.$set['metadata.statusReportAttempt']).toBe(3)
@@ -2191,13 +2208,13 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           pushReceivedAtInMillis: 0,
           sendAttemptedAtInMillis: Date.now() + 90 * 60 * 60 * 1000,
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$set.pushReceivedAt).toBeUndefined()
         expect(update.$set.sendAttemptedAt).toBeUndefined()
       })
@@ -2206,17 +2223,17 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: 'NO_SERVICE',
           errorMessage: 'no carrier',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
-        expect(update.$set.errorCode).toBe('NO_SERVICE')
-        const history = update.$push['metadata.errorHistory']
-        expect(history.$slice).toBe(-5)
-        expect(history.$each[0]).toEqual(
+        const [, update, options] = mockSmsModel.findOneAndUpdate.mock.calls[0]
+        const { set, history } = readPipelineUpdate(update)
+        expect(options.updatePipeline).toBe(true)
+        expect(set.errorCode).toBe('NO_SERVICE')
+        expect(history[0]).toEqual(
           expect.objectContaining({ code: 'NO_SERVICE', source: 'device' }),
         )
       })
@@ -2225,14 +2242,14 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simSubscriptionId: 17,
           simSlotIndex: 0,
           simSelection: 'requested_invalid_fallback',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$set['simUsed.subscriptionId']).toBe(17)
         expect(update.$set['simUsed.slotIndex']).toBe(0)
         expect(update.$set['metadata.simSelection']).toBe(
@@ -2245,7 +2262,7 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simUsed: {
             subscriptionId: 17,
@@ -2258,7 +2275,7 @@ describe('GatewayService', () => {
           simSelection: 'system_default',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         // Replaced whole, so no field of an earlier SIM survives
         expect(update.$set.simUsed).toEqual({
           subscriptionId: 17,
@@ -2277,13 +2294,13 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'sent',
           simUsed: {},
           simSelection: 'system_default',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$unset).toEqual({ simUsed: '' })
         expect(update.$set).not.toHaveProperty('simUsed')
         expect(update.$set['metadata.simSelection']).toBe('system_default')
@@ -2293,43 +2310,223 @@ describe('GatewayService', () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'failed',
           errorCode: 'PERMISSION_DENIED',
           simSelection: 'requested',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
-        expect(update.$unset).toBeUndefined()
-        expect(Object.keys(update.$set).filter((k) => k.startsWith('simUsed'))).toEqual([])
+        const { set, unset } = readPipelineUpdate(mockSmsModel.findOneAndUpdate.mock.calls[0][1])
+        expect(unset).toEqual([])
+        expect(Object.keys(set).filter((k) => k.startsWith('simUsed'))).toEqual([])
       })
 
       it('updates only the SIM part the report carries', async () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'delivered',
           simSlotIndex: 1,
           simSelection: 'app_preferred',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         expect(update.$set['simUsed.slotIndex']).toBe(1)
         expect(update.$set).not.toHaveProperty('simUsed.subscriptionId')
         expect(update.$set['metadata.simSelection']).toBe('app_preferred')
+      })
+
+      const ownDevice = () =>
+        mockDeviceModel.findById.mockResolvedValue({ _id: OWN_DEVICE, user: 'user_1' })
+
+      it('reports a malformed or non-string sms id as not found without a query', async () => {
+        ownDevice()
+
+        for (const smsId of ['not-an-id', { $ne: null }]) {
+          await expect(
+            service.updateSMSStatus(OWN_DEVICE, { smsId, status: 'sent' } as any),
+          ).rejects.toThrow(HttpException)
+        }
+        expect(mockSmsModel.findById).not.toHaveBeenCalled()
+      })
+
+      it('rejects a status the phone never sends', async () => {
+        ownDevice()
+
+        await expect(
+          service.updateSMSStatus(OWN_DEVICE, { smsId: OWN_SMS, status: 'pending' } as any),
+        ).rejects.toThrow(HttpException)
+        expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
+      })
+
+      it('clears the timeout note on a late delivery and sends one webhook', async () => {
+        ownDevice()
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'unknown',
+          errorMessage: 'Status update timeout - no response from device after dispatch',
+        })
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'delivered' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'delivered',
+          deliveredAtInMillis: Date.now(),
+        } as any)
+
+        const [filter, update] = mockSmsModel.findOneAndUpdate.mock.calls[0]
+        expect(filter).toEqual({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'unknown',
+          sentAt: null,
+          deliveredAt: null,
+          failedAt: null,
+        })
+        expect(update.$set.status).toBe('delivered')
+        expect(update.$unset).toEqual({ errorMessage: '' })
+        expect(update.$push).toBeUndefined()
+        expect(mockWebhookService.deliverNotification).toHaveBeenCalledTimes(1)
+        expect(mockWebhookService.deliverNotification.mock.calls[0][0].event).toBe(
+          WebhookEvent.MESSAGE_DELIVERED,
+        )
+      })
+
+      it('keeps delivered when a late sent report arrives, without a webhook', async () => {
+        ownDevice()
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'delivered',
+          sentAt: new Date(Date.now() - 60000),
+          deliveredAt: new Date(),
+        })
+
+        const result = await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'sent',
+          sentAtInMillis: Date.now() - 60000,
+        } as any)
+
+        expect(result.success).toBe(true)
+        expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
+        expect(mockBatchStatus.refresh).not.toHaveBeenCalled()
+        expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      })
+
+      it('only records a failure older than the delivery', async () => {
+        ownDevice()
+        const deliveredAt = Date.now() - 1000
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'delivered',
+          deliveredAt: new Date(deliveredAt),
+        })
+        mockSmsModel.updateOne.mockResolvedValue({ matchedCount: 1 })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'failed',
+          errorCode: '1',
+          failedAtInMillis: deliveredAt - 5000,
+        } as any)
+
+        expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
+        const [filter, update, options] = mockSmsModel.updateOne.mock.calls[0]
+        // A retry racing the first copy finds it already stored
+        expect(filter.issueHistory).toEqual({
+          $not: { $elemMatch: { source: 'device', code: '1', at: new Date(deliveredAt - 5000) } },
+        })
+        expect(readPipelineUpdate(update).history[0]).toEqual(
+          expect.objectContaining({ code: '1', source: 'device' }),
+        )
+        expect(options).toEqual({ timestamps: false, updatePipeline: true })
+        expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      })
+
+      it('bumps updatedAt when a newer failure replaces the current one', async () => {
+        ownDevice()
+        const firstFailure = Date.now() - 60000
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'failed',
+          failedAt: new Date(firstFailure),
+          errorCode: '1',
+          issueHistory: [{ code: '1', at: new Date(firstFailure), source: 'device' }],
+        })
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'failed' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'failed',
+          errorCode: 'PERMISSION_DENIED',
+          failedAtInMillis: Date.now(),
+        } as any)
+
+        const [, update, options] = mockSmsModel.findOneAndUpdate.mock.calls[0]
+        expect(readPipelineUpdate(update).set.errorCode).toBe('PERMISSION_DENIED')
+        expect(options.timestamps).toBe(true)
+        expect(mockWebhookService.deliverNotification).not.toHaveBeenCalled()
+      })
+
+      it('leaves updatedAt alone when it only fills a time', async () => {
+        ownDevice()
+        mockStoredSms({
+          _id: 'own_sms',
+          device: OWN_DEVICE,
+          status: 'delivered',
+          deliveredAt: new Date(),
+        })
+        mockSmsModel.findOneAndUpdate.mockResolvedValue({ _id: 'own_sms', status: 'delivered' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'sent',
+          sentAtInMillis: Date.now() - 1000,
+        } as any)
+
+        expect(mockSmsModel.findOneAndUpdate.mock.calls[0][2].timestamps).toBe(false)
+      })
+
+      it('judges the report again when another writer got there first', async () => {
+        ownDevice()
+        mockStoredSms(
+          { _id: 'own_sms', device: OWN_DEVICE, status: 'dispatched' },
+          { _id: 'own_sms', device: OWN_DEVICE, status: 'delivered', deliveredAt: new Date() },
+        )
+        mockSmsModel.findOneAndUpdate
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ _id: 'own_sms', status: 'delivered' })
+
+        await service.updateSMSStatus(OWN_DEVICE, {
+          smsId: OWN_SMS,
+          status: 'sent',
+          sentAtInMillis: Date.now() - 1000,
+        } as any)
+
+        // The second look sees delivered, so the late sent only fills its time
+        expect(mockSmsModel.findById).toHaveBeenCalledTimes(2)
+        expect(mockSmsModel.findOneAndUpdate).toHaveBeenCalledTimes(2)
+        const [filter, update] = mockSmsModel.findOneAndUpdate.mock.calls[1]
+        expect(filter.status).toBe('delivered')
+        expect(update.$set.status).toBeUndefined()
+        expect(update.$set.sentAt).toBeInstanceOf(Date)
       })
 
       it('leaves the used SIM alone when the report carries none', async () => {
         reportingDevice()
 
         await service.updateSMSStatus(OWN_DEVICE, {
-          smsId: 'own_sms',
+          smsId: OWN_SMS,
           status: 'delivered',
           simSelection: 'made_up',
         } as any)
 
-        const update = mockSmsModel.findByIdAndUpdate.mock.calls[0][1]
+        const update = mockSmsModel.findOneAndUpdate.mock.calls[0][1]
         const keys = Object.keys(update.$set)
         expect(keys.filter((k) => k.startsWith('simUsed'))).toEqual([])
         expect(update.$set['metadata.simSelection']).toBeUndefined()

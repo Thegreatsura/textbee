@@ -57,6 +57,11 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
           {recoveredLabel(view)}
         </p>
         <AttemptList attempts={view.attempts} />
+        {view.capped && (
+          <p className='text-xs text-muted-foreground'>
+            Only the first 5 and the newest 10 failures are kept.
+          </p>
+        )}
       </div>
     )
   }

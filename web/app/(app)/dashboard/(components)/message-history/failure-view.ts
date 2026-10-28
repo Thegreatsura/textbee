@@ -4,7 +4,8 @@ import type { ErrorHistoryEntry, SmsMessage } from './types'
 // error fields describe a failure that is still current; errorHistory keeps
 // every failure, including ones the message recovered from.
 
-export const ERROR_HISTORY_LIMIT = 10
+// The API keeps the first 5 and the newest 10
+export const ERROR_HISTORY_LIMIT = 15
 
 export type FailureView =
   | {

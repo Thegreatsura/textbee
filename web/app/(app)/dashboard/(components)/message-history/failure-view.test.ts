@@ -115,8 +115,8 @@ describe('recoveredLabel', () => {
   it('counts failures without claiming when they happened', () => {
     expect(recoveredLabel({ attempts: [1], capped: false })).toBe('1 failure recorded')
     expect(recoveredLabel({ attempts: [1, 2], capped: false })).toBe('2 failures recorded')
-    expect(recoveredLabel({ attempts: new Array(10), capped: true })).toBe(
-      '10 or more failures recorded'
+    expect(recoveredLabel({ attempts: new Array(15), capped: true })).toBe(
+      '15 or more failures recorded'
     )
   })
 })

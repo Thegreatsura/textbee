@@ -1003,6 +1003,14 @@ export class ErrorHistoryEntryDTO {
       'True when the entry was rebuilt from the failure fields of a message recorded before this history existed.',
   })
   backfilled?: boolean
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description:
+      'True when the entry is a delivery report that did not confirm delivery. The message was sent; only the carrier receipt is missing, so this is not a send failure.',
+  })
+  deliveryReport?: boolean
 }
 
 export class RetrieveSMSDTO {

@@ -18,7 +18,7 @@ function AttemptList({ attempts }: { attempts: ErrorHistoryEntry[] }) {
           {' · '}
           {sourceLabel(attempt.source)}
           {' · '}
-          Code: {attempt.code}
+          {attempt.deliveryReport ? 'Delivery report not confirmed' : `Code: ${attempt.code}`}
           {attempt.message && <span className='block'>{attempt.message}</span>}
         </li>
       ))}
@@ -46,6 +46,18 @@ export default function FailureDetails({ message }: { message: SmsMessage }) {
             <AttemptList attempts={view.attempts} />
           </div>
         )}
+      </div>
+    )
+  }
+
+  if (view.kind === 'delivery-unconfirmed') {
+    return (
+      <div className='space-y-2 rounded-lg border bg-muted/40 p-3'>
+        <p className='text-sm font-medium text-foreground'>Delivery report not confirmed</p>
+        <p className='text-xs text-muted-foreground'>
+          The message was sent. The carrier did not confirm delivery.
+        </p>
+        <AttemptList attempts={view.attempts} />
       </div>
     )
   }

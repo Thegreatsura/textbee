@@ -1798,6 +1798,10 @@
           "backfilled": {
             "type": "boolean",
             "description": "True when the entry was rebuilt from the failure fields of a message recorded before this history existed."
+          },
+          "deliveryReport": {
+            "type": "boolean",
+            "description": "True when the entry is a delivery report that did not confirm delivery. The message was sent; only the carrier receipt is missing, so this is not a send failure."
           }
         },
         "required": [

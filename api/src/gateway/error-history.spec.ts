@@ -114,6 +114,14 @@ describe('storedErrorHistory', () => {
     ])
   })
 
+  it('keeps the delivery report mark', () => {
+    expect(
+      storedErrorHistory({
+        errorHistory: [{ code: '0', at: t(1), source: 'device', deliveryReport: true }],
+      }),
+    ).toEqual([{ code: '0', at: t(1), source: 'device', deliveryReport: true }])
+  })
+
   it('skips entries without a usable time and survives odd shapes', () => {
     expect(
       storedErrorHistory({

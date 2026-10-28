@@ -15,7 +15,10 @@ export type FailureView =
       // every other failure, oldest first
       others: ErrorHistoryEntry[]
     }
-  | { kind: 'recovered'; attempts: ErrorHistoryEntry[]; capped: boolean }
+  // attempts holds failures and delivery reports; failures counts only the first
+  | { kind: 'recovered'; attempts: ErrorHistoryEntry[]; failures: number; capped: boolean }
+  // sent or delivered, and the only entries are unconfirmed delivery reports
+  | { kind: 'delivery-unconfirmed'; attempts: ErrorHistoryEntry[] }
   // the phone reports seen so far, if any, are listed under the note
   | { kind: 'no-report'; attempts: ErrorHistoryEntry[] }
 
@@ -27,16 +30,18 @@ function history(message: SmsMessage): ErrorHistoryEntry[] {
     .sort((a, b) => time(a.at) - time(b.at))
 }
 
+const isFailure = (entry: ErrorHistoryEntry) => !entry.deliveryReport
+
 // The entry that is the failure shown in the red box. The API records a
 // failure without a code as UNKNOWN, and an old message may have no failedAt.
 function currentIndex(message: SmsMessage, entries: ErrorHistoryEntry[]): number {
   const code = message.errorCode?.trim() || 'UNKNOWN'
   if (message.failedAt) {
     const failedAt = time(message.failedAt)
-    return entries.findIndex((entry) => time(entry.at) === failedAt)
+    return entries.findIndex((entry) => isFailure(entry) && time(entry.at) === failedAt)
   }
   for (let i = entries.length - 1; i >= 0; i--) {
-    if (entries[i].code === code) return i
+    if (isFailure(entries[i]) && entries[i].code === code) return i
   }
   return -1
 }
@@ -58,9 +63,12 @@ export function failureView(message: SmsMessage): FailureView | null {
   if (status === 'sent' || status === 'delivered') {
     const attempts = history(message)
     if (attempts.length === 0) return null
+    const failures = attempts.filter(isFailure).length
+    if (failures === 0) return { kind: 'delivery-unconfirmed', attempts }
     return {
       kind: 'recovered',
       attempts,
+      failures,
       capped: attempts.length >= ERROR_HISTORY_LIMIT,
     }
   }
@@ -78,9 +86,7 @@ export function sourceLabel(source: ErrorHistoryEntry['source']): string {
 
 // Neutral on order: a failure can come after the send, e.g. a delivery
 // report that did not confirm delivery
-export function recoveredLabel(view: { attempts: unknown[]; capped: boolean }) {
-  if (view.capped) return `${ERROR_HISTORY_LIMIT} or more failures recorded`
-  return view.attempts.length === 1
-    ? '1 failure recorded'
-    : `${view.attempts.length} failures recorded`
+export function recoveredLabel(view: { failures: number; capped: boolean }) {
+  if (view.capped) return `${view.failures} or more failures recorded`
+  return view.failures === 1 ? '1 failure recorded' : `${view.failures} failures recorded`
 }

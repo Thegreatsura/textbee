@@ -77,7 +77,9 @@ function currentFailureSource(
   history: ErrorHistoryEntry[],
 ): ErrorHistorySource {
   const failedAt = stored.failedAt?.getTime()
-  const match = history.find((entry) => entry.at.getTime() === failedAt)
+  const match = history.find(
+    (entry) => !entry.deliveryReport && entry.at.getTime() === failedAt,
+  )
   return match
     ? match.source
     : inferFailureSource(stored.errorCode, stored.errorMessage, stored.failedAt)
@@ -122,7 +124,7 @@ export function statusReportEntry(
   now: Date = new Date(),
 ): ErrorHistoryEntry | null {
   if (report.status !== 'failed' && report.status !== 'delivery_failed') return null
-  return errorHistoryEntry(
+  const entry = errorHistoryEntry(
     {
       code: report.code || 'UNKNOWN',
       message:
@@ -131,6 +133,8 @@ export function statusReportEntry(
     },
     report.at ?? now,
   )
+  if (entry && report.status === 'delivery_failed') entry.deliveryReport = true
+  return entry
 }
 
 export function decideStatusReport(

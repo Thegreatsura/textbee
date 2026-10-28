@@ -69,8 +69,23 @@ describe('failureView', () => {
     expect(view).toEqual({
       kind: 'recovered',
       attempts: [{ code: '1', at: at(1), source: 'device' }],
+      failures: 1,
       capped: false,
     })
+  })
+
+  it('does not call an unconfirmed delivery report a failure', () => {
+    const report = { code: '0', at: at(2), source: 'device' as const, deliveryReport: true }
+    expect(failureView({ _id: 'm', status: 'sent', errorHistory: [report] })).toEqual({
+      kind: 'delivery-unconfirmed',
+      attempts: [report],
+    })
+    const mixed = failureView({
+      _id: 'm',
+      status: 'delivered',
+      errorHistory: [{ code: '1', at: at(1), source: 'device' }, report],
+    })
+    expect(mixed).toEqual(expect.objectContaining({ kind: 'recovered', failures: 1 }))
   })
 
   it('says nothing about leftover error text on a delivered message', () => {
@@ -113,11 +128,9 @@ describe('failureView', () => {
 
 describe('recoveredLabel', () => {
   it('counts failures without claiming when they happened', () => {
-    expect(recoveredLabel({ attempts: [1], capped: false })).toBe('1 failure recorded')
-    expect(recoveredLabel({ attempts: [1, 2], capped: false })).toBe('2 failures recorded')
-    expect(recoveredLabel({ attempts: new Array(15), capped: true })).toBe(
-      '15 or more failures recorded'
-    )
+    expect(recoveredLabel({ failures: 1, capped: false })).toBe('1 failure recorded')
+    expect(recoveredLabel({ failures: 2, capped: false })).toBe('2 failures recorded')
+    expect(recoveredLabel({ failures: 15, capped: true })).toBe('15 or more failures recorded')
   })
 })
 

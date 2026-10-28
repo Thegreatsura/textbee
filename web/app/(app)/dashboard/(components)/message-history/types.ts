@@ -40,6 +40,9 @@ export type ErrorHistoryEntry = {
   at: string
   source: 'device' | 'push' | 'server'
   backfilled?: boolean
+  // A delivery report that did not confirm delivery. The message was sent,
+  // so this is not a failure.
+  deliveryReport?: boolean
 }
 
 export type SimUsed = {

@@ -15,6 +15,7 @@ const ErrorHistoryEntrySchema = new MongooseSchema(
     at: Date,
     source: String,
     backfilled: Boolean,
+    deliveryReport: Boolean,
   },
   { _id: false },
 )

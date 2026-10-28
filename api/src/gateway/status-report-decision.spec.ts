@@ -431,8 +431,20 @@ describe('decideStatusReport', () => {
         ),
       ).toEqual({
         kind: 'history',
-        entries: [{ code: '0', message: 'canceled', at: now, source: 'device' }],
+        entries: [
+          { code: '0', message: 'canceled', at: now, source: 'device', deliveryReport: true },
+        ],
       })
+    })
+
+    it('never moves a sent message to failed', () => {
+      expect(
+        decideStatusReport(
+          { status: 'sent', sentAt: t(1) },
+          { status: 'delivery_failed', code: '0', message: 'canceled' },
+          now,
+        ).kind,
+      ).toBe('history')
     })
 
     it('ignores a retry that carries no phone time', () => {
@@ -440,7 +452,9 @@ describe('decideStatusReport', () => {
         decideStatusReport(
           {
             status: 'sent',
-            errorHistory: [{ code: '0', message: 'canceled', at: t(1), source: 'device' }],
+            errorHistory: [
+              { code: '0', message: 'canceled', at: t(1), source: 'device', deliveryReport: true },
+            ],
           },
           { status: 'delivery_failed', code: '0', message: 'canceled' },
           now,

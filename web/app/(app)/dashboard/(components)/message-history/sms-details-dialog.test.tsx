@@ -73,6 +73,33 @@ describe('SmsDetailsDialog failure box', () => {
     expect(screen.getByText(/FCM_SEND_TIMEOUT/)).toBeTruthy()
   })
 
+  it('labels an unconfirmed delivery report on a sent message', () => {
+    render(
+      <SmsDetailsDialog
+        message={{
+          ...base,
+          status: 'sent',
+          errorHistory: [
+            {
+              code: '0',
+              message: 'Delivery report was canceled',
+              at: '2026-10-01T10:00:00.000Z',
+              source: 'device',
+              deliveryReport: true,
+            },
+          ],
+        }}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper: TestProviders }
+    )
+
+    expect(screen.getAllByText(/Delivery report not confirmed/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/failures? recorded/)).toBeNull()
+    expect(screen.queryByText('Delivery failed')).toBeNull()
+  })
+
   it('explains an unknown status as a missing report', () => {
     render(
       <SmsDetailsDialog message={{ ...base, status: 'unknown' }} open onOpenChange={() => {}} />,

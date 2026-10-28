@@ -20,6 +20,9 @@ export type ErrorHistoryEntry = {
   source: ErrorHistorySource
   // rebuilt from the top-level fields of a message older than the trail
   backfilled?: boolean
+  // a delivery report that did not confirm delivery: the message was sent,
+  // so this is not a send failure and no failure count includes it
+  deliveryReport?: boolean
 }
 
 // Written by the stale-message task. A missing report, not a failure.
@@ -177,6 +180,7 @@ export function storedErrorHistory(doc: {
     }
     if (typeof item?.message === 'string' && item.message) entry.message = item.message
     if (item?.backfilled === true) entry.backfilled = true
+    if (item?.deliveryReport === true) entry.deliveryReport = true
     if (!merged.some((existing) => sameEntry(existing, entry))) merged.push(entry)
   }
   merged.sort((a, b) => a.at.getTime() - b.at.getTime())

@@ -16,3 +16,22 @@ describe('SMSSchema simUsed', () => {
     expect(sms.toObject().simUsed).toEqual({ subscriptionId: 19 })
   })
 })
+
+describe('SMSSchema errorHistory', () => {
+  const SmsModel = mongoose.model('SmsSchemaErrorHistorySpec', SMSSchema)
+
+  it('is absent until a failure is recorded', () => {
+    expect(new SmsModel({}).toObject().errorHistory).toBeUndefined()
+  })
+
+  it('stores entries without an id of their own', () => {
+    const at = new Date('2026-10-01T10:00:00.000Z')
+    const sms = new SmsModel({
+      errorHistory: [{ code: '1', message: 'generic', at, source: 'device' }],
+    })
+
+    expect(sms.toObject().errorHistory).toEqual([
+      { code: '1', message: 'generic', at, source: 'device' },
+    ])
+  })
+})

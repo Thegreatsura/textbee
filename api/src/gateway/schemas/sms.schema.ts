@@ -1,11 +1,23 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose'
-import { Document, SchemaTypes, Types } from 'mongoose'
+import { Document, Schema as MongooseSchema, SchemaTypes, Types } from 'mongoose'
 import { Device } from './device.schema'
 import { SMSBatch } from './sms-batch.schema'
 import { User } from '../../users/schemas/user.schema'
 import { SimUsed } from '../sim-report'
+import { ErrorHistoryEntry } from '../error-history'
 
 export type SMSDocument = SMS & Document
+
+const ErrorHistoryEntrySchema = new MongooseSchema(
+  {
+    code: String,
+    message: String,
+    at: Date,
+    source: String,
+    backfilled: Boolean,
+  },
+  { _id: false },
+)
 
 @Schema({ timestamps: true })
 export class SMS {
@@ -80,6 +92,10 @@ export class SMS {
 
   @Prop({ type: String, required: false })
   errorMessage: string
+
+  // Every failure the message had, oldest first, kept after it recovers
+  @Prop({ type: [ErrorHistoryEntrySchema], default: undefined })
+  errorHistory?: ErrorHistoryEntry[]
 
   // @Prop({ type: String })
   // failureReason: string

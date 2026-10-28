@@ -5,6 +5,10 @@ import { Model } from 'mongoose';
 import { SMS } from '../schemas/sms.schema';
 import { SMSBatch } from '../schemas/sms-batch.schema';
 import { SmsBatchStatusService } from '../sms-batch-status.service';
+import {
+  STATUS_TIMEOUT_DISPATCHED_MESSAGE,
+  STATUS_TIMEOUT_PENDING_MESSAGE,
+} from '../error-history';
 
 // Rows expired per round, and rounds per run
 export const EXPIRE_CHUNK_SIZE = 5000;
@@ -42,7 +46,7 @@ export class SmsStatusUpdateTask {
             { dispatchDueAt: { $lt: twentyMinutesAgo } },
           ],
         },
-        'Status update timeout - no response received after 20 minutes',
+        STATUS_TIMEOUT_PENDING_MESSAGE,
       );
       this.logger.log(
         `Updated ${pendingCount} SMS messages from 'pending' to 'unknown' status`,
@@ -53,7 +57,7 @@ export class SmsStatusUpdateTask {
           status: 'dispatched',
           dispatchedAt: { $lt: twentyMinutesAgo },
         },
-        'Status update timeout - no response from device after dispatch',
+        STATUS_TIMEOUT_DISPATCHED_MESSAGE,
       );
       this.logger.log(
         `Updated ${dispatchedCount} SMS messages from 'dispatched' to 'unknown' status`,
@@ -67,8 +71,7 @@ export class SmsStatusUpdateTask {
         {
           $set: {
             status: 'unknown',
-            error:
-              'Status update timeout - no response received after 20 minutes',
+            error: STATUS_TIMEOUT_PENDING_MESSAGE,
           },
         },
       );
@@ -101,7 +104,14 @@ export class SmsStatusUpdateTask {
 
       const result = await this.smsModel.updateMany(
         { ...filter, _id: { $in: rows.map((row) => row._id) } },
-        { $set: { status: 'unknown', errorMessage } },
+        // The note goes when a late report arrives; the time stays
+        {
+          $set: {
+            status: 'unknown',
+            errorMessage,
+            'metadata.statusTimedOutAt': new Date(),
+          },
+        },
       );
       modified += result.modifiedCount;
       await this.batchStatus.refresh(rows.map((row) => row.smsBatch));

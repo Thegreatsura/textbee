@@ -1,9 +1,12 @@
+import { FCM_SEND_SKIPPED_ERROR_CODE } from './fcm-send-skip'
+
 // The failure trail on a message. Capped, so a flapping device cannot grow the
-// document without bound.
+// document without bound. It outlives the top-level error fields, which only
+// describe a failure that is still current.
 
-export type ErrorHistorySource = 'fcm' | 'device' | 'server'
+export type ErrorHistorySource = 'push' | 'device' | 'server'
 
-export const ERROR_HISTORY_LIMIT = 5
+export const ERROR_HISTORY_LIMIT = 10
 const MAX_MESSAGE_LENGTH = 300
 
 export type ErrorHistoryEntry = {
@@ -11,13 +14,26 @@ export type ErrorHistoryEntry = {
   message?: string
   at: Date
   source: ErrorHistorySource
+  // rebuilt from the top-level fields of a message older than the trail
+  backfilled?: boolean
 }
 
-/**
- * The `$push` fragment that appends one failure and keeps the last five, or
- * null when there is nothing to record. Callers spread it next to their `$set`.
- */
-export function errorHistoryPush(
+// Written by the stale-message task. A missing report, not a failure.
+export const STATUS_TIMEOUT_PENDING_MESSAGE =
+  'Status update timeout - no response received after 20 minutes'
+export const STATUS_TIMEOUT_DISPATCHED_MESSAGE =
+  'Status update timeout - no response from device after dispatch'
+const STATUS_TIMEOUT_MESSAGES = [
+  STATUS_TIMEOUT_PENDING_MESSAGE,
+  STATUS_TIMEOUT_DISPATCHED_MESSAGE,
+]
+
+export function isStatusTimeoutNote(message: unknown): boolean {
+  return typeof message === 'string' && STATUS_TIMEOUT_MESSAGES.includes(message)
+}
+
+/** One trimmed entry, or null when there is nothing to record. */
+export function errorHistoryEntry(
   {
     code,
     message,
@@ -28,7 +44,7 @@ export function errorHistoryPush(
     source: ErrorHistorySource
   },
   at: Date = new Date(),
-): { $push: Record<string, any> } | null {
+): ErrorHistoryEntry | null {
   const entryCode = typeof code === 'string' ? code.trim() : ''
   const entryMessage = typeof message === 'string' ? message.trim() : ''
 
@@ -42,13 +58,129 @@ export function errorHistoryPush(
   if (entryMessage) {
     entry.message = entryMessage.slice(0, MAX_MESSAGE_LENGTH)
   }
+  return entry
+}
 
+/**
+ * The `$push` fragment that appends entries to both trails and keeps the last
+ * ten, or null when there is nothing to record. Callers spread it next to
+ * their `$set`. The metadata copy stays until every reader uses the field.
+ */
+export function errorHistoryPushEntries(
+  entries: ErrorHistoryEntry[],
+): { $push: Record<string, any> } | null {
+  if (entries.length === 0) return null
+  const each = { $each: entries, $slice: -ERROR_HISTORY_LIMIT }
   return {
     $push: {
-      'metadata.errorHistory': {
-        $each: [entry],
-        $slice: -ERROR_HISTORY_LIMIT,
-      },
+      errorHistory: each,
+      'metadata.errorHistory': { ...each, $each: [...entries] },
     },
   }
+}
+
+export function errorHistoryPush(
+  input: { code?: unknown; message?: unknown; source: ErrorHistorySource },
+  at: Date = new Date(),
+): { $push: Record<string, any> } | null {
+  const entry = errorHistoryEntry(input, at)
+  return entry ? errorHistoryPushEntries([entry]) : null
+}
+
+function toDate(value: unknown): Date | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date
+  }
+  return null
+}
+
+function toSource(value: unknown): ErrorHistorySource {
+  if (value === 'fcm' || value === 'push') return 'push'
+  if (value === 'server') return 'server'
+  return 'device'
+}
+
+export function sameEntry(
+  a: Pick<ErrorHistoryEntry, 'code' | 'at'>,
+  b: Pick<ErrorHistoryEntry, 'code' | 'at'>,
+): boolean {
+  return a.code === b.code && a.at.getTime() === b.at.getTime()
+}
+
+/**
+ * Both trails of a stored message, merged: older entries live only under
+ * metadata, newer ones in both places. Oldest first, at most ten.
+ */
+export function storedErrorHistory(doc: {
+  errorHistory?: unknown
+  metadata?: { errorHistory?: unknown } | null
+}): ErrorHistoryEntry[] {
+  const raw = [
+    ...(Array.isArray(doc?.metadata?.errorHistory) ? doc.metadata.errorHistory : []),
+    ...(Array.isArray(doc?.errorHistory) ? doc.errorHistory : []),
+  ]
+  const merged: ErrorHistoryEntry[] = []
+  for (const item of raw) {
+    const at = toDate(item?.at)
+    if (!at) continue
+    const entry: ErrorHistoryEntry = {
+      code: item?.code != null && String(item.code).trim() ? String(item.code) : 'UNKNOWN',
+      at,
+      source: toSource(item?.source),
+    }
+    if (typeof item?.message === 'string' && item.message) entry.message = item.message
+    if (item?.backfilled === true) entry.backfilled = true
+    if (!merged.some((existing) => sameEntry(existing, entry))) merged.push(entry)
+  }
+  merged.sort((a, b) => a.at.getTime() - b.at.getTime())
+  return merged.slice(-ERROR_HISTORY_LIMIT)
+}
+
+/** Where a failure stored only in the top-level fields came from. */
+export function inferFailureSource(
+  code: unknown,
+  message: unknown,
+  failedAt: unknown,
+): ErrorHistorySource {
+  const text = typeof code === 'string' ? code.trim() : ''
+  if (text.startsWith('FCM_')) return 'push'
+  if (typeof message === 'string' && /^FCM_(DELIVERY_FAILED|SEND_TIMEOUT)/.test(message)) {
+    return 'push'
+  }
+  if (!text && failedAt) return 'server'
+  return 'device'
+}
+
+/**
+ * The entry for the failure held in a message's top-level fields, when those
+ * fields describe a real failure the trail does not hold yet. The timeout note
+ * and the test-skip marker are not failures, so they never become entries.
+ */
+export function currentFailureEntry(
+  doc: {
+    errorCode?: unknown
+    errorMessage?: unknown
+    failedAt?: unknown
+    createdAt?: unknown
+  },
+  history: ErrorHistoryEntry[],
+): ErrorHistoryEntry | null {
+  const failedAt = toDate(doc.failedAt)
+  const code =
+    typeof doc.errorCode === 'string' && doc.errorCode !== FCM_SEND_SKIPPED_ERROR_CODE
+      ? doc.errorCode.trim()
+      : ''
+  if (!failedAt && !code) return null
+
+  const message = isStatusTimeoutNote(doc.errorMessage) ? undefined : doc.errorMessage
+  const at = failedAt ?? toDate(doc.createdAt) ?? new Date(0)
+  const entry = errorHistoryEntry(
+    { code: code || 'UNKNOWN', message, source: inferFailureSource(code, message, failedAt) },
+    at,
+  )
+  if (!entry || history.some((existing) => sameEntry(existing, entry))) return null
+  entry.backfilled = true
+  return entry
 }

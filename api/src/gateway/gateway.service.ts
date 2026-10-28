@@ -44,7 +44,13 @@ import {
   pendingRecoveryFilter,
   toRecoveryPayload,
 } from './pending-recovery'
-import { errorHistoryPush } from './error-history'
+import { errorHistoryPush, errorHistoryPushEntries } from './error-history'
+import {
+  StatusReport,
+  decideStatusReport,
+  isReportedStatus,
+  statusReportEntry,
+} from './status-report-decision'
 import {
   hasNestedSimUsed,
   resolveSimSelection,
@@ -69,6 +75,18 @@ import {
 import { DispatchPlan } from './queue/dispatch-pacing'
 import { Job } from 'bull'
 import { SmsBatchStatusService } from './sms-batch-status.service'
+
+// The server could not hand the message off, so the phone never saw it
+const DISPATCH_FAILED_ERROR_CODE = 'DISPATCH_FAILED'
+
+// Tries before a report that keeps losing races keeps only its history entry
+const STATUS_REPORT_TRIES = 3
+
+const STATUS_EVENTS: Record<string, WebhookEvent> = {
+  sent: WebhookEvent.MESSAGE_SENT,
+  delivered: WebhookEvent.MESSAGE_DELIVERED,
+  failed: WebhookEvent.MESSAGE_FAILED,
+}
 
 // device.user is a ref, so it is an ObjectId unless the query populated it.
 function userIdOf(user: any) {
@@ -543,9 +561,21 @@ export class GatewayService {
     errorMessage: string,
   ): Promise<void> {
     try {
+      const failedAt = new Date()
       await this.smsModel.updateMany(
         { ...filter, status: 'pending' } as any,
-        { $set: { status: 'failed', failedAt: new Date(), errorMessage } },
+        {
+          $set: {
+            status: 'failed',
+            failedAt,
+            errorCode: DISPATCH_FAILED_ERROR_CODE,
+            errorMessage,
+          },
+          ...(errorHistoryPush(
+            { code: DISPATCH_FAILED_ERROR_CODE, message: errorMessage, source: 'server' },
+            failedAt,
+          ) ?? {}),
+        },
       )
     } catch (error) {
       console.error('failed to mark unsent messages as failed', error)
@@ -1600,8 +1630,24 @@ export class GatewayService {
       );
     }
     
-    const sms = await this.smsModel.findById(dto.smsId);
-    
+    // Only what the phone can report; anything else would be stored as a
+    // status no reader knows. 400 is final for the phone, so it stops retrying.
+    const normalizedStatus = String(dto.status ?? '').toLowerCase()
+    if (!isReportedStatus(normalizedStatus)) {
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Unknown status',
+        },
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+
+    const readMessage = () =>
+      this.smsModel.findById(dto.smsId).select('+metadata').lean()
+
+    let sms: any = await readMessage()
+
     if (!sms) {
       throw new HttpException(
         {
@@ -1622,19 +1668,27 @@ export class GatewayService {
         HttpStatus.FORBIDDEN,
       );
     }
-    
-    // Normalize status to lowercase for comparison
-    const normalizedStatus = dto.status.toLowerCase();
-    
-    const updateData: any = {
-      status: normalizedStatus, // Store normalized status
-    };
+
+    const report: StatusReport = {
+      status: normalizedStatus,
+      at: resolveReportedAt(
+        normalizedStatus === 'sent'
+          ? dto.sentAtInMillis
+          : normalizedStatus === 'delivered'
+            ? dto.deliveredAtInMillis
+            : dto.failedAtInMillis,
+      ),
+      code: dto.errorCode != null ? String(dto.errorCode) : undefined,
+      message: typeof dto.errorMessage === 'string' ? dto.errorMessage : undefined,
+    }
+
+    const telemetry: Record<string, any> = {}
 
     // Dotted paths so other metadata keys survive.
     for (const [key, value] of Object.entries(
       appVersionMetadata(device, sdkClient),
     )) {
-      updateData[`metadata.${key}`] = value;
+      telemetry[`metadata.${key}`] = value;
     }
     
     // What the phone did before the radio: both are reported on every status
@@ -1646,98 +1700,120 @@ export class GatewayService {
     const orderedTiming =
       !pushReceivedAt || !sendAttemptedAt || sendAttemptedAt >= pushReceivedAt
     if (pushReceivedAt && orderedTiming) {
-      updateData.pushReceivedAt = pushReceivedAt
+      telemetry.pushReceivedAt = pushReceivedAt
     }
     if (sendAttemptedAt && orderedTiming) {
-      updateData.sendAttemptedAt = sendAttemptedAt
+      telemetry.sendAttemptedAt = sendAttemptedAt
     }
     const reportAttempt = resolveReportAttempt(dto.reportAttempt)
     if (reportAttempt !== undefined) {
-      updateData['metadata.statusReportAttempt'] = reportAttempt
+      telemetry['metadata.statusReportAttempt'] = reportAttempt
     }
     const simUsed = resolveSimUsedReport(dto)
-    let simUnset: { $unset: { simUsed: '' } } | null = null
+    let unsetSimUsed = false
     if (hasNestedSimUsed(dto)) {
       // A whole SIM, so a resend on another SIM never mixes the two
-      if (simUsed) updateData.simUsed = simUsed
-      else simUnset = { $unset: { simUsed: '' } }
+      if (simUsed) telemetry.simUsed = simUsed
+      else unsetSimUsed = true
     } else {
       // Older flat fields: dotted paths so a report with one part keeps the other
       for (const [key, value] of Object.entries(simUsed ?? {})) {
-        updateData[`simUsed.${key}`] = value
+        telemetry[`simUsed.${key}`] = value
       }
     }
     const simSelection = resolveSimSelection(dto.simSelection)
     if (simSelection) {
-      updateData['metadata.simSelection'] = simSelection
+      telemetry['metadata.simSelection'] = simSelection
     }
 
-    // Update timestamps based on status
-    let failureEntry: { $push: Record<string, any> } | null = null
-    if (normalizedStatus === 'sent' && dto.sentAtInMillis) {
-      updateData.sentAt = new Date(dto.sentAtInMillis);
-    } else if (normalizedStatus === 'delivered' && dto.deliveredAtInMillis) {
-      updateData.deliveredAt = new Date(dto.deliveredAtInMillis);
-    } else if (normalizedStatus === 'failed') {
-      // The timestamp is optional; the failure itself is not
-      // One validated value for both the field and the history entry
-      const failedAt = resolveReportedAt(dto.failedAtInMillis) ?? new Date()
-      updateData.failedAt = failedAt
-      updateData.errorCode = dto.errorCode;
-      updateData.errorMessage = dto.errorMessage || 'Unknown error';
-      failureEntry = errorHistoryPush(
-        {
-          code: dto.errorCode,
-          message: updateData.errorMessage,
-          source: 'device',
-        },
-        failedAt,
-      )
-    }
-    
-    // Update the SMS
-const updatedSms = await this.smsModel.findByIdAndUpdate(
-  dto.smsId,
-  { $set: updateData, ...(failureEntry ?? {}), ...(simUnset ?? {}) },
-  { new: true } 
-);
-    
-    // The message was checked against this device, so its own batch is used
-    // rather than the id in the body
-    await this.batchStatus.refresh([sms.smsBatch])
-    
-    // Trigger webhook event for SMS status update
-    try {
-       let event: WebhookEvent
-       switch (normalizedStatus) {
-          case 'sent':
-            event = WebhookEvent.MESSAGE_SENT
-            break
-          case 'delivered':
-            event = WebhookEvent.MESSAGE_DELIVERED
-            break
-          case 'failed':
-            event = WebhookEvent.MESSAGE_FAILED
-            break
-          case 'received':
-            event = WebhookEvent.MESSAGE_RECEIVED
-            break
-          default:
-            event = WebhookEvent.UNKNOWN_STATE
-          }
-      this.webhookService.deliverNotification({
-        sms: updatedSms,
-        user: device.user,
-        event,
-      });
-    } catch (error) {
-      console.error('Failed to trigger webhook event:', error);
-    }
-    
-    return {
+    const ok = {
       success: true,
       message: 'SMS status updated successfully',
-    };
+    }
+
+    // Written only if nothing changed the message since it was read, so two
+    // reports racing each other are both judged against the real state
+    const unchangedSince = (read: any) => ({
+      _id: read._id,
+      status: read.status ?? null,
+      sentAt: read.sentAt ?? null,
+      deliveredAt: read.deliveredAt ?? null,
+      failedAt: read.failedAt ?? null,
+    })
+
+    for (let attempt = 0; attempt < STATUS_REPORT_TRIES; attempt++) {
+      if (attempt > 0) {
+        sms = await readMessage()
+        if (!sms) return ok
+      }
+
+      const decision = decideStatusReport(sms, report)
+      // Every outcome is a 200: old app builds retry anything else forever
+      if (decision.kind === 'noop') return ok
+
+      if (decision.kind === 'history') {
+        // An older failure changes no status, so it does not count as an update
+        const result = await this.smsModel.updateOne(
+          unchangedSince(sms),
+          errorHistoryPushEntries(decision.entries),
+          { timestamps: false },
+        )
+        if (result.matchedCount > 0) return ok
+        continue
+      }
+
+      const $unset: Record<string, ''> = {}
+      for (const key of decision.unset) $unset[key] = ''
+      if (unsetSimUsed) $unset.simUsed = ''
+
+      const updatedSms = await this.smsModel.findOneAndUpdate(
+        unchangedSince(sms),
+        {
+          $set: {
+            ...telemetry,
+            ...decision.set,
+            ...(decision.writeStatus && { status: decision.status }),
+          },
+          ...(Object.keys($unset).length > 0 && { $unset }),
+          ...(errorHistoryPushEntries(decision.entries) ?? {}),
+        },
+        { new: true },
+      )
+      if (!updatedSms) continue
+
+      if (decision.statusChanged) {
+        // The message was checked against this device, so its own batch is
+        // used rather than the id in the body
+        await this.batchStatus.refresh([sms.smsBatch])
+
+        try {
+          this.webhookService.deliverNotification({
+            sms: updatedSms,
+            user: device.user,
+            event: STATUS_EVENTS[decision.status],
+          })
+        } catch (error) {
+          console.error('Failed to trigger webhook event:', error)
+        }
+      }
+      return ok
+    }
+
+    // Lost every race: keep at least the failure this report carried
+    const entry = statusReportEntry(report)
+    if (entry) {
+      await this.smsModel.updateOne(
+        {
+          _id: sms._id,
+          errorHistory: {
+            $not: { $elemMatch: { code: entry.code, at: entry.at } },
+          },
+        },
+        errorHistoryPushEntries([entry]),
+        { timestamps: false },
+      )
+    }
+    return ok
   }
 
   async getStatsForUser(user: User) {

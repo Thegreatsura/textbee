@@ -120,13 +120,17 @@ describe('SmsQueueProcessor.handleSendSms', () => {
       }),
     )
     expect(writes[0].updateOne.update.$inc).toEqual({ dispatchAttempts: 1 })
-    const history = writes[0].updateOne.update.$push['metadata.errorHistory']
-    expect(history.$slice).toBe(-5)
+    const history = writes[0].updateOne.update.$push.errorHistory
+    expect(history.$slice).toBe(-10)
     expect(history.$each[0]).toEqual(
       expect.objectContaining({
         code: 'FCM_TOKEN_NOT_REGISTERED',
-        source: 'fcm',
+        source: 'push',
       }),
+    )
+    // A phone report the push lost to is never overwritten
+    expect(writes[0].updateOne.filter).toEqual(
+      expect.objectContaining({ status: { $nin: ['sent', 'delivered'] } }),
     )
     // The batch is recalculated from its messages after they are written
     expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
@@ -181,10 +185,11 @@ describe('SmsQueueProcessor.handleSendSms', () => {
 
     expect(error.code).toBe('FCM_SEND_TIMEOUT')
     const [filter, update] = mockSmsModel.updateMany.mock.calls[0]
-    // A phone report that landed while the push hung is kept
+    // A phone report that landed while the push hung is kept, failures too
     expect(filter).toEqual({
       _id: { $in: ['sms-1'] },
       status: { $nin: ['sent', 'delivered'] },
+      $nor: [{ status: 'failed', failedAt: { $gte: expect.any(Date) } }],
     })
     expect(update.$set).toEqual({
       status: 'failed',

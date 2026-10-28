@@ -51,6 +51,15 @@ function getFcmErrorMessage(error: { code?: string; message?: string } | null | 
   return `${rawPart}. ${FCM_ACTIONABLE_MESSAGE}`
 }
 
+// A push failure never overwrites a phone report: the push may still have
+// landed, and a failure the phone reported during this push is the real one
+function pushFailureCanApply(pushStartedAt: Date) {
+  return {
+    status: { $nin: ['sent', 'delivered'] },
+    $nor: [{ status: 'failed', failedAt: { $gte: pushStartedAt } }],
+  }
+}
+
 @Processor('sms')
 export class SmsQueueProcessor {
   private readonly logger = new Logger(SmsQueueProcessor.name)
@@ -71,6 +80,8 @@ export class SmsQueueProcessor {
     // this.logger.debug(`Processing send-sms job ${job.id}`)
     const { deviceId, fcmMessages, smsBatchId } = job.data
     let pushHandedOff = false
+    // A phone failure reported after this is newer than any push outcome
+    const pushStartedAt = new Date()
 
     const device = await this.deviceModel
       .findById(deviceId)
@@ -158,7 +169,10 @@ export class SmsQueueProcessor {
       const writes = [
         ...failedUpdates.map((failedUpdate) => ({
           updateOne: {
-            filter: { _id: failedUpdate.smsId as any },
+            filter: {
+              _id: failedUpdate.smsId as any,
+              ...pushFailureCanApply(pushStartedAt),
+            },
             update: {
               $set: {
                 status: 'failed',
@@ -171,7 +185,7 @@ export class SmsQueueProcessor {
                 {
                   code: failedUpdate.errorCode,
                   message: failedUpdate.errorMessage,
-                  source: 'fcm',
+                  source: 'push',
                 },
                 failedAt,
               ) ?? {}),
@@ -205,8 +219,11 @@ export class SmsQueueProcessor {
       }
 
       if (device?.user && failedSmsIds.length > 0) {
+        // Only the rows this failure actually changed
         const failedSmsDocuments = await this.smsModel.find({
           _id: { $in: failedSmsIds },
+          status: 'failed',
+          failedAt,
         })
         for (const failedSms of failedSmsDocuments) {
           await this.webhookService
@@ -283,7 +300,7 @@ export class SmsQueueProcessor {
         await this.smsModel.updateMany(
           {
             _id: { $in: failedSmsIds } as any,
-            status: { $nin: ['sent', 'delivered'] },
+            ...pushFailureCanApply(pushStartedAt),
           },
           {
             $set: {
@@ -294,7 +311,7 @@ export class SmsQueueProcessor {
             },
             $inc: { dispatchAttempts: 1 },
             ...(errorHistoryPush(
-              { code: errorCode, message: errorMessage, source: 'fcm' },
+              { code: errorCode, message: errorMessage, source: 'push' },
               failedAt,
             ) ?? {}),
           },

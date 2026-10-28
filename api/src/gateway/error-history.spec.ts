@@ -19,6 +19,7 @@ describe('errorHistoryPush', () => {
 
     const each = {
       $each: [{ code: 'NO_SERVICE', message: 'no carrier', at, source: 'device' }],
+      $sort: { at: 1 },
       $slice: -10,
     }
     expect(ERROR_HISTORY_LIMIT).toBe(10)
@@ -173,6 +174,7 @@ describe('inferFailureSource', () => {
     expect(inferFailureSource(undefined, 'FCM_SEND_TIMEOUT: slow', new Date())).toBe('push')
     expect(inferFailureSource(undefined, 'boom', new Date())).toBe('server')
     expect(inferFailureSource('2', 'radio off', new Date())).toBe('device')
+    expect(inferFailureSource('DISPATCH_FAILED', 'boom', new Date())).toBe('server')
   })
 })
 

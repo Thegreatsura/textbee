@@ -2373,6 +2373,7 @@ describe('GatewayService', () => {
         const [filter, update] = mockSmsModel.findOneAndUpdate.mock.calls[0]
         expect(filter).toEqual({
           _id: 'own_sms',
+          device: OWN_DEVICE,
           status: 'unknown',
           sentAt: null,
           deliveredAt: null,
@@ -2428,7 +2429,11 @@ describe('GatewayService', () => {
         } as any)
 
         expect(mockSmsModel.findOneAndUpdate).not.toHaveBeenCalled()
-        const [, update, options] = mockSmsModel.updateOne.mock.calls[0]
+        const [filter, update, options] = mockSmsModel.updateOne.mock.calls[0]
+        // A retry racing the first copy finds it already stored
+        expect(filter.errorHistory).toEqual({
+          $not: { $elemMatch: { source: 'device', code: '1', at: new Date(deliveredAt - 5000) } },
+        })
         expect(update.$push.errorHistory.$each[0]).toEqual(
           expect.objectContaining({ code: '1', source: 'device' }),
         )

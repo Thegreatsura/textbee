@@ -39,7 +39,7 @@ export type StoredMessage = {
   errorMessage?: string | null
   createdAt?: Date | null
   errorHistory?: unknown
-  metadata?: { errorHistory?: unknown } | null
+  metadata?: { errorHistory?: unknown; failureTimeFromServer?: unknown } | null
 }
 
 export type StatusDecision =
@@ -81,6 +81,15 @@ function currentFailureSource(
   return match
     ? match.source
     : inferFailureSource(stored.errorCode, stored.errorMessage, stored.failedAt)
+}
+
+// Only a phone failure with its own phone time can be compared with another
+// phone time; one stamped with server time loses to the phone like a push one
+function failureHasPhoneTime(stored: StoredMessage, history: ErrorHistoryEntry[]) {
+  return (
+    currentFailureSource(stored, history) === 'device' &&
+    stored.metadata?.failureTimeFromServer !== true
+  )
 }
 
 function isDuplicate(
@@ -149,6 +158,9 @@ export function decideStatusReport(
     if (stored.errorCode != null && stored.errorCode !== FCM_SEND_SKIPPED_ERROR_CODE) {
       unset.push('errorCode')
     }
+    if (stored.metadata?.failureTimeFromServer != null) {
+      unset.push('metadata.failureTimeFromServer')
+    }
   }
 
   const apply = (status: string): StatusDecision => {
@@ -181,10 +193,7 @@ export function decideStatusReport(
 
     if (storedStatus === 'failed') {
       // A part that went out before another part failed, on the same clock
-      if (
-        currentFailureSource(stored, history) === 'device' &&
-        before(report.at, stored.failedAt)
-      ) {
+      if (failureHasPhoneTime(stored, history) && before(report.at, stored.failedAt)) {
         fill()
         return apply('failed')
       }
@@ -225,6 +234,13 @@ export function decideStatusReport(
     }
     entries.push(entry)
     set.failedAt = entry.at
+    if (report.at) {
+      if (stored.metadata?.failureTimeFromServer != null) {
+        unset.push('metadata.failureTimeFromServer')
+      }
+    } else {
+      set['metadata.failureTimeFromServer'] = true
+    }
     set.errorMessage = report.message || 'Unknown error'
     const code = report.code?.trim()
     if (code) set.errorCode = code
@@ -235,7 +251,8 @@ export function decideStatusReport(
     // A newer phone failure replaces the current one; an older one is history
     const replace =
       !stored.failedAt ||
-      currentFailureSource(stored, history) !== 'device' ||
+      !failureHasPhoneTime(stored, history) ||
+      !report.at ||
       !before(entry.at, stored.failedAt)
     if (!replace) return { kind: 'history', entries: [entry] }
     setFailure()

@@ -266,7 +266,11 @@ describe('decideStatusReport', () => {
         decideStatusReport({ status: 'pending', errorCode: 'FCM_X' }, { status: 'failed' }, now),
       )
 
-      expect(d.set).toEqual({ failedAt: now, errorMessage: 'Unknown error' })
+      expect(d.set).toEqual({
+        failedAt: now,
+        errorMessage: 'Unknown error',
+        'metadata.failureTimeFromServer': true,
+      })
       expect(d.unset).toEqual(['errorCode'])
       expect(d.entries[d.entries.length - 1]).toEqual({
         code: 'UNKNOWN',
@@ -354,6 +358,54 @@ describe('decideStatusReport', () => {
           now,
         ).kind,
       ).toBe('history')
+    })
+  })
+
+  describe('a phone failure without a phone time', () => {
+    it('marks the failure time as server time', () => {
+      const d = applied(
+        decideStatusReport({ status: 'dispatched' }, { status: 'failed', code: '1' }, now),
+      )
+
+      expect(d.set['metadata.failureTimeFromServer']).toBe(true)
+    })
+
+    it('loses to a later phone report even when the phone time looks earlier', () => {
+      const d = applied(
+        decideStatusReport(
+          {
+            status: 'failed',
+            failedAt: t(30),
+            errorCode: '1',
+            errorHistory: [{ code: '1', at: t(30), source: 'device' }],
+            metadata: { failureTimeFromServer: true },
+          },
+          { status: 'sent', at: t(20) },
+          now,
+        ),
+      )
+
+      expect(d.status).toBe('sent')
+      expect(d.unset).toContain('metadata.failureTimeFromServer')
+    })
+
+    it('drops the mark when a phone-timed failure replaces it', () => {
+      const d = applied(
+        decideStatusReport(
+          {
+            status: 'failed',
+            failedAt: t(30),
+            errorCode: '1',
+            errorHistory: [{ code: '1', at: t(30), source: 'device' }],
+            metadata: { failureTimeFromServer: true },
+          },
+          { status: 'failed', at: t(10), code: '4' },
+          now,
+        ),
+      )
+
+      expect(d.set.errorCode).toBe('4')
+      expect(d.unset).toContain('metadata.failureTimeFromServer')
     })
   })
 

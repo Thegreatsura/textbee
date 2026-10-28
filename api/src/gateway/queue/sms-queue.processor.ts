@@ -51,14 +51,9 @@ function getFcmErrorMessage(error: { code?: string; message?: string } | null | 
   return `${rawPart}. ${FCM_ACTIONABLE_MESSAGE}`
 }
 
-// A push failure never overwrites a phone report: the push may still have
-// landed, and a failure the phone reported during this push is the real one
-function pushFailureCanApply(pushStartedAt: Date) {
-  return {
-    status: { $nin: ['sent', 'delivered'] },
-    $nor: [{ status: 'failed', failedAt: { $gte: pushStartedAt } }],
-  }
-}
+// Push outcomes only apply to messages the phone has not reported on. A failed
+// message is never pushed again, so a failed one here carries a phone report.
+const AWAITING_PHONE = { status: { $in: ['pending', 'dispatched', 'unknown'] } }
 
 @Processor('sms')
 export class SmsQueueProcessor {
@@ -80,8 +75,6 @@ export class SmsQueueProcessor {
     // this.logger.debug(`Processing send-sms job ${job.id}`)
     const { deviceId, fcmMessages, smsBatchId } = job.data
     let pushHandedOff = false
-    // A phone failure reported after this is newer than any push outcome
-    const pushStartedAt = new Date()
 
     const device = await this.deviceModel
       .findById(deviceId)
@@ -171,7 +164,7 @@ export class SmsQueueProcessor {
           updateOne: {
             filter: {
               _id: failedUpdate.smsId as any,
-              ...pushFailureCanApply(pushStartedAt),
+              ...AWAITING_PHONE,
             },
             update: {
               $set: {
@@ -195,11 +188,10 @@ export class SmsQueueProcessor {
         ...dispatchedUpdates.map((dispatchedUpdate) => ({
           updateOne: {
             // The phone may report before this write lands
-            filter: {
-              _id: dispatchedUpdate.smsId as any,
-              status: { $nin: ['sent', 'delivered'] },
-            },
+            filter: { _id: dispatchedUpdate.smsId as any, ...AWAITING_PHONE },
             update: {
+              // Only the timeout note can be here; a new push replaces it
+              $unset: { errorMessage: '' },
               $set: {
                 status: 'dispatched',
                 dispatchedAt: now,
@@ -300,7 +292,7 @@ export class SmsQueueProcessor {
         await this.smsModel.updateMany(
           {
             _id: { $in: failedSmsIds } as any,
-            ...pushFailureCanApply(pushStartedAt),
+            ...AWAITING_PHONE,
           },
           {
             $set: {

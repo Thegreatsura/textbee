@@ -83,8 +83,9 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(writes).toEqual([
       {
         updateOne: {
-          filter: { _id: 'sms-1', status: { $nin: ['sent', 'delivered'] } },
+          filter: { _id: 'sms-1', status: { $in: ['pending', 'dispatched', 'unknown'] } },
           update: {
+            $unset: { errorMessage: '' },
             $set: {
               status: 'dispatched',
               dispatchedAt: expect.any(Date),
@@ -130,7 +131,7 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     )
     // A phone report the push lost to is never overwritten
     expect(writes[0].updateOne.filter).toEqual(
-      expect.objectContaining({ status: { $nin: ['sent', 'delivered'] } }),
+      expect.objectContaining({ status: { $in: ['pending', 'dispatched', 'unknown'] } }),
     )
     // The batch is recalculated from its messages after they are written
     expect(mockBatchStatus.refresh).toHaveBeenCalledWith([smsBatchId])
@@ -188,8 +189,7 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     // A phone report that landed while the push hung is kept, failures too
     expect(filter).toEqual({
       _id: { $in: ['sms-1'] },
-      status: { $nin: ['sent', 'delivered'] },
-      $nor: [{ status: 'failed', failedAt: { $gte: expect.any(Date) } }],
+      status: { $in: ['pending', 'dispatched', 'unknown'] },
     })
     expect(update.$set).toEqual({
       status: 'failed',
@@ -211,7 +211,7 @@ describe('SmsQueueProcessor.handleSendSms', () => {
     expect(response.successCount).toBe(1)
     const [writes] = mockSmsModel.bulkWrite.mock.calls[0]
     // A phone report that landed first is not overwritten
-    expect(writes[0].updateOne.filter.status).toEqual({ $nin: ['sent', 'delivered'] })
+    expect(writes[0].updateOne.filter.status).toEqual({ $in: ['pending', 'dispatched', 'unknown'] })
     // The skip path fakes a message id, so it must not be stored as one
     expect(writes[0].updateOne.update.$set).toEqual({
       status: 'dispatched',

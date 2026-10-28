@@ -44,7 +44,12 @@ import {
   pendingRecoveryFilter,
   toRecoveryPayload,
 } from './pending-recovery'
-import { errorHistoryPush, errorHistoryPushEntries } from './error-history'
+import {
+  DISPATCH_FAILED_ERROR_CODE,
+  ErrorHistoryEntry,
+  errorHistoryPush,
+  errorHistoryPushEntries,
+} from './error-history'
 import {
   StatusReport,
   decideStatusReport,
@@ -76,9 +81,6 @@ import { DispatchPlan } from './queue/dispatch-pacing'
 import { Job } from 'bull'
 import { SmsBatchStatusService } from './sms-batch-status.service'
 
-// The server could not hand the message off, so the phone never saw it
-const DISPATCH_FAILED_ERROR_CODE = 'DISPATCH_FAILED'
-
 // Tries before a report that keeps losing races keeps only its history entry
 const STATUS_REPORT_TRIES = 3
 
@@ -86,6 +88,18 @@ const STATUS_EVENTS: Record<string, WebhookEvent> = {
   sent: WebhookEvent.MESSAGE_SENT,
   delivered: WebhookEvent.MESSAGE_DELIVERED,
   failed: WebhookEvent.MESSAGE_FAILED,
+}
+
+// Filter that misses when either trail already holds this report's failure,
+// so a report retried while the first copy is in flight is stored once
+function notRecordedYet(entries: ErrorHistoryEntry[], report: StatusReport) {
+  const entry = entries[entries.length - 1]
+  if (!entry || !report.at || entry.source !== 'device') return {}
+  const match = { $elemMatch: { source: 'device', code: entry.code, at: entry.at } }
+  return {
+    errorHistory: { $not: match },
+    'metadata.errorHistory': { $not: match },
+  }
 }
 
 // device.user is a ref, so it is an ObjectId unless the query populated it.
@@ -1735,6 +1749,7 @@ export class GatewayService {
     // reports racing each other are both judged against the real state
     const unchangedSince = (read: any) => ({
       _id: read._id,
+      device: read.device,
       status: read.status ?? null,
       sentAt: read.sentAt ?? null,
       deliveredAt: read.deliveredAt ?? null,
@@ -1754,7 +1769,7 @@ export class GatewayService {
       if (decision.kind === 'history') {
         // An older failure changes no status, so it does not count as an update
         const result = await this.smsModel.updateOne(
-          unchangedSince(sms),
+          { ...unchangedSince(sms), ...notRecordedYet(decision.entries, report) },
           errorHistoryPushEntries(decision.entries),
           { timestamps: false },
         )
@@ -1777,7 +1792,9 @@ export class GatewayService {
           ...(Object.keys($unset).length > 0 && { $unset }),
           ...(errorHistoryPushEntries(decision.entries) ?? {}),
         },
-        { new: true },
+        // A time filled in on an unchanged status is not news to readers
+        // that judge staleness by updatedAt
+        { new: true, timestamps: decision.statusChanged || decision.writeStatus },
       )
       if (!updatedSms) continue
 
@@ -1787,11 +1804,13 @@ export class GatewayService {
         await this.batchStatus.refresh([sms.smsBatch])
 
         try {
-          this.webhookService.deliverNotification({
-            sms: updatedSms,
-            user: device.user,
-            event: STATUS_EVENTS[decision.status],
-          })
+          Promise.resolve(
+            this.webhookService.deliverNotification({
+              sms: updatedSms,
+              user: device.user,
+              event: STATUS_EVENTS[decision.status],
+            }),
+          ).catch((error) => console.error('Failed to trigger webhook event:', error))
         } catch (error) {
           console.error('Failed to trigger webhook event:', error)
         }
@@ -1799,16 +1818,12 @@ export class GatewayService {
       return ok
     }
 
-    // Lost every race: keep at least the failure this report carried
+    // Lost every race: keep at least the failure this report carried. Without
+    // a phone time a retry cannot be told apart, so nothing is written.
     const entry = statusReportEntry(report)
-    if (entry) {
+    if (entry && report.at) {
       await this.smsModel.updateOne(
-        {
-          _id: sms._id,
-          errorHistory: {
-            $not: { $elemMatch: { code: entry.code, at: entry.at } },
-          },
-        },
+        { _id: sms._id, ...notRecordedYet([entry], report) },
         errorHistoryPushEntries([entry]),
         { timestamps: false },
       )
@@ -1979,6 +1994,8 @@ export class GatewayService {
             dispatchedAt: now,
             'metadata.recoveredAt': now,
           },
+          // Only the timeout note can be on a claimable message
+          $unset: { errorMessage: '' },
           $inc: { dispatchAttempts: 1 },
         },
         { new: false, sort: { requestedAt: 1 } },

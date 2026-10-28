@@ -70,7 +70,9 @@ export function errorHistoryPushEntries(
   entries: ErrorHistoryEntry[],
 ): { $push: Record<string, any> } | null {
   if (entries.length === 0) return null
-  const each = { $each: entries, $slice: -ERROR_HISTORY_LIMIT }
+  // Reports arrive out of order, so the cap must drop the oldest, not the
+  // first appended
+  const each = { $each: entries, $sort: { at: 1 }, $slice: -ERROR_HISTORY_LIMIT }
   return {
     $push: {
       errorHistory: each,
@@ -138,6 +140,10 @@ export function storedErrorHistory(doc: {
   return merged.slice(-ERROR_HISTORY_LIMIT)
 }
 
+// Written by the server when it could not hand a message off
+export const DISPATCH_FAILED_ERROR_CODE = 'DISPATCH_FAILED'
+const SERVER_FAILURE_CODES = [DISPATCH_FAILED_ERROR_CODE, 'QUEUE_ADD_FAILED']
+
 /** Where a failure stored only in the top-level fields came from. */
 export function inferFailureSource(
   code: unknown,
@@ -146,6 +152,7 @@ export function inferFailureSource(
 ): ErrorHistorySource {
   const text = typeof code === 'string' ? code.trim() : ''
   if (text.startsWith('FCM_')) return 'push'
+  if (SERVER_FAILURE_CODES.includes(text)) return 'server'
   if (typeof message === 'string' && /^FCM_(DELIVERY_FAILED|SEND_TIMEOUT)/.test(message)) {
     return 'push'
   }

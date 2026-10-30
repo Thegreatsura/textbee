@@ -20,6 +20,7 @@ describe('BillingService - signed email links', () => {
       {} as any,
       {} as any,
       {} as any,
+      {} as any,
     )
     const create = jest.fn().mockResolvedValue({
       customer_portal_url: 'https://polar.test/portal/abc',
@@ -108,15 +109,45 @@ describe('BillingService - signed email links', () => {
       const { service } = build({ session: { ...open, ...change } })
 
       await expect(service.checkoutResumeRedirect(token())).resolves.toBe(
-        'https://app.textbee.dev/checkout/scale?billingInterval=yearly',
+        'https://app.textbee.dev/checkout/scale?billingInterval=yearly&from=email&ref=checkout_resume',
       )
     })
 
-    it('defaults to Pro monthly when the session is gone', async () => {
-      const { service } = build()
+    it('keeps a monthly session monthly', async () => {
+      process.env.DEFAULT_BILLING_INTERVAL = 'yearly'
+      const { service } = build({
+        session: { ...open, billingInterval: 'monthly', isCompleted: true },
+      })
 
       await expect(service.checkoutResumeRedirect(token())).resolves.toBe(
-        'https://app.textbee.dev/checkout/pro?billingInterval=monthly',
+        'https://app.textbee.dev/checkout/scale?billingInterval=monthly&from=email&ref=checkout_resume',
+      )
+    })
+
+    it.each([
+      ['unset', undefined, 'yearly'],
+      ['monthly', 'monthly', 'monthly'],
+    ])(
+      'defaults to Pro on the default interval when the session is gone and the setting is %s',
+      async (_l, setting, interval) => {
+        delete process.env.DEFAULT_BILLING_INTERVAL
+        if (setting) process.env.DEFAULT_BILLING_INTERVAL = setting
+        const { service } = build()
+
+        await expect(service.checkoutResumeRedirect(token())).resolves.toBe(
+          `https://app.textbee.dev/checkout/pro?billingInterval=${interval}&from=email&ref=checkout_resume`,
+        )
+      },
+    )
+
+    it('uses the default interval when the session has none', async () => {
+      process.env.DEFAULT_BILLING_INTERVAL = 'monthly'
+      const { service } = build({
+        session: { ...open, billingInterval: undefined, isCompleted: true },
+      })
+
+      await expect(service.checkoutResumeRedirect(token())).resolves.toBe(
+        'https://app.textbee.dev/checkout/scale?billingInterval=monthly&from=email&ref=checkout_resume',
       )
     })
 
@@ -133,9 +164,11 @@ describe('BillingService - signed email links', () => {
 
   describe('switch to yearly', () => {
     const token = (exp = nowS() + 3600) => signLink(secret, 'yearly', 'sub_1', exp)
-    const plan = { name: 'pro', polarYearlyProductId: 'prod_pro_y' }
+    const plan = { name: 'pro', monthlyPrice: 1500, polarYearlyProductId: 'prod_pro_y' }
     const active = { status: 'active', polarCustomerId: 'cus_1', plan }
-    const YEARLY = 'https://app.textbee.dev/checkout/pro?billingInterval=yearly'
+    const YEARLY =
+      'https://app.textbee.dev/checkout/pro?billingInterval=yearly&from=email&ref=yearly_switch'
+    const BILLING_RETURN = `${BILLING}?from=email&ref=yearly_switch`
 
     const buildYearly = (subscription: any) => {
       const built = build()
@@ -172,6 +205,7 @@ describe('BillingService - signed email links', () => {
       ['there is no subscription', null],
       ['the plan is custom', { ...active, plan: { ...plan, name: 'custom-acme' } }],
       ['the plan has no yearly product', { ...active, plan: { name: 'pro' } }],
+      ['the monthly charge is below the list price', { ...active, amount: 750 }],
     ])('sends the reader to the billing page when %s', async (_label, subscription) => {
       const { service, create } = buildYearly(subscription)
 
@@ -186,21 +220,27 @@ describe('BillingService - signed email links', () => {
       expect(create).not.toHaveBeenCalled()
     })
 
+    it('opens the yearly confirm screen when the monthly charge is the list price', async () => {
+      const { service } = buildYearly({ ...active, amount: 1500 })
+
+      await expect(service.yearlySwitchRedirect(token())).resolves.toBe(YEARLY)
+    })
+
     it('encodes the plan name in the checkout path', async () => {
       const { service } = buildYearly({ ...active, plan: { ...plan, name: 'pro plus' } })
 
       await expect(service.yearlySwitchRedirect(token())).resolves.toBe(
-        'https://app.textbee.dev/checkout/pro%20plus?billingInterval=yearly',
+        'https://app.textbee.dev/checkout/pro%20plus?billingInterval=yearly&from=email&ref=yearly_switch',
       )
     })
 
-    it('sends a past due customer to fix the card first, then back', async () => {
+    it('sends a past due customer to fix the card first, then to the billing page', async () => {
       const { service, create } = buildYearly({ ...active, status: 'past_due' })
 
       await expect(service.yearlySwitchRedirect(token())).resolves.toBe(
         'https://polar.test/portal/abc',
       )
-      expect(create).toHaveBeenCalledWith({ customer_id: 'cus_1', return_url: YEARLY })
+      expect(create).toHaveBeenCalledWith({ customer_id: 'cus_1', return_url: BILLING_RETURN })
     })
 
     it('skips the portal for a past due subscription with no customer id', async () => {

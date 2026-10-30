@@ -47,7 +47,7 @@ export function RateLimitError({
         <p className="text-sm text-destructive">{message}</p>
         <div className="flex gap-2 flex-wrap">
           <Button asChild variant="default" size="sm">
-            <Link href={checkoutPath('pro')}>Upgrade Plan</Link>
+            <Link href={checkoutPath('pro', undefined, 'app_limit_error')}>Upgrade Plan</Link>
           </Button>
           <p className="text-xs text-muted-foreground flex items-center">
             or wait for your limit to reset
@@ -66,7 +66,7 @@ export function RateLimitError({
         <p>{message}</p>
         <div className="flex gap-2 flex-wrap items-center">
           <Button asChild variant="outline" size="sm">
-            <Link href={checkoutPath('pro')}>Upgrade Plan</Link>
+            <Link href={checkoutPath('pro', undefined, 'app_limit_error')}>Upgrade Plan</Link>
           </Button>
           <span className="text-xs text-muted-foreground">
             or wait for your limit to reset

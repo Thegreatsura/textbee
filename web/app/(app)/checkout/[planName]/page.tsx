@@ -24,6 +24,10 @@ import {
 import { useBillingPlans } from '@/lib/api'
 import { Routes } from '@/config/routes'
 import { track } from '@/lib/analytics/track'
+import {
+  checkoutSourceBody,
+  sourceFromSearch,
+} from '@/lib/analytics/checkout-source'
 import { cn } from '@/lib/utils'
 
 interface PlanChangePreview {
@@ -105,21 +109,29 @@ export default function CheckoutPage({
         ? 'monthly'
         : null
 
+  const searchString = searchParams.toString()
+  const sourceBody = useCallback(
+    () => checkoutSourceBody(sourceFromSearch(searchString)),
+    [searchString],
+  )
+
   const initiateCheckout = useCallback(
     async (billingInterval: BillingInterval) => {
       setIsSubmitting(true)
       setIsSlow(false)
       setError(null)
+      const source = sourceBody()
       try {
         const response = await httpBrowserClient.post(
           ApiEndpoints.billing.checkout(),
-          { planName, billingInterval },
+          { planName, billingInterval, ...source },
         )
 
         if (response.data?.redirectUrl) {
           track('begin_checkout', {
             plan: planName,
             billing_interval: billingInterval,
+            ...(source.from && { from: source.from }),
           })
           window.location.href = response.data?.redirectUrl
         } else if (response.data?.planChange) {
@@ -140,7 +152,7 @@ export default function CheckoutPage({
         setIsSubmitting(false)
       }
     },
-    [planName],
+    [planName, sourceBody],
   )
 
   const confirmPlanChange = async () => {
@@ -149,6 +161,7 @@ export default function CheckoutPage({
       await httpBrowserClient.post(ApiEndpoints.billing.changePlan(), {
         planName,
         billingInterval: urlInterval ?? selected,
+        ...sourceBody(),
       })
       // Straight to the billing tab: the /dashboard/account redirect stub
       // drops query params, which silently ate the success toast.

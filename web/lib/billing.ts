@@ -88,9 +88,9 @@ export function billingPriceLabel(
 /**
  * The priced tier to offer a switch to yearly billing, or undefined when the
  * offer does not apply: not an active monthly subscription, a custom plan, a
- * scheduled cancellation, or a tier without both prices known. A past due
- * subscription is excluded by the status check, since the switch would charge
- * the failing card.
+ * scheduled cancellation, a tier without both prices known, or a monthly
+ * charge below the tier's list price. A past due subscription is excluded by
+ * the status check, since the switch would charge the failing card.
  */
 export function yearlySwitchTier(
   subscription: Subscription | undefined,
@@ -105,6 +105,12 @@ export function yearlySwitchTier(
   const id = findPlanTier(name)?.id
   const tier = priceTiers(plans).find((t) => t.id === id)
   if (!tier?.hasYearly || !tier.monthlyPrice || !tier.yearlyPrice) {
+    return undefined
+  }
+  if (
+    typeof subscription.amount === 'number' &&
+    subscription.amount / 100 < tier.monthlyPrice
+  ) {
     return undefined
   }
   return tier

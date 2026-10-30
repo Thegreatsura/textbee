@@ -150,7 +150,7 @@ export default function UpgradeToProAlert() {
               asChild
               className={`${scaleAlertConfig.buttonColor} text-xs md:text-sm`}
             >
-              <Link href={checkoutPath('scale')}>
+              <Link href={checkoutPath('scale', undefined, 'app_usage_alert')}>
                 {scaleAlertConfig.buttonText}
               </Link>
             </Button>
@@ -195,7 +195,7 @@ export default function UpgradeToProAlert() {
             asChild
             className={`${alertConfig.buttonColor} text-xs md:text-sm`}
           >
-            <Link href={checkoutPath('pro')}>{alertConfig.buttonText}</Link>
+            <Link href={checkoutPath('pro', undefined, 'app_usage_alert')}>{alertConfig.buttonText}</Link>
           </Button>
           {/* The dashboard has no pricing route; /#pricing was its own root. */}
           {alertConfig.urgency === 'normal' && (

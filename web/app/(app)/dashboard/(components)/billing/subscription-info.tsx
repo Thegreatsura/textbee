@@ -453,7 +453,7 @@ export default function SubscriptionInfo() {
         <div className='mt-4 flex flex-wrap items-center gap-2'>
           {billing.upgradeTier && (
             <Button size='sm' asChild>
-              <Link href={checkoutPath(billing.upgradeTier.id)}>
+              <Link href={checkoutPath(billing.upgradeTier.id, undefined, 'app_billing')}>
                 Upgrade to {billing.upgradeTier.name}
                 <ArrowRight className='ml-1 h-3.5 w-3.5' aria-hidden />
               </Link>

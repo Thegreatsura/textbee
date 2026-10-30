@@ -178,6 +178,15 @@ describe('yearlySwitchTier', () => {
     expect(yearlySwitchTier(subscription, mockBillingPlans)).toBeUndefined()
   })
 
+  it('offers nothing when the monthly charge is below the list price', () => {
+    expect(yearlySwitchTier({ ...monthly, amount: 500 }, mockBillingPlans)).toBeUndefined()
+    expect(yearlySwitchTier({ ...monthly, amount: 1899 }, mockBillingPlans)).toBeUndefined()
+  })
+
+  it('still offers the switch when the monthly charge is the list price', () => {
+    expect(yearlySwitchTier({ ...monthly, amount: 1900 }, mockBillingPlans)?.id).toBe('pro')
+  })
+
   it('offers nothing while either price is unknown', () => {
     expect(yearlySwitchTier(monthly, undefined)).toBeUndefined()
     expect(

@@ -72,12 +72,36 @@ describe('YearlySwitchCard', () => {
     expect(post).toHaveBeenCalledWith('/billing/change-plan', {
       planName: 'pro',
       billingInterval: 'yearly',
+      from: 'app_billing_yearly',
     })
     await waitFor(() =>
       expect(window.location.href).toBe(
         '/dashboard/account/billing?plan-change-success=1'
       )
     )
+  })
+
+  it('names the email that led to the billing page as the prior source', async () => {
+    post.mockResolvedValue({ data: { success: true } })
+    document.cookie = `tb_cfrom=${encodeURIComponent(
+      JSON.stringify({ from: 'email', ref: 'yearly_switch', at: '2026-10-01T00:00:00.000Z' })
+    )}; path=/`
+    try {
+      render(<YearlySwitchCard subscription={monthlyPro} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Switch to yearly' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm switch' }))
+
+      expect(post).toHaveBeenCalledWith('/billing/change-plan', {
+        planName: 'pro',
+        billingInterval: 'yearly',
+        from: 'app_billing_yearly',
+        priorFrom: 'email',
+        priorRef: 'yearly_switch',
+      })
+    } finally {
+      document.cookie = 'tb_cfrom=; path=/; max-age=0'
+    }
   })
 
   // The request may have charged the card, so it is never resent on its own.
@@ -107,6 +131,7 @@ describe('YearlySwitchCard', () => {
   it.each([
     ['a yearly subscription', { ...monthlyPro, recurringInterval: 'year' }],
     ['a past due subscription', { ...monthlyPro, status: 'past_due' }],
+    ['a discounted monthly charge', { ...monthlyPro, amount: 950 }],
     ['a canceling subscription', { ...monthlyPro, cancelAtPeriodEnd: true }],
     ['a custom plan', { ...monthlyPro, plan: { name: 'custom-acme' } }],
     ['a free account', { plan: { name: 'free' } }],

@@ -24,6 +24,7 @@ import {
   yearlySavingPercent,
 } from '@/lib/plans'
 import { apiErrorMessage } from '@/lib/utils/errorHandler'
+import { checkoutSourceBody } from '@/lib/analytics/checkout-source'
 
 /** Offers a monthly subscriber the same plan billed yearly. */
 export default function YearlySwitchCard({
@@ -50,6 +51,7 @@ export default function YearlySwitchCard({
       await httpBrowserClient.post(ApiEndpoints.billing.changePlan(), {
         planName: tier.id,
         billingInterval: 'yearly',
+        ...checkoutSourceBody({ from: 'app_billing_yearly' }),
       })
       window.location.href = '/dashboard/account/billing?plan-change-success=1'
     } catch (err) {

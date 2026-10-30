@@ -255,6 +255,15 @@ describe('checkoutPath', () => {
     )
   })
 
+  it('adds the placement after the interval', () => {
+    expect(checkoutPath('pro', 'monthly', 'app_get_started')).toBe(
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
+    )
+    expect(checkoutPath('scale', undefined, 'app_usage_alert')).toBe(
+      '/checkout/scale?billingInterval=yearly&from=app_usage_alert'
+    )
+  })
+
   it('carries an explicit interval through', () => {
     expect(checkoutPath('pro', 'yearly')).toBe(
       '/checkout/pro?billingInterval=yearly'

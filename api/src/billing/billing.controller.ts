@@ -169,7 +169,7 @@ export class BillingController {
   @ApiOperation({
     summary: 'Follow a switch-to-yearly email link',
     description:
-      'Checks a signed link from a billing email and redirects to the yearly checkout for the current plan. A past due subscription goes through the customer portal first, which returns to that checkout. An invalid or expired link, a custom plan, or a plan with no yearly option redirects to the billing page.',
+      'Checks a signed link from a billing email and redirects to the yearly checkout for the current plan. A past due subscription goes through the customer portal first, which returns to the billing page. An invalid or expired link, a custom plan, a plan with no yearly option, or a monthly charge below the list price redirects to the billing page.',
   })
   @ApiQuery({
     name: 't',

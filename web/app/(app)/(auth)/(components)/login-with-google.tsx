@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useTheme } from 'next-themes'
 import { readAttribution } from '@/lib/analytics/attribution'
 import { track } from '@/lib/analytics/track'
+import { safeRedirect } from '@/lib/auth-redirect'
 
 // The provider lives here rather than in the app-wide tree so the Google
 // Identity SDK is only loaded on the two pages that render this button
@@ -62,7 +63,8 @@ function GoogleLoginButton() {
     // This button also serves /login, so attribution is sent every time and the
     // API applies it only when it creates the account.
     const attribution = readAttribution()
-    const destination = redirect ? decodeURIComponent(redirect) : Routes.dashboard
+    const destination =
+      safeRedirect(redirect, window.location.origin) ?? Routes.dashboard
 
     // redirect:false on purpose: with redirect:true the browser navigates away
     // and this promise never resolves, so a first sign-in could never be told

@@ -70,11 +70,11 @@ describe('PlanPicker', () => {
     expect(screen.getByText('billed monthly')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
       'href',
-      '/checkout/pro?billingInterval=monthly'
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
     )
     expect(
       screen.getByRole('link', { name: /Upgrade to Scale/ })
-    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly')
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly&from=app_get_started')
   })
 
   it('waits for prices instead of flashing cards without them', () => {
@@ -125,11 +125,11 @@ describe('PlanPicker', () => {
 
     expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
       'href',
-      '/checkout/pro?billingInterval=yearly'
+      '/checkout/pro?billingInterval=yearly&from=app_get_started'
     )
     expect(
       screen.getByRole('link', { name: /Upgrade to Scale/ })
-    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly')
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly&from=app_get_started')
   })
 
   it('marks the subscribed tier as current and does not sell it again', () => {
@@ -227,10 +227,10 @@ describe('PlanPicker with NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL=monthly', () => {
 
     expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
       'href',
-      '/checkout/pro?billingInterval=monthly'
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
     )
     expect(
       screen.getByRole('link', { name: /Upgrade to Scale/ })
-    ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly')
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly&from=app_get_started')
   })
 })

@@ -171,7 +171,7 @@ function PlanCard({
               guarantee.
             </p>
             <Button className='w-full' asChild>
-              <Link href={checkoutPath(tier.id, interval)}>
+              <Link href={checkoutPath(tier.id, interval, 'app_get_started')}>
                 Upgrade to {tier.name}
               </Link>
             </Button>

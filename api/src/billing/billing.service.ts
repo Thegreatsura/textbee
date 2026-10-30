@@ -32,6 +32,11 @@ import {
   CheckoutSessionDocument,
 } from './schemas/checkout-session.schema'
 import {
+  CheckoutAttempt,
+  CheckoutAttemptDocument,
+} from './schemas/checkout-attempt.schema'
+import { checkoutSource } from './checkout-source'
+import {
   BillingNotificationsService,
   BillingNotificationType,
 } from './billing-notifications.service'
@@ -52,6 +57,7 @@ import { formatDateTime, pluralize, verifyLink } from '../mail/email-render'
 import {
   appPublicUrl,
   billingUrl,
+  defaultBillingInterval,
   emailLinkSecret,
 } from '../mail/email-links'
 
@@ -112,6 +118,8 @@ export class BillingService {
     private readonly billingNotifications: BillingNotificationsService,
     private readonly usersService: UsersService,
     private readonly analyticsService: AnalyticsService,
+    @InjectModel(CheckoutAttempt.name)
+    private checkoutAttemptModel: Model<CheckoutAttemptDocument>,
   ) {
     this.polarApi = createPolar({
       accessToken: process.env.POLAR_ACCESS_TOKEN ?? '',
@@ -248,6 +256,7 @@ export class BillingService {
     }
 
     const selectedPlan = planChange.selectedPlan
+    const source = checkoutSource(payload)
 
     const existingCheckoutSession = await this.checkoutSessionModel.findOne({
       user: user._id,
@@ -263,6 +272,15 @@ export class BillingService {
       existingCheckoutSession.planName === payload.planName &&
       existingCheckoutSession.billingInterval === billingInterval
     ) {
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'checkout',
+        planName: payload.planName,
+        billingInterval,
+        ...source,
+        checkoutSessionId: existingCheckoutSession.checkoutSessionId,
+        reusedCheckout: true,
+      })
       return { redirectUrl: existingCheckoutSession.checkoutUrl }
     }
 
@@ -296,6 +314,8 @@ export class BillingService {
           ...(user.attribution?.first?.campaign && {
             utmCampaign: user.attribution.first.campaign,
           }),
+          ...(source.from && { checkoutFrom: source.from }),
+          ...(source.ref && { checkoutRef: source.ref }),
         },
         external_customer_id: user._id?.toString(),
       }
@@ -345,11 +365,29 @@ export class BillingService {
           console.error(error)
         })
 
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'checkout',
+        planName: payload.planName,
+        billingInterval,
+        ...source,
+        checkoutSessionId: checkout.id,
+        reusedCheckout: false,
+      })
+
       return { redirectUrl: checkout.url }
     } catch (error) {
       console.error(error)
       throw new Error('Failed to create checkout')
     }
+  }
+
+  private recordCheckoutAttempt(attempt: CheckoutAttempt) {
+    Promise.resolve()
+      .then(() => this.checkoutAttemptModel.create(attempt))
+      .catch((error) => {
+        console.error('failed to record checkout attempt', error?.message)
+      })
   }
 
   // Polar reports recurringInterval as 'month'/'year', checkout requests use
@@ -595,6 +633,15 @@ export class BillingService {
         .catch((error) => {
           console.error(error)
         })
+
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'plan_change',
+        planName: selectedPlan.name,
+        billingInterval,
+        ...checkoutSource(payload),
+        completedAt: new Date(),
+      })
 
       return { success: true, plan: selectedPlan.name }
     } catch (error) {
@@ -1741,13 +1788,17 @@ export class BillingService {
       return session.checkoutUrl
     }
     const plan = encodeURIComponent(session?.planName || 'pro')
-    const interval = session?.billingInterval === 'yearly' ? 'yearly' : 'monthly'
-    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}`
+    const interval =
+      session?.billingInterval === 'yearly' || session?.billingInterval === 'monthly'
+        ? session.billingInterval
+        : defaultBillingInterval()
+    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}&from=email&ref=checkout_resume`
   }
 
   /**
    * Where a signed switch-to-yearly link leads: the yearly confirm screen for
-   * the current plan, through the customer portal first when the card failed.
+   * the current plan, or the customer portal when the card failed, which
+   * returns to the billing page.
    */
   async yearlySwitchRedirect(token: unknown): Promise<string> {
     const polarSubscriptionId = this.linkId(token, 'yearly')
@@ -1764,15 +1815,22 @@ export class BillingService {
     if (!plan?.name || plan.name.startsWith('custom') || !plan.polarYearlyProductId) {
       return billingUrl()
     }
+    if (
+      typeof subscription.amount === 'number' &&
+      typeof plan.monthlyPrice === 'number' &&
+      subscription.amount < plan.monthlyPrice
+    ) {
+      return billingUrl()
+    }
     const planPath = encodeURIComponent(plan.name)
-    const target = `${appPublicUrl()}/checkout/${planPath}?billingInterval=yearly`
+    const target = `${appPublicUrl()}/checkout/${planPath}?billingInterval=yearly&from=email&ref=yearly_switch`
     if (subscription.status !== 'past_due' || !subscription.polarCustomerId) {
       return target
     }
     try {
       const session = await this.polarApi.customerSessions.create({
         customer_id: subscription.polarCustomerId,
-        return_url: target,
+        return_url: `${appPublicUrl()}/dashboard/account/billing?from=email&ref=yearly_switch`,
       })
       const url = session?.customer_portal_url
       return typeof url === 'string' && url.startsWith('https://') ? url : target
@@ -1815,5 +1873,23 @@ export class BillingService {
       .catch((error) => {
         console.error('failed to sync checkout session status', error)
       })
+
+    if (status === 'succeeded') {
+      try {
+        const latest = await this.checkoutAttemptModel
+          .findOne({ checkoutSessionId })
+          .sort({ createdAt: -1 })
+          .select('_id completedAt')
+          .lean()
+        if (latest && !latest.completedAt) {
+          await this.checkoutAttemptModel.updateOne(
+            { _id: latest._id, completedAt: { $exists: false } },
+            { $set: { completedAt: update.completedAt } },
+          )
+        }
+      } catch (error) {
+        console.error('failed to complete checkout attempt', error?.message)
+      }
+    }
   }
 }

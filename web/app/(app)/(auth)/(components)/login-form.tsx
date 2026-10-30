@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/form'
 import { Routes } from '@/config/routes'
 import { useTurnstile } from '@/lib/turnstile'
+import { redirectFromLocation } from '@/lib/auth-redirect'
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Invalid email address' }),
@@ -102,7 +103,7 @@ export default function LoginForm() {
         return
       }
 
-      router.push(Routes.dashboard)
+      router.push(redirectFromLocation() ?? Routes.dashboard)
       router.refresh()
     } catch (error) {
       console.error('login error:', error)

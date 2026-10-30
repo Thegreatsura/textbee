@@ -59,4 +59,39 @@ describe('RegisterForm', () => {
       expect(push).toHaveBeenCalledWith('/verify-email?verificationEmailSent=1')
     )
   })
+
+  it('continues to the redirect target after signup, query included', async () => {
+    const target = `${window.location.origin}/checkout/pro?billingInterval=yearly&from=site_pricing`
+    window.history.replaceState(null, '', `/register?redirect=${encodeURIComponent(target)}`)
+    try {
+      signIn.mockResolvedValueOnce({ ok: true, error: null })
+      render(<RegisterForm />)
+      await fillAndSubmit()
+
+      await waitFor(() =>
+        expect(push).toHaveBeenCalledWith('/checkout/pro?billingInterval=yearly&from=site_pricing')
+      )
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
+  })
+
+  it('goes to verify-email when the redirect points at another site', async () => {
+    window.history.replaceState(
+      null,
+      '',
+      `/register?redirect=${encodeURIComponent('https://evil.example.net/x')}`
+    )
+    try {
+      signIn.mockResolvedValueOnce({ ok: true, error: null })
+      render(<RegisterForm />)
+      await fillAndSubmit()
+
+      await waitFor(() =>
+        expect(push).toHaveBeenCalledWith('/verify-email?verificationEmailSent=1')
+      )
+    } finally {
+      window.history.replaceState(null, '', '/')
+    }
+  })
 })

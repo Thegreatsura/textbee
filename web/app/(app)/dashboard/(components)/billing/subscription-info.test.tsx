@@ -104,7 +104,7 @@ describe('SubscriptionInfo', () => {
       render(<SubscriptionInfo />)
       expect(
         screen.getByRole('link', { name: /Upgrade to Pro/ })
-      ).toHaveAttribute('href', '/checkout/pro?billingInterval=yearly')
+      ).toHaveAttribute('href', '/checkout/pro?billingInterval=yearly&from=app_billing')
     })
 
     it('still shows the plan limits', () => {
@@ -137,7 +137,7 @@ describe('SubscriptionInfo', () => {
 
       expect(
         screen.getByRole('link', { name: /Upgrade to Scale/ })
-      ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly')
+      ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly&from=app_billing')
       expect(
         screen.queryByRole('link', { name: /Upgrade to Pro/ })
       ).not.toBeInTheDocument()

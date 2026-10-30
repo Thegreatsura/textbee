@@ -10,7 +10,7 @@ import {
   sanitizeUserText,
   TemplateVars,
 } from '../../mail/email-render'
-import { billingUrl, scaleUpgradeUrl, upgradeUrl } from '../../mail/email-links'
+import { billingEmailUrl, scaleUpgradeUrl, upgradeUrl } from '../../mail/email-links'
 import {
   SentEmail,
   SentEmailDocument,
@@ -165,9 +165,9 @@ export class BillingNotificationsProcessor {
   ): Promise<TemplateVars> {
     const user = new Types.ObjectId(String(userId))
     const vars: TemplateVars = {
-      billingUrl: billingUrl(),
-      upgradeUrl: upgradeUrl(),
-      scaleUpgradeUrl: scaleUpgradeUrl(),
+      billingUrl: billingEmailUrl(key),
+      upgradeUrl: upgradeUrl(key),
+      scaleUpgradeUrl: scaleUpgradeUrl(key),
       headroomPercent: '10%',
       planName: planLabel(meta.planName),
     }

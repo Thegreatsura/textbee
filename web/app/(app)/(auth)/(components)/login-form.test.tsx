@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import LoginForm from './login-form'
@@ -88,5 +88,41 @@ describe('LoginForm', () => {
     expect(
       screen.queryByText(/invalid email or password/i)
     ).not.toBeInTheDocument()
+  })
+
+  describe('with a redirect param', () => {
+    afterEach(() => window.history.replaceState(null, '', '/'))
+
+    const succeed = () =>
+      signIn.mockResolvedValueOnce({ error: null, ok: true, status: 200, url: null })
+
+    it('returns to the page that sent the reader to log in, query included', async () => {
+      const target = `${window.location.origin}/checkout/pro?billingInterval=yearly&from=email&ref=U2`
+      window.history.replaceState(null, '', `/login?redirect=${encodeURIComponent(target)}`)
+      succeed()
+
+      render(<LoginForm />)
+      await fillAndSubmit()
+
+      await waitFor(() =>
+        expect(push).toHaveBeenCalledWith(
+          '/checkout/pro?billingInterval=yearly&from=email&ref=U2'
+        )
+      )
+    })
+
+    it('ignores a redirect to another site', async () => {
+      window.history.replaceState(
+        null,
+        '',
+        `/login?redirect=${encodeURIComponent('https://evil.example.net/x')}`
+      )
+      succeed()
+
+      render(<LoginForm />)
+      await fillAndSubmit()
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith('/dashboard'))
+    })
   })
 })

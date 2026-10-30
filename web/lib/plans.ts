@@ -145,8 +145,10 @@ export function defaultIntervalFor(planId: string): BillingInterval {
 export function checkoutPath(
   planId: string,
   interval: BillingInterval = defaultIntervalFor(planId),
+  from?: string,
 ): string {
-  return `/checkout/${planId}?billingInterval=${interval}`
+  const path = `/checkout/${planId}?billingInterval=${interval}`
+  return from ? `${path}&from=${encodeURIComponent(from)}` : path
 }
 
 /**

@@ -26,6 +26,7 @@ import { Routes } from '@/config/routes'
 import { useTurnstile } from '@/lib/turnstile'
 import { readAttribution } from '@/lib/analytics/attribution'
 import { track } from '@/lib/analytics/track'
+import { redirectFromLocation } from '@/lib/auth-redirect'
 
 const registerSchema = z.object({
   name: z
@@ -127,7 +128,9 @@ export default function RegisterForm() {
         })
       } else {
         track('sign_up', { method: 'email' })
-        router.push(`${Routes.verifyEmail}?verificationEmailSent=1`)
+        router.push(
+          redirectFromLocation() ?? `${Routes.verifyEmail}?verificationEmailSent=1`
+        )
       }
     } catch (error) {
       console.error('register error:', error)

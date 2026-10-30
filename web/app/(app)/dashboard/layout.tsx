@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { NotificationProvider } from '@/components/notifications/notification-provider'
@@ -18,6 +18,7 @@ import {
   type NavItem,
 } from './(components)/nav-items'
 import { cn } from '@/lib/utils'
+import { captureCheckoutSource } from '@/lib/analytics/checkout-source'
 
 export default function DashboardLayout({
   children,
@@ -28,6 +29,10 @@ export default function DashboardLayout({
   // Owned here, not inside the palette, so both the sidebar trigger (desktop)
   // and the app header search button (mobile) open the same dialog.
   const [searchOpen, setSearchOpen] = useState(false)
+
+  useEffect(() => {
+    captureCheckoutSource()
+  }, [pathname])
 
   return (
     // One feed query, shared by the tile slot and the modal host, so they cannot

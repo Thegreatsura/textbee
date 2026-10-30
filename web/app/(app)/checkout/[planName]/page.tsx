@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, use } from 'react'
+import { useState, useEffect, useCallback, useRef, use } from 'react'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
 import { apiErrorMessage } from '@/lib/utils/errorHandler'
@@ -13,8 +13,10 @@ import { Spinner } from '@/components/ui/spinner'
 import { Badge } from '@/components/ui/badge'
 import {
   MONEY_BACK_DAYS,
+  defaultIntervalFor,
   formatPlanPrice,
   monthlyEquivalent,
+  monthsFreeSuffix,
   priceTiers,
   yearlySavingPercent,
   type BillingInterval,
@@ -22,6 +24,10 @@ import {
 import { useBillingPlans } from '@/lib/api'
 import { Routes } from '@/config/routes'
 import { track } from '@/lib/analytics/track'
+import {
+  checkoutSourceBody,
+  sourceFromSearch,
+} from '@/lib/analytics/checkout-source'
 import { cn } from '@/lib/utils'
 
 interface PlanChangePreview {
@@ -87,7 +93,9 @@ export default function CheckoutPage({
   const { status } = useSession()
   const router = useRouter()
 
-  const [selected, setSelected] = useState<BillingInterval>('yearly')
+  const [selected, setSelected] = useState<BillingInterval>(() =>
+    defaultIntervalFor(planName),
+  )
 
   // marketing and pricing pages link here with ?billingInterval=monthly|yearly
   // (legacy ?billing= fallback until the marketing site redeploys)
@@ -101,21 +109,30 @@ export default function CheckoutPage({
         ? 'monthly'
         : null
 
+  const searchString = searchParams.toString()
+  const searchRef = useRef(searchString)
+  useEffect(() => {
+    searchRef.current = searchString
+  }, [searchString])
+  const startedRef = useRef(false)
+
   const initiateCheckout = useCallback(
     async (billingInterval: BillingInterval) => {
       setIsSubmitting(true)
       setIsSlow(false)
       setError(null)
+      const source = checkoutSourceBody(sourceFromSearch(searchRef.current))
       try {
         const response = await httpBrowserClient.post(
           ApiEndpoints.billing.checkout(),
-          { planName, billingInterval },
+          { planName, billingInterval, ...source },
         )
 
         if (response.data?.redirectUrl) {
           track('begin_checkout', {
             plan: planName,
             billing_interval: billingInterval,
+            ...(source.from && { from: source.from }),
           })
           window.location.href = response.data?.redirectUrl
         } else if (response.data?.planChange) {
@@ -145,6 +162,7 @@ export default function CheckoutPage({
       await httpBrowserClient.post(ApiEndpoints.billing.changePlan(), {
         planName,
         billingInterval: urlInterval ?? selected,
+        ...checkoutSourceBody(sourceFromSearch(searchRef.current)),
       })
       // Straight to the billing tab: the /dashboard/account redirect stub
       // drops query params, which silently ate the success toast.
@@ -165,7 +183,9 @@ export default function CheckoutPage({
   // an interval in the URL means the choice was already made on the pricing
   // page, so do not ask again
   useEffect(() => {
+    if (startedRef.current) return
     if (urlInterval === 'monthly' || urlInterval === 'yearly') {
+      startedRef.current = true
       initiateCheckout(urlInterval)
     }
   }, [urlInterval, initiateCheckout])
@@ -313,7 +333,7 @@ export default function CheckoutPage({
     )
   }
 
-  // no interval in the URL: ask rather than guess, with yearly preselected
+  // no interval in the URL: ask rather than guess, with the default preselected
   const perMonth = tier ? monthlyEquivalent(tier) : undefined
   const saving = tier ? yearlySavingPercent(tier) : undefined
 
@@ -350,7 +370,9 @@ export default function CheckoutPage({
                 <span className='flex items-center justify-between gap-2'>
                   <span className='font-medium'>Yearly</span>
                   {saving !== undefined && (
-                    <Badge variant='secondary'>Save {saving}%</Badge>
+                    <Badge variant='secondary'>
+                      Save {saving}%{monthsFreeSuffix(tier)}
+                    </Badge>
                   )}
                 </span>
                 <span className='mt-1 block text-sm text-muted-foreground tabular-nums'>

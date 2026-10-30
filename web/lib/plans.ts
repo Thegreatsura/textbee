@@ -119,8 +119,20 @@ export function isFreeTier(tier: PlanTier): boolean {
   return tier.id === 'free'
 }
 
-/** The interval an in-app CTA commits to unless the caller says otherwise. */
-export const DEFAULT_CHECKOUT_INTERVAL: BillingInterval = 'monthly'
+/**
+ * The interval an in-app CTA commits to unless the caller says otherwise.
+ * Exactly "monthly" in NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL gives monthly;
+ * anything else, unset included, gives yearly.
+ */
+export const DEFAULT_CHECKOUT_INTERVAL: BillingInterval =
+  process.env.NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL === 'monthly'
+    ? 'monthly'
+    : 'yearly'
+
+/** The default interval for one tier: monthly when it has no yearly option. */
+export function defaultIntervalFor(planId: string): BillingInterval {
+  return findPlanTier(planId)?.hasYearly ? DEFAULT_CHECKOUT_INTERVAL : 'monthly'
+}
 
 /**
  * Checkout URL for an upgrade CTA.
@@ -132,9 +144,11 @@ export const DEFAULT_CHECKOUT_INTERVAL: BillingInterval = 'monthly'
  */
 export function checkoutPath(
   planId: string,
-  interval: BillingInterval = DEFAULT_CHECKOUT_INTERVAL,
+  interval: BillingInterval = defaultIntervalFor(planId),
+  from?: string,
 ): string {
-  return `/checkout/${planId}?billingInterval=${interval}`
+  const path = `/checkout/${planId}?billingInterval=${interval}`
+  return from ? `${path}&from=${encodeURIComponent(from)}` : path
 }
 
 /**
@@ -164,6 +178,20 @@ export function yearlySavingPercent(
   if (!tier.yearlyPrice || !tier.monthlyPrice) return undefined
   const yearOfMonthly = tier.monthlyPrice * 12
   return Math.round(((yearOfMonthly - tier.yearlyPrice) / yearOfMonthly) * 100)
+}
+
+/** Whole months the yearly price saves against twelve monthly payments. */
+export function yearlyMonthsFree(tier: PricedPlanTier): number | undefined {
+  if (!tier.yearlyPrice || !tier.monthlyPrice) return undefined
+  if (tier.yearlyPrice <= 0 || tier.monthlyPrice <= 0) return undefined
+  return Math.floor(12 - tier.yearlyPrice / tier.monthlyPrice)
+}
+
+/** ", 2 months free", or empty when the saving is under a month. */
+export function monthsFreeSuffix(tier: PricedPlanTier): string {
+  const months = yearlyMonthsFree(tier)
+  if (months === undefined || months < 1) return ''
+  return `, ${months} ${months === 1 ? 'month' : 'months'} free`
 }
 
 /**

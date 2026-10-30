@@ -6,6 +6,7 @@ import { X } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import type { NotificationAction, ServedNotification } from '@/lib/api'
+import { withNoticeSource } from '@/lib/analytics/checkout-source'
 
 // Presentational. Everything it shows was decided server side, so it holds no
 // targeting logic and takes no data of its own. The markup is deliberately
@@ -17,10 +18,12 @@ const isExternal = (href: string) => /^https?:\/\//i.test(href)
 function ActionButton({
   action,
   index,
+  notificationId,
   onActivate,
 }: {
   action: NotificationAction
   index: number
+  notificationId: string
   onActivate: () => void
 }) {
   const variant = action.style === 'secondary' || index > 0 ? 'outline' : 'default'
@@ -39,7 +42,7 @@ function ActionButton({
           {action.label}
         </a>
       ) : (
-        <Link href={action.href}>{action.label}</Link>
+        <Link href={withNoticeSource(action.href, notificationId)}>{action.label}</Link>
       )}
     </Button>
   )
@@ -95,6 +98,7 @@ export function NotificationTile({
               key={`${action.label}-${index}`}
               action={action}
               index={index}
+              notificationId={notification.id}
               onActivate={() => onClick(notification)}
             />
           ))}

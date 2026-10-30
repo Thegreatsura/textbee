@@ -13,6 +13,7 @@ import { MailModule } from 'src/mail/mail.module'
 import { PolarWebhookPayload, PolarWebhookPayloadSchema } from './schemas/polar-webhook-payload.schema'
 import { Device, DeviceSchema } from '../gateway/schemas/device.schema'
 import { CheckoutSession, CheckoutSessionSchema } from './schemas/checkout-session.schema'
+import { CheckoutAttempt, CheckoutAttemptSchema } from './schemas/checkout-attempt.schema'
 import { BillingNotification, BillingNotificationSchema } from './schemas/billing-notification.schema'
 import { BillingNotificationsService } from './billing-notifications.service'
 import { SMS, SMSSchema } from '../gateway/schemas/sms.schema'
@@ -40,6 +41,7 @@ import { BillingNotificationsProcessor } from 'src/billing/queue/billing-notific
       { name: PolarWebhookPayload.name, schema: PolarWebhookPayloadSchema },
       { name: Device.name, schema: DeviceSchema },
       { name: CheckoutSession.name, schema: CheckoutSessionSchema },
+      { name: CheckoutAttempt.name, schema: CheckoutAttemptSchema },
       { name: BillingNotification.name, schema: BillingNotificationSchema },
       { name: SMS.name, schema: SMSSchema },
       { name: SentEmail.name, schema: SentEmailSchema },

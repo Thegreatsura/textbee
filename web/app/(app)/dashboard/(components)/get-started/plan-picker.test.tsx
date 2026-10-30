@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { mockBillingPlans } from '@/test/fixtures'
 import PlanPicker from './plan-picker'
@@ -37,24 +37,44 @@ describe('PlanPicker', () => {
   })
 
   // The headline must be what the CTA charges, not the yearly per-month
-  // equivalent.
-  it('leads with the price its CTA actually charges', () => {
+  // equivalent. Yearly is the default interval.
+  it('leads with the yearly price its CTA actually charges', () => {
     renderPicker()
 
-    expect(screen.getByText('$19.00')).toBeInTheDocument()
-    expect(screen.getByText('$49.00')).toBeInTheDocument()
+    expect(screen.getByText('$120.00')).toBeInTheDocument()
+    expect(screen.getByText('$360.00')).toBeInTheDocument()
+    expect(screen.getAllByText('/year')).toHaveLength(2)
+    expect(screen.queryByText('$19.00')).not.toBeInTheDocument()
     expect(screen.queryByText('$10.00')).not.toBeInTheDocument()
   })
 
-  it('still offers the yearly alternative underneath', () => {
+  it('captions the yearly price with its per-month equivalent', () => {
     renderPicker()
 
+    expect(screen.getByText('$10.00/month, billed yearly')).toBeInTheDocument()
+    expect(screen.getByText('$30.00/month, billed yearly')).toBeInTheDocument()
+  })
+
+  // Quoting a yearly charge with no yearly price to show would mislead, so
+  // such a tier sells month to month, headline and CTA alike.
+  it('sells monthly when a tier has no yearly price', () => {
+    useBillingPlans.mockReturnValue({
+      data: mockBillingPlans.map((p) =>
+        p.name === 'pro' ? { ...p, yearlyPrice: 0 } : p
+      ),
+      isPending: false,
+    })
+    renderPicker()
+
+    expect(screen.getByText('$19.00')).toBeInTheDocument()
+    expect(screen.getByText('billed monthly')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
+      'href',
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
+    )
     expect(
-      screen.getByText('or $10.00/month billed yearly at $120.00')
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText('or $30.00/month billed yearly at $360.00')
-    ).toBeInTheDocument()
+      screen.getByRole('link', { name: /Upgrade to Scale/ })
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly&from=app_get_started')
   })
 
   it('waits for prices instead of flashing cards without them', () => {
@@ -83,15 +103,19 @@ describe('PlanPicker', () => {
     renderPicker()
 
     expect(
-      screen.getAllByText(/7-day money-back guarantee/)
+      screen.getAllByText(/14-day money-back guarantee/)
     ).toHaveLength(2)
   })
 
-  it('quotes the yearly saving on each paid tier', () => {
+  it('quotes the yearly saving on each paid tier, in months too', () => {
     renderPicker()
 
-    expect(screen.getByText('Save 47% yearly')).toBeInTheDocument()
-    expect(screen.getByText('Save 39% yearly')).toBeInTheDocument()
+    expect(
+      screen.getByText('Save 47% yearly, 5 months free')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Save 39% yearly, 4 months free')
+    ).toBeInTheDocument()
   })
 
   // Naming the interval is what makes checkout redirect straight to Polar
@@ -101,11 +125,11 @@ describe('PlanPicker', () => {
 
     expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
       'href',
-      '/checkout/pro?billingInterval=monthly'
+      '/checkout/pro?billingInterval=yearly&from=app_get_started'
     )
     expect(
       screen.getByRole('link', { name: /Upgrade to Scale/ })
-    ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly')
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly&from=app_get_started')
   })
 
   it('marks the subscribed tier as current and does not sell it again', () => {
@@ -148,5 +172,65 @@ describe('PlanPicker', () => {
   it('offers Skip while the step is unfinished', () => {
     renderPicker({ isDone: false })
     expect(screen.getByText(/Skip for now/)).toBeInTheDocument()
+  })
+})
+
+// The default is read once at module load, so this block loads a fresh copy.
+describe('PlanPicker with NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL=monthly', () => {
+  let MonthlyPicker: typeof PlanPicker
+
+  beforeEach(async () => {
+    vi.stubEnv('NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL', 'monthly')
+    vi.resetModules()
+    MonthlyPicker = (await import('./plan-picker')).default
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  const renderPicker = () =>
+    render(
+      <MonthlyPicker isLoading={false} isSaving={false} onSkip={() => {}} />
+    )
+
+  it('leads with the monthly price its CTA actually charges', () => {
+    renderPicker()
+
+    expect(screen.getByText('$19.00')).toBeInTheDocument()
+    expect(screen.getByText('$49.00')).toBeInTheDocument()
+    expect(screen.queryByText('/year')).not.toBeInTheDocument()
+    expect(screen.queryByText('$10.00')).not.toBeInTheDocument()
+  })
+
+  it('still offers the yearly alternative underneath', () => {
+    renderPicker()
+
+    expect(
+      screen.getByText('or $10.00/month billed yearly at $120.00')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('or $30.00/month billed yearly at $360.00')
+    ).toBeInTheDocument()
+  })
+
+  it('quotes the monthly refund window', () => {
+    renderPicker()
+
+    expect(
+      screen.getAllByText(/7-day money-back guarantee/)
+    ).toHaveLength(2)
+  })
+
+  it('links each paid tier at its monthly checkout', () => {
+    renderPicker()
+
+    expect(screen.getByRole('link', { name: /Upgrade to Pro/ })).toHaveAttribute(
+      'href',
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
+    )
+    expect(
+      screen.getByRole('link', { name: /Upgrade to Scale/ })
+    ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly&from=app_get_started')
   })
 })

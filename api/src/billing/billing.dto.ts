@@ -73,6 +73,46 @@ export class CheckoutInputDTO {
     description: 'Billing period. Defaults to monthly.',
   })
   billingInterval?: 'monthly' | 'yearly'
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Where the request started, such as a page or an email. Lowercase letters, digits and underscores, up to 40 characters. An invalid value is ignored.',
+    example: 'app_billing',
+  })
+  from?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Detail for from, such as an email or notice id. Letters, digits, underscores and hyphens, up to 64 characters. An invalid value is ignored.',
+  })
+  ref?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'An earlier from value seen in the same browser. Same format as from. An invalid value is ignored.',
+  })
+  priorFrom?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The ref that came with priorFrom. Same format as ref. An invalid value is ignored.',
+  })
+  priorRef?: string
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether from and ref were read from a stored value rather than the link.',
+  })
+  fromCookie?: boolean
 }
 
 export class PlanChangePreviewDTO {
@@ -141,6 +181,46 @@ export class ChangePlanInputDTO {
     description: 'Billing period to switch to.',
   })
   billingInterval?: 'monthly' | 'yearly'
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Where the request started, such as a page or an email. Lowercase letters, digits and underscores, up to 40 characters. An invalid value is ignored.',
+    example: 'app_billing',
+  })
+  from?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'Detail for from, such as an email or notice id. Letters, digits, underscores and hyphens, up to 64 characters. An invalid value is ignored.',
+  })
+  ref?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'An earlier from value seen in the same browser. Same format as from. An invalid value is ignored.',
+  })
+  priorFrom?: string
+
+  @ApiProperty({
+    type: String,
+    required: false,
+    description:
+      'The ref that came with priorFrom. Same format as ref. An invalid value is ignored.',
+  })
+  priorRef?: string
+
+  @ApiProperty({
+    type: Boolean,
+    required: false,
+    description: 'Whether from and ref were read from a stored value rather than the link.',
+  })
+  fromCookie?: boolean
 }
 
 export class ChangePlanResponseDTO {

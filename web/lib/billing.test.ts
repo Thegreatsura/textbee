@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { billingPriceLabel, deriveBillingState } from './billing'
+import { mockBillingPlans } from '@/test/fixtures'
+import {
+  billingPriceLabel,
+  deriveBillingState,
+  yearlySwitchTier,
+} from './billing'
 
 // The exact shape billing.service.ts synthesises when findOne turns up no
 // subscription: a plan and usage, no status, no amount, no dates.
@@ -142,5 +147,80 @@ describe('billingPriceLabel', () => {
     expect(billingPriceLabel(freePayload)).toBeNull()
     expect(billingPriceLabel({ amount: 0 })).toBeNull()
     expect(billingPriceLabel(undefined)).toBeNull()
+  })
+})
+
+describe('yearlySwitchTier', () => {
+  const monthly = {
+    plan: { name: 'Pro' },
+    status: 'active',
+    recurringInterval: 'month',
+    cancelAtPeriodEnd: false,
+  }
+
+  it('offers the current tier, priced, to an active monthly subscriber', () => {
+    const tier = yearlySwitchTier(monthly, mockBillingPlans)
+    expect(tier?.id).toBe('pro')
+    expect(tier?.yearlyPrice).toBe(120)
+    expect(
+      yearlySwitchTier({ ...monthly, recurringInterval: 'monthly' }, mockBillingPlans)?.id
+    ).toBe('pro')
+  })
+
+  it.each([
+    ['no subscription', undefined],
+    ['a yearly subscription', { ...monthly, recurringInterval: 'year' }],
+    ['a past due subscription', { ...monthly, status: 'past_due' }],
+    ['a canceling subscription', { ...monthly, cancelAtPeriodEnd: true }],
+    ['a custom plan', { ...monthly, plan: { name: 'custom-acme' } }],
+    ['a free account', { plan: { name: 'free' } }],
+  ])('offers nothing for %s', (_label, subscription) => {
+    expect(yearlySwitchTier(subscription, mockBillingPlans)).toBeUndefined()
+  })
+
+  describe('saving against the current monthly charge', () => {
+    it('uses the list saving for a list-price payer', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1900 }, mockBillingPlans)).toMatchObject({
+        id: 'pro',
+        savingPercent: 47,
+        monthsFree: 5,
+      })
+    })
+
+    it('uses the list price when the charge is unknown', () => {
+      expect(yearlySwitchTier(monthly, mockBillingPlans)).toMatchObject({
+        savingPercent: 47,
+        monthsFree: 5,
+      })
+      expect(yearlySwitchTier({ ...monthly, amount: 0 }, mockBillingPlans)).toMatchObject({
+        savingPercent: 47,
+      })
+    })
+
+    it('shows a lower saving to a payer on an older, lower price', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1100 }, mockBillingPlans)).toMatchObject({
+        id: 'pro',
+        savingPercent: 9,
+        monthsFree: 1,
+      })
+    })
+
+    it('offers nothing when yearly would cost a discounted payer more', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 900 }, mockBillingPlans)).toBeUndefined()
+    })
+
+    it('offers nothing when the saving rounds to 0', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1002 }, mockBillingPlans)).toBeUndefined()
+    })
+  })
+
+  it('offers nothing while either price is unknown', () => {
+    expect(yearlySwitchTier(monthly, undefined)).toBeUndefined()
+    expect(
+      yearlySwitchTier(monthly, [{ name: 'pro', monthlyPrice: 1900 }])
+    ).toBeUndefined()
+    expect(
+      yearlySwitchTier(monthly, [{ name: 'pro', yearlyPrice: 12000 }])
+    ).toBeUndefined()
   })
 })

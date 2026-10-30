@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mockBillingPlans } from '@/test/fixtures'
 import {
+  DEFAULT_CHECKOUT_INTERVAL,
   MONEY_BACK_DAYS,
   PLAN_TIERS,
   checkoutPath,
@@ -8,7 +9,9 @@ import {
   formatPlanPrice,
   formatPriceCaption,
   monthlyEquivalent,
+  monthsFreeSuffix,
   priceTiers,
+  yearlyMonthsFree,
   yearlySavingPercent,
 } from './plans'
 
@@ -180,6 +183,40 @@ describe('yearly pricing', () => {
   })
 })
 
+// Made-up prices, so the arithmetic is checked and not the catalogue.
+describe('yearlyMonthsFree', () => {
+  const tier = (monthlyPrice?: number, yearlyPrice?: number) => ({
+    ...pro,
+    monthlyPrice,
+    yearlyPrice,
+  })
+
+  it('counts whole months saved, rounding down', () => {
+    expect(yearlyMonthsFree(tier(10, 100))).toBe(2)
+    expect(yearlyMonthsFree(tier(10, 95))).toBe(2)
+    expect(yearlyMonthsFree(tier(19, 120))).toBe(5)
+  })
+
+  it('is zero when yearly saves less than one month', () => {
+    expect(yearlyMonthsFree(tier(10, 115))).toBe(0)
+  })
+
+  it('is undefined when either price is unknown or zero', () => {
+    expect(yearlyMonthsFree(tier(undefined, 100))).toBeUndefined()
+    expect(yearlyMonthsFree(tier(10, undefined))).toBeUndefined()
+    expect(yearlyMonthsFree(tier(0, 100))).toBeUndefined()
+    expect(yearlyMonthsFree(tier(10, 0))).toBeUndefined()
+    expect(yearlyMonthsFree(free)).toBeUndefined()
+  })
+
+  it('formats a suffix for the saving badge', () => {
+    expect(monthsFreeSuffix(tier(10, 100))).toBe(', 2 months free')
+    expect(monthsFreeSuffix(tier(10, 105))).toBe(', 1 month free')
+    expect(monthsFreeSuffix(tier(10, 115))).toBe('')
+    expect(monthsFreeSuffix(tier(10, undefined))).toBe('')
+  })
+})
+
 describe('findPlanTier', () => {
   it('is forgiving about casing and whitespace', () => {
     expect(findPlanTier('Pro')?.id).toBe('pro')
@@ -204,16 +241,72 @@ describe('checkoutPath', () => {
     }
   })
 
-  it('defaults to the month-to-month interval', () => {
-    expect(checkoutPath('pro')).toBe('/checkout/pro?billingInterval=monthly')
-    expect(checkoutPath('scale')).toBe('/checkout/scale?billingInterval=monthly')
+  it('defaults to yearly when the setting is unset', () => {
+    expect(DEFAULT_CHECKOUT_INTERVAL).toBe('yearly')
+    expect(checkoutPath('pro')).toBe('/checkout/pro?billingInterval=yearly')
+    expect(checkoutPath('scale')).toBe('/checkout/scale?billingInterval=yearly')
+  })
+
+  // Yearly is not on offer there, so the default must not pick it.
+  it('falls back to monthly for a tier without yearly billing', () => {
+    expect(checkoutPath('free')).toBe('/checkout/free?billingInterval=monthly')
+    expect(checkoutPath('custom-acme')).toBe(
+      '/checkout/custom-acme?billingInterval=monthly'
+    )
+  })
+
+  it('adds the placement after the interval', () => {
+    expect(checkoutPath('pro', 'monthly', 'app_get_started')).toBe(
+      '/checkout/pro?billingInterval=monthly&from=app_get_started'
+    )
+    expect(checkoutPath('scale', undefined, 'app_usage_alert')).toBe(
+      '/checkout/scale?billingInterval=yearly&from=app_usage_alert'
+    )
   })
 
   it('carries an explicit interval through', () => {
     expect(checkoutPath('pro', 'yearly')).toBe(
       '/checkout/pro?billingInterval=yearly'
     )
+    expect(checkoutPath('pro', 'monthly')).toBe(
+      '/checkout/pro?billingInterval=monthly'
+    )
   })
+})
+
+// The constant is read once at module load, so each case loads a fresh copy.
+describe('NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  const load = async (value: string | undefined) => {
+    if (value === undefined) delete process.env.NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL
+    else vi.stubEnv('NEXT_PUBLIC_DEFAULT_BILLING_INTERVAL', value)
+    vi.resetModules()
+    return import('./plans')
+  }
+
+  it('switches the default to monthly when set to exactly monthly', async () => {
+    const plans = await load('monthly')
+    expect(plans.DEFAULT_CHECKOUT_INTERVAL).toBe('monthly')
+    expect(plans.checkoutPath('pro')).toBe('/checkout/pro?billingInterval=monthly')
+    expect(plans.checkoutPath('pro', 'yearly')).toBe(
+      '/checkout/pro?billingInterval=yearly'
+    )
+  })
+
+  it.each([undefined, '', 'yearly', 'Monthly', 'weekly'])(
+    'defaults to yearly for %j',
+    async (value) => {
+      const plans = await load(value)
+      expect(plans.DEFAULT_CHECKOUT_INTERVAL).toBe('yearly')
+      expect(plans.checkoutPath('scale')).toBe(
+        '/checkout/scale?billingInterval=yearly'
+      )
+    }
+  )
 })
 
 // Mirrors the published refund policy. Quoting a longer window than we honour

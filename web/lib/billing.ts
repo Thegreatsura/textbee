@@ -1,5 +1,11 @@
-import type { Subscription, SubscriptionStatus } from '@/lib/api/types'
-import { PLAN_TIERS, findPlanTier, type PlanTier } from '@/lib/plans'
+import type { Plan, Subscription, SubscriptionStatus } from '@/lib/api/types'
+import {
+  PLAN_TIERS,
+  findPlanTier,
+  priceTiers,
+  type PlanTier,
+  type PricedPlanTier,
+} from '@/lib/plans'
 
 export type BillingState = {
   /** Display name for the current plan. Always populated. */
@@ -77,4 +83,46 @@ export function billingPriceLabel(
   const amount = subscription?.amount
   if (amount == null || amount <= 0) return null
   return amount
+}
+
+export type YearlySwitchOffer = PricedPlanTier & {
+  savingPercent: number
+  monthsFree: number
+}
+
+/**
+ * The priced tier to offer a switch to yearly billing, with the saving against
+ * what this subscriber pays each month now, or undefined when the offer does
+ * not apply: not an active monthly subscription, a custom plan, a scheduled
+ * cancellation, a tier without both prices known, or a yearly price that
+ * saves under 1% against the current monthly charge. A past due subscription
+ * is excluded by the status check, since the switch would charge the failing
+ * card.
+ */
+export function yearlySwitchTier(
+  subscription: Subscription | undefined,
+  plans: Plan[] | undefined
+): YearlySwitchOffer | undefined {
+  if (!subscription || subscription.status !== 'active') return undefined
+  if (subscription.cancelAtPeriodEnd === true) return undefined
+  const interval = subscription.recurringInterval?.trim().toLowerCase()
+  if (interval !== 'month' && interval !== 'monthly') return undefined
+  const name = subscription.plan?.name?.trim().toLowerCase()
+  if (!name || name.startsWith('custom')) return undefined
+  const id = findPlanTier(name)?.id
+  const tier = priceTiers(plans).find((t) => t.id === id)
+  if (!tier?.hasYearly || !tier.monthlyPrice || !tier.yearlyPrice) {
+    return undefined
+  }
+  const base =
+    typeof subscription.amount === 'number' && subscription.amount > 0
+      ? subscription.amount / 100
+      : tier.monthlyPrice
+  const yearOfMonthly = base * 12
+  const savingPercent = Math.round(
+    ((yearOfMonthly - tier.yearlyPrice) / yearOfMonthly) * 100
+  )
+  if (savingPercent < 1) return undefined
+  const monthsFree = Math.floor(12 - tier.yearlyPrice / base)
+  return { ...tier, savingPercent, monthsFree }
 }

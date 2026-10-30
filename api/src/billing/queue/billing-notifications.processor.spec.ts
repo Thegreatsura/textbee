@@ -12,6 +12,15 @@ const chain = (value: any) => {
 }
 
 describe('BillingNotificationsProcessor', () => {
+  const savedInterval = process.env.DEFAULT_BILLING_INTERVAL
+  beforeAll(() => {
+    process.env.DEFAULT_BILLING_INTERVAL = 'yearly'
+  })
+  afterAll(() => {
+    if (savedInterval === undefined) delete process.env.DEFAULT_BILLING_INTERVAL
+    else process.env.DEFAULT_BILLING_INTERVAL = savedInterval
+  })
+
   const userId = new Types.ObjectId()
   const now = new Date('2026-09-27T12:00:00Z')
 
@@ -89,7 +98,10 @@ describe('BillingNotificationsProcessor', () => {
         proMonthlyLimit: '5,000',
         proDeviceLimit: '5',
         usageLabel: 'Messages in this billing period',
-        upgradeUrl: 'https://app.textbee.dev/checkout/pro?billingInterval=monthly',
+        upgradeUrl: 'https://app.textbee.dev/checkout/pro?billingInterval=yearly&from=email&ref=U2',
+        scaleUpgradeUrl:
+          'https://app.textbee.dev/checkout/scale?billingInterval=yearly&from=email&ref=U2',
+        billingUrl: 'https://app.textbee.dev/dashboard/account/billing?from=email&ref=U2',
         resetDate: '17 October at 22:15 UTC',
       },
     })

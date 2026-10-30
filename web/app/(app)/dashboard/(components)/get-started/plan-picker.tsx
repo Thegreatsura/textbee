@@ -16,14 +16,17 @@ import { Check, ExternalLink } from 'lucide-react'
 import { Routes } from '@/config/routes'
 import { useBillingPlans, useSubscription } from '@/lib/api'
 import {
-  DEFAULT_CHECKOUT_INTERVAL,
   MONEY_BACK_DAYS,
   checkoutPath,
+  defaultIntervalFor,
   formatPlanPrice,
   formatPriceCaption,
   isFreeTier,
+  monthlyEquivalent,
+  monthsFreeSuffix,
   priceTiers,
   yearlySavingPercent,
+  type BillingInterval,
   type PricedPlanTier,
 } from '@/lib/plans'
 import { cn } from '@/lib/utils'
@@ -47,7 +50,20 @@ function PlanCard({
   onSkip: () => void
 }) {
   const free = isFreeTier(tier)
-  const caption = formatPriceCaption(tier)
+  // Monthly when there is no yearly price to quote but a monthly one exists,
+  // so the headline never names a price the CTA does not charge.
+  const interval: BillingInterval =
+    defaultIntervalFor(tier.id) === 'yearly' &&
+    !(tier.yearlyPrice === undefined && tier.monthlyPrice !== undefined)
+      ? 'yearly'
+      : 'monthly'
+  const perMonth = monthlyEquivalent(tier)
+  const yearly = interval === 'yearly' && tier.yearlyPrice !== undefined
+  const headline = yearly ? tier.yearlyPrice : tier.monthlyPrice
+  const caption =
+    yearly && perMonth !== undefined
+      ? `${formatPlanPrice(perMonth)}/month, billed yearly`
+      : formatPriceCaption(tier)
   const highlight = tier.isPopular && !isCurrent
   const saving = yearlySavingPercent(tier)
 
@@ -76,14 +92,16 @@ function PlanCard({
         </div>
 
         <div className='pt-2'>
-          {tier.monthlyPrice !== undefined ? (
+          {headline !== undefined ? (
             <div className='flex items-baseline gap-1'>
               {/* The headline is what the CTA charges, not the yearly
                   per-month equivalent. */}
               <span className='text-3xl font-semibold tabular-nums'>
-                {formatPlanPrice(tier.monthlyPrice)}
+                {formatPlanPrice(headline)}
               </span>
-              <span className='text-sm text-muted-foreground'>/month</span>
+              <span className='text-sm text-muted-foreground'>
+                {yearly ? '/year' : '/month'}
+              </span>
             </div>
           ) : (
             <a
@@ -103,7 +121,7 @@ function PlanCard({
           )}
           {saving !== undefined && (
             <Badge variant='secondary' className='mt-2 text-[11px]'>
-              Save {saving}% yearly
+              Save {saving}% yearly{monthsFreeSuffix(tier)}
             </Badge>
           )}
         </div>
@@ -149,11 +167,13 @@ function PlanCard({
             <p className='text-center text-xs text-muted-foreground'>
               Cancel anytime, keep access until the end of your billing period.
               {' '}
-              {MONEY_BACK_DAYS[DEFAULT_CHECKOUT_INTERVAL]}-day money-back
+              {MONEY_BACK_DAYS[interval]}-day money-back
               guarantee.
             </p>
             <Button className='w-full' asChild>
-              <Link href={checkoutPath(tier.id)}>Upgrade to {tier.name}</Link>
+              <Link href={checkoutPath(tier.id, interval, 'app_get_started')}>
+                Upgrade to {tier.name}
+              </Link>
             </Button>
           </>
         )}

@@ -116,7 +116,7 @@ describe('the tile itself', () => {
     expect(await screen.findByText('Upgrade to Pro')).toBeInTheDocument()
     expect(screen.getByText('More messages every month.')).toBeInTheDocument()
     const action = screen.getByRole('link', { name: 'See Pro' })
-    expect(action).toHaveAttribute('href', '/checkout/pro')
+    expect(action).toHaveAttribute('href', '/checkout/pro?from=notice&ref=6700000000000000000000a1')
   })
 
   it('reports one impression even across a rerender', async () => {

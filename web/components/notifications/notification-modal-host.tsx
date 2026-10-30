@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import type { ServedNotification } from '@/lib/api'
 import { LegacyModalHost } from './legacy-modal-host'
 import { useNotifications } from './notification-provider'
+import { withNoticeSource } from '@/lib/analytics/checkout-source'
 
 const isExternal = (href: string) => /^https?:\/\//i.test(href)
 
@@ -99,7 +100,7 @@ export function NotificationModalHost() {
                     {action.label}
                   </a>
                 ) : (
-                  <a href={action.href}>{action.label}</a>
+                  <a href={withNoticeSource(action.href, notification.id)}>{action.label}</a>
                 )}
               </Button>
             )

@@ -10,6 +10,7 @@ import { User } from '../users/schemas/user.schema'
 import { SMS } from '../gateway/schemas/sms.schema'
 import { PolarWebhookPayload } from './schemas/polar-webhook-payload.schema'
 import { CheckoutSession } from './schemas/checkout-session.schema'
+import { CheckoutAttempt } from './schemas/checkout-attempt.schema'
 import { BillingNotificationsService } from './billing-notifications.service'
 import { BillingNotificationType } from './schemas/billing-notification.schema'
 import { UsersService } from '../users/users.service'
@@ -40,6 +41,7 @@ describe('BillingService - checkout guards', () => {
           useValue: emptyModel,
         },
         { provide: getModelToken(CheckoutSession.name), useValue: emptyModel },
+        { provide: getModelToken(CheckoutAttempt.name), useValue: emptyModel },
         { provide: BillingNotificationsService, useValue: {} },
         { provide: UsersService, useValue: { markMilestone: jest.fn() } },
         { provide: AnalyticsService, useValue: { purchase: jest.fn(), checkoutStarted: jest.fn() } },
@@ -98,7 +100,25 @@ describe('BillingService - syncCheckoutSessionStatus', () => {
   const mockCheckoutSessionModel = {
     updateOne: jest.fn(),
   }
+  const mockCheckoutAttemptModel = {
+    findOne: jest.fn(),
+    updateOne: jest.fn(),
+  }
   const emptyModel = {}
+  const sortArgs: unknown[] = []
+  const latestAttempt = (attempts: any[]) => (filter: any) => ({
+    sort: (order: unknown) => {
+      sortArgs.push(order)
+      return {
+        select: () => ({
+          lean: async () =>
+            attempts
+              .filter((a) => a.checkoutSessionId === filter.checkoutSessionId)
+              .sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime())[0] ?? null,
+        }),
+      }
+    },
+  })
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -116,6 +136,10 @@ describe('BillingService - syncCheckoutSessionStatus', () => {
           provide: getModelToken(CheckoutSession.name),
           useValue: mockCheckoutSessionModel,
         },
+        {
+          provide: getModelToken(CheckoutAttempt.name),
+          useValue: mockCheckoutAttemptModel,
+        },
         { provide: BillingNotificationsService, useValue: {} },
         { provide: UsersService, useValue: { markMilestone: jest.fn() } },
         { provide: AnalyticsService, useValue: { purchase: jest.fn(), checkoutStarted: jest.fn() } },
@@ -125,7 +149,10 @@ describe('BillingService - syncCheckoutSessionStatus', () => {
     service = module.get<BillingService>(BillingService)
 
     jest.clearAllMocks()
+    sortArgs.length = 0
     mockCheckoutSessionModel.updateOne.mockResolvedValue({ modifiedCount: 1 })
+    mockCheckoutAttemptModel.findOne.mockImplementation(latestAttempt([]))
+    mockCheckoutAttemptModel.updateOne.mockResolvedValue({ modifiedCount: 1 })
   })
 
   // Nothing wrote isCompleted before this existed, so a checkout the customer
@@ -140,6 +167,75 @@ describe('BillingService - syncCheckoutSessionStatus', () => {
       { checkoutSessionId: 'checkout_abc' },
       expect.objectContaining({ isCompleted: true, completedAt: expect.any(Date) }),
     )
+  })
+
+  describe('checkout attempts', () => {
+    const attempts = (): any[] => [
+      { _id: 'a1', checkoutSessionId: 'checkout_abc', createdAt: new Date('2026-10-01T10:00:00Z') },
+      { _id: 'a2', checkoutSessionId: 'checkout_abc', createdAt: new Date('2026-10-01T11:00:00Z') },
+      { _id: 'a3', checkoutSessionId: 'checkout_other', createdAt: new Date('2026-10-01T12:00:00Z') },
+    ]
+    const store = (rows: any[]) => {
+      mockCheckoutAttemptModel.findOne.mockImplementation(latestAttempt(rows))
+      mockCheckoutAttemptModel.updateOne.mockImplementation(async (filter, update) => {
+        const row = rows.find((r) => r._id === filter._id && !r.completedAt)
+        if (row) Object.assign(row, update.$set)
+        return { modifiedCount: row ? 1 : 0 }
+      })
+    }
+
+    it('completes only the newest attempt for the checkout', async () => {
+      const rows = attempts()
+      store(rows)
+
+      await service.syncCheckoutSessionStatus({
+        checkoutSessionId: 'checkout_abc',
+        status: 'succeeded',
+      })
+
+      expect(sortArgs).toEqual([{ createdAt: -1 }])
+      expect(rows[1].completedAt).toBeInstanceOf(Date)
+      expect(rows[0]).not.toHaveProperty('completedAt')
+      expect(rows[2]).not.toHaveProperty('completedAt')
+    })
+
+    it('marks nothing more when the webhook is delivered again', async () => {
+      const rows = attempts()
+      store(rows)
+      const event = { checkoutSessionId: 'checkout_abc', status: 'succeeded' }
+
+      await service.syncCheckoutSessionStatus(event)
+      const first = (rows[1] as any).completedAt
+      await service.syncCheckoutSessionStatus(event)
+
+      expect((rows[1] as any).completedAt).toBe(first)
+      expect(rows[0]).not.toHaveProperty('completedAt')
+      expect(mockCheckoutAttemptModel.updateOne).toHaveBeenCalledTimes(1)
+    })
+
+    it.each(['open', 'confirmed', 'failed', 'expired'])(
+      'leaves attempts open for a %s checkout',
+      async (status) => {
+        await service.syncCheckoutSessionStatus({ checkoutSessionId: 'checkout_abc', status })
+
+        expect(mockCheckoutAttemptModel.findOne).not.toHaveBeenCalled()
+        expect(mockCheckoutAttemptModel.updateOne).not.toHaveBeenCalled()
+      },
+    )
+
+    it('does not throw when the attempt lookup fails', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      mockCheckoutAttemptModel.findOne.mockImplementation(() => {
+        throw new Error('db down')
+      })
+
+      await expect(
+        service.syncCheckoutSessionStatus({
+          checkoutSessionId: 'checkout_abc',
+          status: 'succeeded',
+        }),
+      ).resolves.toBeUndefined()
+    })
   })
 
   it('marks an expired checkout abandoned', async () => {
@@ -232,6 +328,7 @@ describe('BillingService - canPerformAction account checks', () => {
         { provide: getModelToken(SMS.name), useValue: mockSmsModel },
         { provide: getModelToken(PolarWebhookPayload.name), useValue: emptyModel },
         { provide: getModelToken(CheckoutSession.name), useValue: emptyModel },
+        { provide: getModelToken(CheckoutAttempt.name), useValue: emptyModel },
         { provide: BillingNotificationsService, useValue: mockBillingNotifications },
         { provide: UsersService, useValue: { markMilestone: jest.fn() } },
         { provide: AnalyticsService, useValue: { purchase: jest.fn(), checkoutStarted: jest.fn() } },
@@ -968,6 +1065,7 @@ describe('BillingService - first payment reporting', () => {
           useValue: emptyModel,
         },
         { provide: getModelToken(CheckoutSession.name), useValue: emptyModel },
+        { provide: getModelToken(CheckoutAttempt.name), useValue: emptyModel },
         { provide: BillingNotificationsService, useValue: {} },
         { provide: UsersService, useValue: mockUsersService },
         { provide: AnalyticsService, useValue: mockAnalyticsService },
@@ -1079,6 +1177,7 @@ describe('BillingService - reads raise no usage notices', () => {
       { notifyOnce } as any,
       {} as any,
       {} as any,
+      {} as any,
     )
 
     const result = await service.getCurrentSubscription({
@@ -1107,6 +1206,7 @@ describe('BillingService - payment retry state and end cause', () => {
       {} as any,
       {} as any,
       payloadModel as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -1232,6 +1332,7 @@ describe('BillingService - new checkout session', () => {
       {} as any,
       {} as any,
       { checkoutStarted: jest.fn() } as any,
+      {} as any,
     )
     ;(service as any).polarApi = {
       checkouts: {
@@ -1294,6 +1395,7 @@ describe('BillingService - Polar SDK calls', () => {
       {} as any,
       {} as any,
       checkoutSessionModel as any,
+      {} as any,
       {} as any,
       {} as any,
       {} as any,
@@ -1441,13 +1543,18 @@ describe('BillingService - Polar SDK calls', () => {
       expect(result.planChange.cancelAtPeriodEnd).toBe(true)
     })
 
-    it('maps a failed prorated charge to PAYMENT_ISSUE', async () => {
+    it.each([
+      ['PaymentFailed', { error: 'PaymentFailed', detail: 'declined' }],
+      ['PaymentActionRequired', { error: 'PaymentActionRequired', detail: '3ds' }],
+    ])('maps a 402 %s to PAYMENT_FAILED', async (_label, body) => {
       jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const { service } = build({ plan, current })
       ;(service as any).polarApi = {
         subscriptions: {
           get: jest.fn().mockResolvedValue({ ...polarSubscription, cancel_at_period_end: false }),
-          update: jest.fn().mockRejectedValue(new errors.SubscriptionsUpdate402Error(402, {} as any)),
+          update: jest
+            .fn()
+            .mockRejectedValue(new errors.SubscriptionsUpdate402Error(402, body as any)),
         },
       }
 
@@ -1456,7 +1563,13 @@ describe('BillingService - Polar SDK calls', () => {
           user: { _id: userId },
           payload: { planName: 'pro', billingInterval: 'monthly' },
         }),
-      ).rejects.toMatchObject({ response: { code: 'PAYMENT_ISSUE' } })
+      ).rejects.toMatchObject({
+        status: 400,
+        response: {
+          code: 'PAYMENT_FAILED',
+          message: 'Your card was declined. Update your payment method, then try again.',
+        },
+      })
     })
 
     it('finds the subscription by external customer id when the stored id fails', async () => {
@@ -1566,6 +1679,233 @@ describe('BillingService - Polar SDK calls', () => {
           response: { code: 'ALREADY_ON_PLAN' },
         })
       })
+    })
+  })
+})
+
+describe('BillingService - checkout attempts', () => {
+  const userId = new Types.ObjectId('507f1f77bcf86cd799439011')
+  const plan = { name: 'pro', polarMonthlyProductId: 'prod_m', polarYearlyProductId: 'prod_y' }
+  const flush = () => new Promise((resolve) => setImmediate(resolve))
+
+  const build = ({ current = null as any, cached = null as any } = {}) => {
+    const checkoutSessionModel = {
+      findOne: jest.fn().mockResolvedValue(cached),
+      updateOne: jest.fn().mockReturnValue({ catch: jest.fn() }),
+    }
+    const checkoutAttemptModel = { create: jest.fn().mockResolvedValue({}) }
+    const service = new BillingService(
+      { findOne: jest.fn().mockResolvedValue(plan) } as any,
+      {
+        findOne: jest.fn(() => ({ populate: jest.fn().mockResolvedValue(current) })),
+        updateOne: jest.fn().mockReturnValue({ catch: jest.fn() }),
+      } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+      checkoutSessionModel as any,
+      {} as any,
+      {} as any,
+      { checkoutStarted: jest.fn() } as any,
+      checkoutAttemptModel as any,
+    )
+    const create = jest.fn().mockResolvedValue({
+      id: 'co_9',
+      url: 'https://pay.test/co_9',
+      expires_at: '2026-11-01T00:00:00Z',
+    })
+    ;(service as any).polarApi = { checkouts: { create }, discounts: { get: jest.fn() } }
+    return { service, checkoutAttemptModel, create }
+  }
+
+  const checkout = (service: BillingService, extra: Record<string, unknown> = {}) =>
+    service.getCheckoutUrl({
+      user: { _id: userId, email: 'a@example.com' },
+      payload: { planName: 'pro', billingInterval: 'yearly', ...extra },
+      req: { ip: '127.0.0.1', headers: {} },
+    })
+
+  beforeEach(() => {
+    delete process.env.POLAR_DEFAULT_DISCOUNT_ID
+  })
+  afterEach(() => jest.restoreAllMocks())
+
+  it('records a new checkout with its source and tags the provider metadata', async () => {
+    const { service, checkoutAttemptModel, create } = build()
+
+    await checkout(service, {
+      from: 'app_billing',
+      ref: 'x-1',
+      priorFrom: 'email',
+      priorRef: 'U1',
+      fromCookie: false,
+    })
+    await flush()
+
+    expect(checkoutAttemptModel.create).toHaveBeenCalledWith({
+      user: userId,
+      kind: 'checkout',
+      planName: 'pro',
+      billingInterval: 'yearly',
+      from: 'app_billing',
+      ref: 'x-1',
+      priorFrom: 'email',
+      priorRef: 'U1',
+      fromCookie: false,
+      checkoutSessionId: 'co_9',
+      reusedCheckout: false,
+    })
+    expect(create.mock.calls[0][0].metadata).toMatchObject({
+      checkoutFrom: 'app_billing',
+      checkoutRef: 'x-1',
+    })
+  })
+
+  it('drops invalid source values without failing the checkout', async () => {
+    const { service, checkoutAttemptModel, create } = build()
+
+    await expect(
+      checkout(service, {
+        from: 'App Billing!',
+        ref: 'a'.repeat(65),
+        priorFrom: 42,
+        priorRef: 'ok_ref',
+        fromCookie: 'yes',
+      }),
+    ).resolves.toEqual({ redirectUrl: 'https://pay.test/co_9' })
+    await flush()
+
+    const attempt = checkoutAttemptModel.create.mock.calls[0][0]
+    expect(attempt).toMatchObject({ priorRef: 'ok_ref' })
+    expect(attempt).not.toHaveProperty('from')
+    expect(attempt).not.toHaveProperty('ref')
+    expect(attempt).not.toHaveProperty('priorFrom')
+    expect(attempt).not.toHaveProperty('fromCookie')
+    expect(create.mock.calls[0][0].metadata).not.toHaveProperty('checkoutFrom')
+    expect(create.mock.calls[0][0].metadata).not.toHaveProperty('checkoutRef')
+  })
+
+  it('records a reused cached checkout with its id', async () => {
+    const cached = {
+      checkoutSessionId: 'co_cached',
+      checkoutUrl: 'https://pay.test/co_cached',
+      planName: 'pro',
+      billingInterval: 'yearly',
+    }
+    const { service, checkoutAttemptModel, create } = build({ cached })
+
+    await expect(checkout(service, { from: 'email', ref: 'U2' })).resolves.toEqual({
+      redirectUrl: 'https://pay.test/co_cached',
+    })
+    await flush()
+
+    expect(create).not.toHaveBeenCalled()
+    expect(checkoutAttemptModel.create).toHaveBeenCalledWith({
+      user: userId,
+      kind: 'checkout',
+      planName: 'pro',
+      billingInterval: 'yearly',
+      from: 'email',
+      ref: 'U2',
+      checkoutSessionId: 'co_cached',
+      reusedCheckout: true,
+    })
+  })
+
+  it('never fails the checkout when the attempt write fails', async () => {
+    const { service, checkoutAttemptModel } = build()
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    checkoutAttemptModel.create.mockRejectedValue(new Error('db down'))
+
+    await expect(checkout(service, { from: 'app_billing' })).resolves.toEqual({
+      redirectUrl: 'https://pay.test/co_9',
+    })
+    await flush()
+
+    expect(error).toHaveBeenCalledWith('failed to record checkout attempt', 'db down')
+  })
+
+  describe('plan change', () => {
+    const current = {
+      _id: 'local_sub',
+      plan: { name: 'starter' },
+      recurringInterval: 'month',
+      polarSubscriptionId: 'sub_1',
+    }
+    const polarSubscription = {
+      id: 'sub_1',
+      status: 'active',
+      product_id: 'prod_starter_m',
+      customer_id: 'cus_1',
+      cancel_at_period_end: false,
+    }
+
+    it('does not record the preview', async () => {
+      const { service, checkoutAttemptModel } = build({ current })
+      ;(service as any).polarApi = {
+        subscriptions: { get: jest.fn().mockResolvedValue(polarSubscription) },
+      }
+
+      const result: any = await checkout(service, { from: 'app_billing' })
+      await flush()
+
+      expect(result.planChange).toBeDefined()
+      expect(checkoutAttemptModel.create).not.toHaveBeenCalled()
+    })
+
+    it('records a completed plan change', async () => {
+      const { service, checkoutAttemptModel } = build({ current })
+      ;(service as any).polarApi = {
+        subscriptions: {
+          get: jest.fn().mockResolvedValue(polarSubscription),
+          update: jest.fn().mockResolvedValue({ ...polarSubscription, product_id: 'prod_y' }),
+        },
+      }
+      jest.spyOn(service, 'switchPlan').mockResolvedValue({} as any)
+
+      await service.changePlan({
+        user: { _id: userId },
+        payload: {
+          planName: 'pro',
+          billingInterval: 'yearly',
+          from: 'app_billing_yearly',
+          priorFrom: 'email',
+          priorRef: 'yearly_switch',
+        },
+      })
+      await flush()
+
+      expect(checkoutAttemptModel.create).toHaveBeenCalledWith({
+        user: userId,
+        kind: 'plan_change',
+        planName: 'pro',
+        billingInterval: 'yearly',
+        from: 'app_billing_yearly',
+        priorFrom: 'email',
+        priorRef: 'yearly_switch',
+        completedAt: expect.any(Date),
+      })
+    })
+
+    it('records nothing when the change fails', async () => {
+      jest.spyOn(console, 'error').mockImplementation(() => undefined)
+      const { service, checkoutAttemptModel } = build({ current })
+      ;(service as any).polarApi = {
+        subscriptions: {
+          get: jest.fn().mockResolvedValue(polarSubscription),
+          update: jest.fn().mockRejectedValue(new Error('down')),
+        },
+      }
+
+      await expect(
+        service.changePlan({
+          user: { _id: userId },
+          payload: { planName: 'pro', billingInterval: 'yearly', from: 'app_billing' },
+        }),
+      ).rejects.toBeDefined()
+      await flush()
+
+      expect(checkoutAttemptModel.create).not.toHaveBeenCalled()
     })
   })
 })

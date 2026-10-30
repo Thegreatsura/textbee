@@ -16,6 +16,7 @@ import {
   ApiBearerAuth,
   ApiExcludeEndpoint,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiSecurity,
 } from '@nestjs/swagger'
@@ -160,6 +161,29 @@ export class BillingController {
   @Get('card')
   async cardUpdate(@Query('t') t: string, @Res() res: Response) {
     const url = await this.billingService.cardUpdateRedirect(t)
+    res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
+    return res.redirect(302, url)
+  }
+
+  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: 'Follow a switch-to-yearly email link',
+    description:
+      'Checks a signed link from a billing email and redirects to the yearly checkout for the current plan. A past due subscription goes through the customer portal first, which returns to the billing page. An invalid or expired link, a custom plan, a plan with no yearly option, or a yearly price that saves under 1% against the current monthly charge redirects to the billing page.',
+  })
+  @ApiQuery({
+    name: 't',
+    required: true,
+    description: 'Signed link token from the email.',
+  })
+  @ApiResponse({
+    status: 302,
+    description:
+      'Redirect to the yearly checkout, the customer portal, or the billing page.',
+  })
+  @Get('yearly')
+  async yearlySwitch(@Query('t') t: string, @Res() res: Response) {
+    const url = await this.billingService.yearlySwitchRedirect(t)
     res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' })
     return res.redirect(302, url)
   }

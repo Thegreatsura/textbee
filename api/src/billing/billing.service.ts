@@ -32,6 +32,11 @@ import {
   CheckoutSessionDocument,
 } from './schemas/checkout-session.schema'
 import {
+  CheckoutAttempt,
+  CheckoutAttemptDocument,
+} from './schemas/checkout-attempt.schema'
+import { checkoutSource } from './checkout-source'
+import {
   BillingNotificationsService,
   BillingNotificationType,
 } from './billing-notifications.service'
@@ -52,6 +57,7 @@ import { formatDateTime, pluralize, verifyLink } from '../mail/email-render'
 import {
   appPublicUrl,
   billingUrl,
+  defaultBillingInterval,
   emailLinkSecret,
 } from '../mail/email-links'
 
@@ -112,6 +118,8 @@ export class BillingService {
     private readonly billingNotifications: BillingNotificationsService,
     private readonly usersService: UsersService,
     private readonly analyticsService: AnalyticsService,
+    @InjectModel(CheckoutAttempt.name)
+    private checkoutAttemptModel: Model<CheckoutAttemptDocument>,
   ) {
     this.polarApi = createPolar({
       accessToken: process.env.POLAR_ACCESS_TOKEN ?? '',
@@ -248,6 +256,7 @@ export class BillingService {
     }
 
     const selectedPlan = planChange.selectedPlan
+    const source = checkoutSource(payload)
 
     const existingCheckoutSession = await this.checkoutSessionModel.findOne({
       user: user._id,
@@ -263,6 +272,15 @@ export class BillingService {
       existingCheckoutSession.planName === payload.planName &&
       existingCheckoutSession.billingInterval === billingInterval
     ) {
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'checkout',
+        planName: payload.planName,
+        billingInterval,
+        ...source,
+        checkoutSessionId: existingCheckoutSession.checkoutSessionId,
+        reusedCheckout: true,
+      })
       return { redirectUrl: existingCheckoutSession.checkoutUrl }
     }
 
@@ -296,6 +314,8 @@ export class BillingService {
           ...(user.attribution?.first?.campaign && {
             utmCampaign: user.attribution.first.campaign,
           }),
+          ...(source.from && { checkoutFrom: source.from }),
+          ...(source.ref && { checkoutRef: source.ref }),
         },
         external_customer_id: user._id?.toString(),
       }
@@ -345,11 +365,29 @@ export class BillingService {
           console.error(error)
         })
 
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'checkout',
+        planName: payload.planName,
+        billingInterval,
+        ...source,
+        checkoutSessionId: checkout.id,
+        reusedCheckout: false,
+      })
+
       return { redirectUrl: checkout.url }
     } catch (error) {
       console.error(error)
       throw new Error('Failed to create checkout')
     }
+  }
+
+  private recordCheckoutAttempt(attempt: CheckoutAttempt) {
+    Promise.resolve()
+      .then(() => this.checkoutAttemptModel.create(attempt))
+      .catch((error) => {
+        console.error('failed to record checkout attempt', error?.message)
+      })
   }
 
   // Polar reports recurringInterval as 'month'/'year', checkout requests use
@@ -596,6 +634,15 @@ export class BillingService {
           console.error(error)
         })
 
+      this.recordCheckoutAttempt({
+        user: user._id,
+        kind: 'plan_change',
+        planName: selectedPlan.name,
+        billingInterval,
+        ...checkoutSource(payload),
+        completedAt: new Date(),
+      })
+
       return { success: true, plan: selectedPlan.name }
     } catch (error) {
       if (error instanceof HttpException) {
@@ -603,12 +650,13 @@ export class BillingService {
       }
       console.error('failed to change plan', error)
 
+      // The SDK raises SubscriptionsUpdate402Error when the charge is declined
       const statusCode = error?.statusCode
       if (statusCode === 402) {
         throw new BadRequestException({
           message:
-            'The prorated charge failed. Please update your payment method in the customer portal and try again.',
-          code: 'PAYMENT_ISSUE',
+            'Your card was declined. Update your payment method, then try again.',
+          code: 'PAYMENT_FAILED',
         })
       }
       if (statusCode === 403) {
@@ -1740,8 +1788,66 @@ export class BillingService {
       return session.checkoutUrl
     }
     const plan = encodeURIComponent(session?.planName || 'pro')
-    const interval = session?.billingInterval === 'yearly' ? 'yearly' : 'monthly'
-    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}`
+    const interval =
+      session?.billingInterval === 'yearly' || session?.billingInterval === 'monthly'
+        ? session.billingInterval
+        : defaultBillingInterval()
+    return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}&from=email&ref=checkout_resume`
+  }
+
+  /**
+   * Where a signed switch-to-yearly link leads: the yearly confirm screen for
+   * the current plan, or the customer portal when the card failed, which
+   * returns to the billing page.
+   */
+  async yearlySwitchRedirect(token: unknown): Promise<string> {
+    const polarSubscriptionId = this.linkId(token, 'yearly')
+    if (!polarSubscriptionId) return billingUrl()
+    let subscription: SubscriptionDocument | null = null
+    try {
+      subscription = await this.subscriptionModel
+        .findOne({ polarSubscriptionId, isActive: true })
+        .populate('plan')
+    } catch (error) {
+      console.error('failed to load a subscription from an email link', error?.message)
+    }
+    const plan = subscription?.plan as Plan | undefined
+    if (!plan?.name || plan.name.startsWith('custom') || !plan.polarYearlyProductId) {
+      return billingUrl()
+    }
+    if (
+      this.normalizeBillingInterval(subscription.recurringInterval) !== 'monthly' ||
+      subscription.cancelAtPeriodEnd === true ||
+      ['incomplete', 'unpaid'].includes(subscription.status)
+    ) {
+      return billingUrl()
+    }
+    const baseMonthly =
+      typeof subscription.amount === 'number' && subscription.amount > 0
+        ? subscription.amount / 100
+        : (plan.monthlyPrice ?? 0) / 100
+    const yearly = (plan.yearlyPrice ?? 0) / 100
+    if (!(baseMonthly > 0) || !(yearly > 0)) return billingUrl()
+    const savingPercent = Math.round(
+      ((baseMonthly * 12 - yearly) / (baseMonthly * 12)) * 100,
+    )
+    if (savingPercent < 1) return billingUrl()
+    const planPath = encodeURIComponent(plan.name)
+    const target = `${appPublicUrl()}/checkout/${planPath}?billingInterval=yearly&from=email&ref=yearly_switch`
+    if (subscription.status !== 'past_due' || !subscription.polarCustomerId) {
+      return target
+    }
+    try {
+      const session = await this.polarApi.customerSessions.create({
+        customer_id: subscription.polarCustomerId,
+        return_url: `${appPublicUrl()}/dashboard/account/billing?from=email&ref=yearly_switch`,
+      })
+      const url = session?.customer_portal_url
+      return typeof url === 'string' && url.startsWith('https://') ? url : target
+    } catch (error) {
+      console.error('failed to open the customer portal from an email link', error?.message)
+      return target
+    }
   }
 
   /**
@@ -1777,5 +1883,23 @@ export class BillingService {
       .catch((error) => {
         console.error('failed to sync checkout session status', error)
       })
+
+    if (status === 'succeeded') {
+      try {
+        const latest = await this.checkoutAttemptModel
+          .findOne({ checkoutSessionId })
+          .sort({ createdAt: -1 })
+          .select('_id completedAt')
+          .lean()
+        if (latest && !latest.completedAt) {
+          await this.checkoutAttemptModel.updateOne(
+            { _id: latest._id, completedAt: { $exists: false } },
+            { $set: { completedAt: update.completedAt } },
+          )
+        }
+      } catch (error) {
+        console.error('failed to complete checkout attempt', error?.message)
+      }
+    }
   }
 }

@@ -76,9 +76,23 @@ export function checkoutSourceFields(
   return fields
 }
 
+const LOCAL_ORIGIN = 'http://local'
+
 export function withNoticeSource(href: string, notificationId: string): string {
   if (!href.startsWith('/checkout')) return href
-  const url = new URL(href, 'http://local')
+  let url: URL
+  try {
+    url = new URL(href, LOCAL_ORIGIN)
+  } catch {
+    return href
+  }
+  if (
+    url.origin !== LOCAL_ORIGIN ||
+    !url.pathname.startsWith('/checkout') ||
+    url.pathname.startsWith('//')
+  ) {
+    return href
+  }
   url.searchParams.set('from', 'notice')
   const ref = cleanRef(notificationId)
   if (ref) url.searchParams.set('ref', ref)
@@ -86,22 +100,41 @@ export function withNoticeSource(href: string, notificationId: string): string {
   return `${url.pathname}${url.search}${url.hash}`
 }
 
+const COMPLETION_PARAMS = ['checkout-success', 'plan-change-success']
+
 export function captureCheckoutSource(): void {
   if (typeof document === 'undefined') return
-  const source = sourceFromSearch(window.location.search)
-  if (!source) return
-  document.cookie = buildSourceCookie(source, {
-    secure: window.location.protocol === 'https:',
-  })
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (COMPLETION_PARAMS.some((name) => params.get(name) === '1')) {
+      document.cookie = `${CHECKOUT_SOURCE_COOKIE}=; path=/; max-age=0; SameSite=Lax`
+      return
+    }
+    const source = sourceFromSearch(window.location.search)
+    if (!source) return
+    document.cookie = buildSourceCookie(source, {
+      secure: window.location.protocol === 'https:',
+    })
+  } catch {
+    return
+  }
 }
 
 export function readCheckoutSource(): CheckoutSource | null {
   if (typeof document === 'undefined') return null
-  return parseSourceCookie(readCookie(CHECKOUT_SOURCE_COOKIE, document.cookie))
+  try {
+    return parseSourceCookie(readCookie(CHECKOUT_SOURCE_COOKIE, document.cookie))
+  } catch {
+    return null
+  }
 }
 
 export function checkoutSourceBody(
   explicit: CheckoutSource | null
 ): CheckoutSourceFields {
-  return checkoutSourceFields(explicit, readCheckoutSource())
+  try {
+    return checkoutSourceFields(explicit, readCheckoutSource())
+  } catch {
+    return {}
+  }
 }

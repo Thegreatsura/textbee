@@ -1815,6 +1815,13 @@ export class BillingService {
     if (!plan?.name || plan.name.startsWith('custom') || !plan.polarYearlyProductId) {
       return billingUrl()
     }
+    if (
+      this.normalizeBillingInterval(subscription.recurringInterval) !== 'monthly' ||
+      subscription.cancelAtPeriodEnd === true ||
+      ['incomplete', 'unpaid'].includes(subscription.status)
+    ) {
+      return billingUrl()
+    }
     const baseMonthly =
       typeof subscription.amount === 'number' && subscription.amount > 0
         ? subscription.amount / 100

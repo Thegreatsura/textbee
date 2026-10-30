@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, use } from 'react'
+import { useState, useEffect, useCallback, useRef, use } from 'react'
 import httpBrowserClient from '@/lib/httpBrowserClient'
 import { ApiEndpoints } from '@/config/api'
 import { apiErrorMessage } from '@/lib/utils/errorHandler'
@@ -110,17 +110,18 @@ export default function CheckoutPage({
         : null
 
   const searchString = searchParams.toString()
-  const sourceBody = useCallback(
-    () => checkoutSourceBody(sourceFromSearch(searchString)),
-    [searchString],
-  )
+  const searchRef = useRef(searchString)
+  useEffect(() => {
+    searchRef.current = searchString
+  }, [searchString])
+  const startedRef = useRef(false)
 
   const initiateCheckout = useCallback(
     async (billingInterval: BillingInterval) => {
       setIsSubmitting(true)
       setIsSlow(false)
       setError(null)
-      const source = sourceBody()
+      const source = checkoutSourceBody(sourceFromSearch(searchRef.current))
       try {
         const response = await httpBrowserClient.post(
           ApiEndpoints.billing.checkout(),
@@ -152,7 +153,7 @@ export default function CheckoutPage({
         setIsSubmitting(false)
       }
     },
-    [planName, sourceBody],
+    [planName],
   )
 
   const confirmPlanChange = async () => {
@@ -161,7 +162,7 @@ export default function CheckoutPage({
       await httpBrowserClient.post(ApiEndpoints.billing.changePlan(), {
         planName,
         billingInterval: urlInterval ?? selected,
-        ...sourceBody(),
+        ...checkoutSourceBody(sourceFromSearch(searchRef.current)),
       })
       // Straight to the billing tab: the /dashboard/account redirect stub
       // drops query params, which silently ate the success toast.
@@ -182,7 +183,9 @@ export default function CheckoutPage({
   // an interval in the URL means the choice was already made on the pricing
   // page, so do not ask again
   useEffect(() => {
+    if (startedRef.current) return
     if (urlInterval === 'monthly' || urlInterval === 'yearly') {
+      startedRef.current = true
       initiateCheckout(urlInterval)
     }
   }, [urlInterval, initiateCheckout])

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -34,6 +34,7 @@ export default function YearlySwitchCard({
   const [open, setOpen] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const inFlight = useRef(false)
 
   const tier = yearlySwitchTier(subscription, plans)
   if (!tier?.yearlyPrice) return null
@@ -46,6 +47,8 @@ export default function YearlySwitchCard({
       : ''
 
   const confirm = async () => {
+    if (inFlight.current) return
+    inFlight.current = true
     setIsConfirming(true)
     setError(null)
     try {
@@ -61,6 +64,7 @@ export default function YearlySwitchCard({
         apiErrorMessage(err) ||
           'Failed to change your plan. Please try again or contact billing@textbee.dev.'
       )
+      inFlight.current = false
       setIsConfirming(false)
     }
   }

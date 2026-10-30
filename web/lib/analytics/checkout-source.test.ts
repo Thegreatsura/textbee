@@ -3,6 +3,7 @@ import {
   CHECKOUT_SOURCE_COOKIE,
   buildSourceCookie,
   captureCheckoutSource,
+  checkoutSourceBody,
   checkoutSourceFields,
   parseSourceCookie,
   readCheckoutSource,
@@ -129,12 +130,37 @@ describe('captureCheckoutSource', () => {
     expect(readCheckoutSource()).toEqual({ from: 'email', ref: 'U1' })
   })
 
+  it.each(['checkout-success', 'plan-change-success'])(
+    'clears the stored source after %s',
+    (param) => {
+      window.history.replaceState(null, '', '/dashboard?from=email&ref=U1')
+      captureCheckoutSource()
+      window.history.replaceState(null, '', `/dashboard/account/billing?${param}=1`)
+      captureCheckoutSource()
+
+      expect(readCheckoutSource()).toBeNull()
+    }
+  )
+
   it('ignores an invalid source', () => {
     window.history.replaceState(null, '', '/dashboard?from=<script>')
 
     captureCheckoutSource()
 
     expect(readCheckoutSource()).toBeNull()
+  })
+})
+
+describe('a malformed stored value', () => {
+  afterEach(clearCookie)
+
+  it('reads as no stored source instead of throwing', () => {
+    document.cookie = `${CHECKOUT_SOURCE_COOKIE}=%E0; path=/`
+
+    expect(() => readCheckoutSource()).not.toThrow()
+    expect(readCheckoutSource()).toBeNull()
+    expect(checkoutSourceBody({ from: 'app_billing' })).toEqual({ from: 'app_billing' })
+    expect(checkoutSourceBody(null)).toEqual({})
   })
 })
 
@@ -162,6 +188,8 @@ describe('withNoticeSource', () => {
     '/dashboard/account/billing',
     'https://textbee.dev/checkout/pro',
     '/messaging',
+    '/checkout/../..//evil.example.net',
+    '/checkout/../dashboard',
   ])('leaves %s alone', (href) => {
     expect(withNoticeSource(href, 'n1')).toBe(href)
   })

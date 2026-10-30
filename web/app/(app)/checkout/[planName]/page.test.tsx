@@ -156,4 +156,44 @@ describe('CheckoutPage source', () => {
       ref: 'U2_paid',
     })
   })
+
+  it('still starts checkout with a malformed stored value', async () => {
+    search = 'billingInterval=monthly&from=app_billing'
+    document.cookie = 'tb_cfrom=%E0; path=/'
+    post.mockResolvedValue({ data: { redirectUrl: 'https://pay.test/co_1' } })
+
+    await renderPage()
+
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/billing/checkout', {
+        planName: 'pro',
+        billingInterval: 'monthly',
+        from: 'app_billing',
+      })
+    )
+  })
+
+  it('starts checkout once even when the query changes', async () => {
+    search = 'billingInterval=monthly'
+    post.mockResolvedValue({ data: { redirectUrl: 'https://pay.test/co_1' } })
+    const params = Promise.resolve({ planName: 'pro' })
+    const tree = () => (
+      <Suspense fallback={null}>
+        <CheckoutPage params={params} />
+      </Suspense>
+    )
+
+    let rerender: (ui: React.ReactElement) => void = () => undefined
+    await act(async () => {
+      rerender = render(tree()).rerender
+    })
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+
+    search = 'billingInterval=yearly&from=app_billing'
+    await act(async () => {
+      rerender(tree())
+    })
+
+    expect(post).toHaveBeenCalledTimes(1)
+  })
 })

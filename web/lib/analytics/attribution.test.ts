@@ -295,6 +295,11 @@ describe('cookie helpers', () => {
     expect(readCookie('missing', jar)).toBeNull()
   })
 
+  it('reads a value that is not valid percent encoding as missing', () => {
+    expect(readCookie('tb_cfrom', 'tb_cfrom=%E0; theme=dark')).toBeNull()
+    expect(readCookie('theme', 'tb_cfrom=%E0; theme=dark')).toBe('dark')
+  })
+
   it('adds the shared domain and Secure only when asked', () => {
     const shared = buildCookieString('{}', {
       domain: '.textbee.dev',

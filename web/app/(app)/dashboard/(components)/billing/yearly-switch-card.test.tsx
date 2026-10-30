@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { mockBillingPlans } from '@/test/fixtures'
 import YearlySwitchCard from './yearly-switch-card'
@@ -98,6 +98,39 @@ describe('YearlySwitchCard', () => {
         from: 'app_billing_yearly',
         priorFrom: 'email',
         priorRef: 'yearly_switch',
+      })
+    } finally {
+      document.cookie = 'tb_cfrom=; path=/; max-age=0'
+    }
+  })
+
+  it('posts once when confirm is pressed twice quickly', async () => {
+    post.mockReturnValue(new Promise(() => undefined))
+    render(<YearlySwitchCard subscription={monthlyPro} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Switch to yearly' }))
+    const confirm = screen.getByRole('button', { name: 'Confirm switch' })
+    act(() => {
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+    })
+
+    expect(post).toHaveBeenCalledTimes(1)
+  })
+
+  it('still posts the change with a malformed stored value', async () => {
+    post.mockResolvedValue({ data: { success: true } })
+    document.cookie = 'tb_cfrom=%E0; path=/'
+    try {
+      render(<YearlySwitchCard subscription={monthlyPro} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'Switch to yearly' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Confirm switch' }))
+
+      expect(post).toHaveBeenCalledWith('/billing/change-plan', {
+        planName: 'pro',
+        billingInterval: 'yearly',
+        from: 'app_billing_yearly',
       })
     } finally {
       document.cookie = 'tb_cfrom=; path=/; max-age=0'

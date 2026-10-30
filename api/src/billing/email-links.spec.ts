@@ -170,7 +170,12 @@ describe('BillingService - signed email links', () => {
       yearlyPrice: 12000,
       polarYearlyProductId: 'prod_pro_y',
     }
-    const active = { status: 'active', polarCustomerId: 'cus_1', plan }
+    const active = {
+      status: 'active',
+      recurringInterval: 'month',
+      polarCustomerId: 'cus_1',
+      plan,
+    }
     const YEARLY =
       'https://app.textbee.dev/checkout/pro?billingInterval=yearly&from=email&ref=yearly_switch'
     const BILLING_RETURN = `${BILLING}?from=email&ref=yearly_switch`
@@ -212,6 +217,11 @@ describe('BillingService - signed email links', () => {
       ['the plan has no yearly product', { ...active, plan: { name: 'pro' } }],
       ['yearly costs a discounted payer more', { ...active, amount: 900 }],
       ['the saving rounds to 0', { ...active, amount: 1002 }],
+      ['the subscription is yearly', { ...active, recurringInterval: 'year', amount: 12000 }],
+      ['the billing period is unknown', { ...active, recurringInterval: undefined }],
+      ['the subscription is canceling', { ...active, cancelAtPeriodEnd: true }],
+      ['the subscription is unpaid', { ...active, status: 'unpaid' }],
+      ['the subscription is incomplete', { ...active, status: 'incomplete' }],
       ['the plan has no yearly price', { ...active, plan: { ...plan, yearlyPrice: undefined } }],
     ])('sends the reader to the billing page when %s', async (_label, subscription) => {
       const { service, create } = buildYearly(subscription)

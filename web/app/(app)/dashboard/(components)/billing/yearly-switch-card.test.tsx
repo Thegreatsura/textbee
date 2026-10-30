@@ -131,7 +131,8 @@ describe('YearlySwitchCard', () => {
   it.each([
     ['a yearly subscription', { ...monthlyPro, recurringInterval: 'year' }],
     ['a past due subscription', { ...monthlyPro, status: 'past_due' }],
-    ['a discounted monthly charge', { ...monthlyPro, amount: 950 }],
+    ['a discounted charge where yearly costs more', { ...monthlyPro, amount: 900 }],
+    ['a saving that rounds to 0', { ...monthlyPro, amount: 1002 }],
     ['a canceling subscription', { ...monthlyPro, cancelAtPeriodEnd: true }],
     ['a custom plan', { ...monthlyPro, plan: { name: 'custom-acme' } }],
     ['a free account', { plan: { name: 'free' } }],
@@ -140,6 +141,24 @@ describe('YearlySwitchCard', () => {
       <YearlySwitchCard subscription={subscription} />
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('shows the saving against an older, lower monthly price', () => {
+    render(<YearlySwitchCard subscription={{ ...monthlyPro, amount: 1100 }} />)
+
+    expect(screen.getByText('Save 9%, 1 month free')).toBeInTheDocument()
+  })
+
+  it('leaves out months free when the saving is under a month', () => {
+    render(<YearlySwitchCard subscription={{ ...monthlyPro, amount: 1050 }} />)
+
+    expect(screen.getByText('Save 5%')).toBeInTheDocument()
+  })
+
+  it('shows the list saving to a list-price payer', () => {
+    render(<YearlySwitchCard subscription={{ ...monthlyPro, amount: 1900 }} />)
+
+    expect(screen.getByText('Save 47%, 5 months free')).toBeInTheDocument()
   })
 
   it('stays hidden while prices are unknown', () => {

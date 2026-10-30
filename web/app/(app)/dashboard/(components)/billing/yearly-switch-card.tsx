@@ -20,8 +20,6 @@ import httpBrowserClient from '@/lib/httpBrowserClient'
 import {
   formatPlanPrice,
   monthlyEquivalent,
-  monthsFreeSuffix,
-  yearlySavingPercent,
 } from '@/lib/plans'
 import { apiErrorMessage } from '@/lib/utils/errorHandler'
 import { checkoutSourceBody } from '@/lib/analytics/checkout-source'
@@ -42,7 +40,10 @@ export default function YearlySwitchCard({
 
   const yearlyPrice = formatPlanPrice(tier.yearlyPrice)
   const perMonth = monthlyEquivalent(tier)
-  const saving = yearlySavingPercent(tier)
+  const monthsFree =
+    tier.monthsFree >= 1
+      ? `, ${tier.monthsFree} ${tier.monthsFree === 1 ? 'month' : 'months'} free`
+      : ''
 
   const confirm = async () => {
     setIsConfirming(true)
@@ -70,11 +71,9 @@ export default function YearlySwitchCard({
         <h4 className='text-sm font-semibold text-foreground'>
           Switch to yearly
         </h4>
-        {saving !== undefined && (
-          <Badge variant='secondary' className='text-[11px]'>
-            Save {saving}%{monthsFreeSuffix(tier)}
-          </Badge>
-        )}
+        <Badge variant='secondary' className='text-[11px]'>
+          Save {tier.savingPercent}%{monthsFree}
+        </Badge>
       </div>
       <p className='mt-1 text-xs text-muted-foreground tabular-nums'>
         {tier.name} billed yearly is{' '}

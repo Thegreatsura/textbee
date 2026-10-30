@@ -164,7 +164,12 @@ describe('BillingService - signed email links', () => {
 
   describe('switch to yearly', () => {
     const token = (exp = nowS() + 3600) => signLink(secret, 'yearly', 'sub_1', exp)
-    const plan = { name: 'pro', monthlyPrice: 1500, polarYearlyProductId: 'prod_pro_y' }
+    const plan = {
+      name: 'pro',
+      monthlyPrice: 1500,
+      yearlyPrice: 12000,
+      polarYearlyProductId: 'prod_pro_y',
+    }
     const active = { status: 'active', polarCustomerId: 'cus_1', plan }
     const YEARLY =
       'https://app.textbee.dev/checkout/pro?billingInterval=yearly&from=email&ref=yearly_switch'
@@ -205,7 +210,9 @@ describe('BillingService - signed email links', () => {
       ['there is no subscription', null],
       ['the plan is custom', { ...active, plan: { ...plan, name: 'custom-acme' } }],
       ['the plan has no yearly product', { ...active, plan: { name: 'pro' } }],
-      ['the monthly charge is below the list price', { ...active, amount: 750 }],
+      ['yearly costs a discounted payer more', { ...active, amount: 900 }],
+      ['the saving rounds to 0', { ...active, amount: 1002 }],
+      ['the plan has no yearly price', { ...active, plan: { ...plan, yearlyPrice: undefined } }],
     ])('sends the reader to the billing page when %s', async (_label, subscription) => {
       const { service, create } = buildYearly(subscription)
 
@@ -220,8 +227,12 @@ describe('BillingService - signed email links', () => {
       expect(create).not.toHaveBeenCalled()
     })
 
-    it('opens the yearly confirm screen when the monthly charge is the list price', async () => {
-      const { service } = buildYearly({ ...active, amount: 1500 })
+    it.each([
+      ['a list-price payer', 1500],
+      ['a payer on an older, lower price', 1100],
+      ['a payer with no stored charge', undefined],
+    ])('opens the yearly confirm screen for %s', async (_label, amount) => {
+      const { service } = buildYearly({ ...active, amount })
 
       await expect(service.yearlySwitchRedirect(token())).resolves.toBe(YEARLY)
     })

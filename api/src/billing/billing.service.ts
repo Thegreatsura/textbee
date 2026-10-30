@@ -1815,13 +1815,16 @@ export class BillingService {
     if (!plan?.name || plan.name.startsWith('custom') || !plan.polarYearlyProductId) {
       return billingUrl()
     }
-    if (
-      typeof subscription.amount === 'number' &&
-      typeof plan.monthlyPrice === 'number' &&
-      subscription.amount < plan.monthlyPrice
-    ) {
-      return billingUrl()
-    }
+    const baseMonthly =
+      typeof subscription.amount === 'number' && subscription.amount > 0
+        ? subscription.amount / 100
+        : (plan.monthlyPrice ?? 0) / 100
+    const yearly = (plan.yearlyPrice ?? 0) / 100
+    if (!(baseMonthly > 0) || !(yearly > 0)) return billingUrl()
+    const savingPercent = Math.round(
+      ((baseMonthly * 12 - yearly) / (baseMonthly * 12)) * 100,
+    )
+    if (savingPercent < 1) return billingUrl()
     const planPath = encodeURIComponent(plan.name)
     const target = `${appPublicUrl()}/checkout/${planPath}?billingInterval=yearly&from=email&ref=yearly_switch`
     if (subscription.status !== 'past_due' || !subscription.polarCustomerId) {

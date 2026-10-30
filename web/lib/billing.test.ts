@@ -178,13 +178,40 @@ describe('yearlySwitchTier', () => {
     expect(yearlySwitchTier(subscription, mockBillingPlans)).toBeUndefined()
   })
 
-  it('offers nothing when the monthly charge is below the list price', () => {
-    expect(yearlySwitchTier({ ...monthly, amount: 500 }, mockBillingPlans)).toBeUndefined()
-    expect(yearlySwitchTier({ ...monthly, amount: 1899 }, mockBillingPlans)).toBeUndefined()
-  })
+  describe('saving against the current monthly charge', () => {
+    it('uses the list saving for a list-price payer', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1900 }, mockBillingPlans)).toMatchObject({
+        id: 'pro',
+        savingPercent: 47,
+        monthsFree: 5,
+      })
+    })
 
-  it('still offers the switch when the monthly charge is the list price', () => {
-    expect(yearlySwitchTier({ ...monthly, amount: 1900 }, mockBillingPlans)?.id).toBe('pro')
+    it('uses the list price when the charge is unknown', () => {
+      expect(yearlySwitchTier(monthly, mockBillingPlans)).toMatchObject({
+        savingPercent: 47,
+        monthsFree: 5,
+      })
+      expect(yearlySwitchTier({ ...monthly, amount: 0 }, mockBillingPlans)).toMatchObject({
+        savingPercent: 47,
+      })
+    })
+
+    it('shows a lower saving to a payer on an older, lower price', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1100 }, mockBillingPlans)).toMatchObject({
+        id: 'pro',
+        savingPercent: 9,
+        monthsFree: 1,
+      })
+    })
+
+    it('offers nothing when yearly would cost a discounted payer more', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 900 }, mockBillingPlans)).toBeUndefined()
+    })
+
+    it('offers nothing when the saving rounds to 0', () => {
+      expect(yearlySwitchTier({ ...monthly, amount: 1002 }, mockBillingPlans)).toBeUndefined()
+    })
   })
 
   it('offers nothing while either price is unknown', () => {

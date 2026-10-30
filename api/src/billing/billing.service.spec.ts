@@ -1441,13 +1441,18 @@ describe('BillingService - Polar SDK calls', () => {
       expect(result.planChange.cancelAtPeriodEnd).toBe(true)
     })
 
-    it('maps a failed prorated charge to PAYMENT_ISSUE', async () => {
+    it.each([
+      ['PaymentFailed', { error: 'PaymentFailed', detail: 'declined' }],
+      ['PaymentActionRequired', { error: 'PaymentActionRequired', detail: '3ds' }],
+    ])('maps a 402 %s to PAYMENT_FAILED', async (_label, body) => {
       jest.spyOn(console, 'error').mockImplementation(() => undefined)
       const { service } = build({ plan, current })
       ;(service as any).polarApi = {
         subscriptions: {
           get: jest.fn().mockResolvedValue({ ...polarSubscription, cancel_at_period_end: false }),
-          update: jest.fn().mockRejectedValue(new errors.SubscriptionsUpdate402Error(402, {} as any)),
+          update: jest
+            .fn()
+            .mockRejectedValue(new errors.SubscriptionsUpdate402Error(402, body as any)),
         },
       }
 
@@ -1456,7 +1461,13 @@ describe('BillingService - Polar SDK calls', () => {
           user: { _id: userId },
           payload: { planName: 'pro', billingInterval: 'monthly' },
         }),
-      ).rejects.toMatchObject({ response: { code: 'PAYMENT_ISSUE' } })
+      ).rejects.toMatchObject({
+        status: 400,
+        response: {
+          code: 'PAYMENT_FAILED',
+          message: 'Your card was declined. Update your payment method, then try again.',
+        },
+      })
     })
 
     it('finds the subscription by external customer id when the stored id fails', async () => {

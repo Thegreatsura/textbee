@@ -13,11 +13,15 @@ export const emailLinkSecret = () => process.env.EMAIL_LINK_SECRET || ''
 
 export const billingUrl = () => `${appPublicUrl()}/dashboard/account/billing`
 
+/** Exactly "monthly" in DEFAULT_BILLING_INTERVAL gives monthly; anything else gives yearly. */
+export const defaultBillingInterval = (): 'monthly' | 'yearly' =>
+  process.env.DEFAULT_BILLING_INTERVAL === 'monthly' ? 'monthly' : 'yearly'
+
 export const upgradeUrl = () =>
-  `${appPublicUrl()}/checkout/pro?billingInterval=monthly`
+  `${appPublicUrl()}/checkout/pro?billingInterval=${defaultBillingInterval()}`
 
 export const scaleUpgradeUrl = () =>
-  `${appPublicUrl()}/checkout/scale?billingInterval=monthly`
+  `${appPublicUrl()}/checkout/scale?billingInterval=${defaultBillingInterval()}`
 
 /** Signed one-click link; without a secret it points at the account page. */
 export const unsubscribeUrl = (userId: string): string => {

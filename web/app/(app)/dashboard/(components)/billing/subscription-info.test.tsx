@@ -8,6 +8,8 @@ const useCurrentUser = vi.fn()
 vi.mock('@/lib/api', () => ({
   useSubscription: () => useSubscription(),
   useCurrentUser: () => useCurrentUser(),
+  // Without prices the yearly offer stays hidden; yearly-switch-card.test covers it.
+  useBillingPlans: () => ({ data: undefined, isPending: false }),
 }))
 
 vi.mock('@/hooks/use-toast', () => ({
@@ -102,7 +104,7 @@ describe('SubscriptionInfo', () => {
       render(<SubscriptionInfo />)
       expect(
         screen.getByRole('link', { name: /Upgrade to Pro/ })
-      ).toHaveAttribute('href', '/checkout/pro?billingInterval=monthly')
+      ).toHaveAttribute('href', '/checkout/pro?billingInterval=yearly')
     })
 
     it('still shows the plan limits', () => {
@@ -135,7 +137,7 @@ describe('SubscriptionInfo', () => {
 
       expect(
         screen.getByRole('link', { name: /Upgrade to Scale/ })
-      ).toHaveAttribute('href', '/checkout/scale?billingInterval=monthly')
+      ).toHaveAttribute('href', '/checkout/scale?billingInterval=yearly')
       expect(
         screen.queryByRole('link', { name: /Upgrade to Pro/ })
       ).not.toBeInTheDocument()

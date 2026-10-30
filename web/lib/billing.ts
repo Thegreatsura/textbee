@@ -1,5 +1,11 @@
-import type { Subscription, SubscriptionStatus } from '@/lib/api/types'
-import { PLAN_TIERS, findPlanTier, type PlanTier } from '@/lib/plans'
+import type { Plan, Subscription, SubscriptionStatus } from '@/lib/api/types'
+import {
+  PLAN_TIERS,
+  findPlanTier,
+  priceTiers,
+  type PlanTier,
+  type PricedPlanTier,
+} from '@/lib/plans'
 
 export type BillingState = {
   /** Display name for the current plan. Always populated. */
@@ -77,4 +83,29 @@ export function billingPriceLabel(
   const amount = subscription?.amount
   if (amount == null || amount <= 0) return null
   return amount
+}
+
+/**
+ * The priced tier to offer a switch to yearly billing, or undefined when the
+ * offer does not apply: not an active monthly subscription, a custom plan, a
+ * scheduled cancellation, or a tier without both prices known. A past due
+ * subscription is excluded by the status check, since the switch would charge
+ * the failing card.
+ */
+export function yearlySwitchTier(
+  subscription: Subscription | undefined,
+  plans: Plan[] | undefined
+): PricedPlanTier | undefined {
+  if (!subscription || subscription.status !== 'active') return undefined
+  if (subscription.cancelAtPeriodEnd === true) return undefined
+  const interval = subscription.recurringInterval?.trim().toLowerCase()
+  if (interval !== 'month' && interval !== 'monthly') return undefined
+  const name = subscription.plan?.name?.trim().toLowerCase()
+  if (!name || name.startsWith('custom')) return undefined
+  const id = findPlanTier(name)?.id
+  const tier = priceTiers(plans).find((t) => t.id === id)
+  if (!tier?.hasYearly || !tier.monthlyPrice || !tier.yearlyPrice) {
+    return undefined
+  }
+  return tier
 }

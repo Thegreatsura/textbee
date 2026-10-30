@@ -41,6 +41,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useToast } from '@/hooks/use-toast'
+import YearlySwitchCard from './yearly-switch-card'
 import { cn } from '@/lib/utils'
 
 type Meter = {
@@ -491,6 +492,8 @@ export default function SubscriptionInfo() {
           </Button>
         </div>
       </section>
+
+      <YearlySwitchCard subscription={currentSubscription} />
 
       {/* Usage against the plan's limits. */}
       <section className='frame rounded-lg border bg-card p-4'>

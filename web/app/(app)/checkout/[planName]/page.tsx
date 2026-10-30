@@ -13,8 +13,10 @@ import { Spinner } from '@/components/ui/spinner'
 import { Badge } from '@/components/ui/badge'
 import {
   MONEY_BACK_DAYS,
+  defaultIntervalFor,
   formatPlanPrice,
   monthlyEquivalent,
+  monthsFreeSuffix,
   priceTiers,
   yearlySavingPercent,
   type BillingInterval,
@@ -87,7 +89,9 @@ export default function CheckoutPage({
   const { status } = useSession()
   const router = useRouter()
 
-  const [selected, setSelected] = useState<BillingInterval>('yearly')
+  const [selected, setSelected] = useState<BillingInterval>(() =>
+    defaultIntervalFor(planName),
+  )
 
   // marketing and pricing pages link here with ?billingInterval=monthly|yearly
   // (legacy ?billing= fallback until the marketing site redeploys)
@@ -313,7 +317,7 @@ export default function CheckoutPage({
     )
   }
 
-  // no interval in the URL: ask rather than guess, with yearly preselected
+  // no interval in the URL: ask rather than guess, with the default preselected
   const perMonth = tier ? monthlyEquivalent(tier) : undefined
   const saving = tier ? yearlySavingPercent(tier) : undefined
 
@@ -350,7 +354,9 @@ export default function CheckoutPage({
                 <span className='flex items-center justify-between gap-2'>
                   <span className='font-medium'>Yearly</span>
                   {saving !== undefined && (
-                    <Badge variant='secondary'>Save {saving}%</Badge>
+                    <Badge variant='secondary'>
+                      Save {saving}%{monthsFreeSuffix(tier)}
+                    </Badge>
                   )}
                 </span>
                 <span className='mt-1 block text-sm text-muted-foreground tabular-nums'>

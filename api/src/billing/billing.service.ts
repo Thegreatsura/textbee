@@ -603,12 +603,13 @@ export class BillingService {
       }
       console.error('failed to change plan', error)
 
+      // The SDK raises SubscriptionsUpdate402Error when the charge is declined
       const statusCode = error?.statusCode
       if (statusCode === 402) {
         throw new BadRequestException({
           message:
-            'The prorated charge failed. Please update your payment method in the customer portal and try again.',
-          code: 'PAYMENT_ISSUE',
+            'Your card was declined. Update your payment method, then try again.',
+          code: 'PAYMENT_FAILED',
         })
       }
       if (statusCode === 403) {
@@ -1742,6 +1743,43 @@ export class BillingService {
     const plan = encodeURIComponent(session?.planName || 'pro')
     const interval = session?.billingInterval === 'yearly' ? 'yearly' : 'monthly'
     return `${appPublicUrl()}/checkout/${plan}?billingInterval=${interval}`
+  }
+
+  /**
+   * Where a signed switch-to-yearly link leads: the yearly confirm screen for
+   * the current plan, through the customer portal first when the card failed.
+   */
+  async yearlySwitchRedirect(token: unknown): Promise<string> {
+    const polarSubscriptionId = this.linkId(token, 'yearly')
+    if (!polarSubscriptionId) return billingUrl()
+    let subscription: SubscriptionDocument | null = null
+    try {
+      subscription = await this.subscriptionModel
+        .findOne({ polarSubscriptionId, isActive: true })
+        .populate('plan')
+    } catch (error) {
+      console.error('failed to load a subscription from an email link', error?.message)
+    }
+    const plan = subscription?.plan as Plan | undefined
+    if (!plan?.name || plan.name.startsWith('custom') || !plan.polarYearlyProductId) {
+      return billingUrl()
+    }
+    const planPath = encodeURIComponent(plan.name)
+    const target = `${appPublicUrl()}/checkout/${planPath}?billingInterval=yearly`
+    if (subscription.status !== 'past_due' || !subscription.polarCustomerId) {
+      return target
+    }
+    try {
+      const session = await this.polarApi.customerSessions.create({
+        customer_id: subscription.polarCustomerId,
+        return_url: target,
+      })
+      const url = session?.customer_portal_url
+      return typeof url === 'string' && url.startsWith('https://') ? url : target
+    } catch (error) {
+      console.error('failed to open the customer portal from an email link', error?.message)
+      return target
+    }
   }
 
   /**

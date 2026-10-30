@@ -89,7 +89,7 @@ describe('BillingNotificationsProcessor', () => {
         proMonthlyLimit: '5,000',
         proDeviceLimit: '5',
         usageLabel: 'Messages in this billing period',
-        upgradeUrl: 'https://app.textbee.dev/checkout/pro?billingInterval=monthly',
+        upgradeUrl: 'https://app.textbee.dev/checkout/pro?billingInterval=yearly',
         resetDate: '17 October at 22:15 UTC',
       },
     })

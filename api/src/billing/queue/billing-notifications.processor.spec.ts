@@ -12,6 +12,15 @@ const chain = (value: any) => {
 }
 
 describe('BillingNotificationsProcessor', () => {
+  const savedInterval = process.env.DEFAULT_BILLING_INTERVAL
+  beforeAll(() => {
+    process.env.DEFAULT_BILLING_INTERVAL = 'yearly'
+  })
+  afterAll(() => {
+    if (savedInterval === undefined) delete process.env.DEFAULT_BILLING_INTERVAL
+    else process.env.DEFAULT_BILLING_INTERVAL = savedInterval
+  })
+
   const userId = new Types.ObjectId()
   const now = new Date('2026-09-27T12:00:00Z')
 
